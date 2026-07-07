@@ -1,0 +1,41 @@
+[project]
+name = "pysie2d"
+version = "0.1.0"
+description = "2-D boundary-integral (Müller BIE) solver for electromagnetic scattering from a cylinder in a homogeneous background."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Claudio Silvestre Castro", email = "claudio.silvestre.castro@gmail.com" },
+]
+requires-python = ">=3.12"
+dependencies = ["numpy>=1.26", "scipy>=1.11"]
+
+[build-system]
+requires = ["uv_build>=0.10.12,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.8", "matplotlib>=3.9"]
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "D", "N", "B", "I", "C4", "A"]
+ignore = [
+    "D203", "D204", "D213", "D215", "D400", "D401",
+    "D404", "D406", "D407", "D408", "D409", "D413",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]  # test names are the documentation
+# Keep the Bessel/Hankel math notation (J_n, H_n) that maps directly onto the
+# cited Bohren & Huffman equations; snake_case would obscure the reference.
+"src/pysie2d/reference/mie.py" = ["N806"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
