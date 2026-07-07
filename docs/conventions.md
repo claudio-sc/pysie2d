@@ -1,0 +1,70 @@
+# Conventions
+
+Every gotcha in this solver traces back to one of the conventions below. Read
+them before reading the code.
+
+## 1. 2-D scalar problem
+
+The geometry is invariant along the cylinder axis (`y`), so Maxwell's equations
+reduce to a scalar Helmholtz equation for one field component. The polarisation
+is selected by the integer `Material.pol`:
+
+- `pol = 2` → **TE**: the scalar field is `E_y` (E parallel to the axis).
+- `pol = 1` → **TM**: the scalar field is `H_y`.
+
+These integer codes are kept for fidelity with the original formulation. Never
+change their internal meaning.
+
+Mapping to analytic Mie coefficients (Bohren & Huffman ch. 8):
+
+- `pol = 2` (TE, `E_y`) ↔ `b_n` ↔ efficiency keys `Q_*_TE`.
+- `pol = 1` (TM, `H_y`) ↔ `a_n` ↔ efficiency keys `Q_*_TM`.
+
+## 2. Units
+
+Lengths are in **nanometres**, everywhere. The free-space wavenumber is
+`k = 2π/λ` with `λ` in nm, so `k` is in rad/nm.
+
+## 3. Time convention
+
+The time convention is `exp(-iωt)`. Outgoing waves are therefore Hankel
+functions of the **first** kind, `H_n^{(1)}`. If a validation matches only
+after complex conjugation, that is a convention clash in the *reference*, not
+a bug in the solver.
+
+## 4. Solution-vector layout
+
+A BIE solve returns `ei` of shape `(2·nn,)`, where `nn` is the number of
+boundary quadrature points:
+
+- `ei[:nn]` — `φ`: boundary field values.
+- `ei[nn:]` — `χ`: boundary normal-derivative values.
+
+Excitation right-hand sides follow the same layout. The plane-wave and (later)
+line-dipole sources populate only the `φ` half; the `χ` half stays zero.
+
+## 5. Geometry arrays
+
+`Geometry` holds the boundary coordinates and their derivatives with respect to
+the boundary parameter `θ`:
+
+- `f` — x-coordinates; `g` — z-coordinates. **`g` is a coordinate array, not a
+  Green function** (an unfortunate historical name).
+- `df`, `dg` — first derivatives of `f`, `g` w.r.t. `θ`.
+- `ddf`, `ddg` — second derivatives.
+- `delt` — the quadrature `θ`-step: a scalar for uniform-`θ` sampling, or a
+  per-point array for uniform arc-length sampling.
+
+## 6. Complex wavenumbers are supported deliberately
+
+Every matrix-assembly and field-evaluation path accepts a complex wavenumber.
+This is intentional: it is what makes quasi-normal-mode extraction (a planned
+extension) possible. Do not "simplify" any code path to real-only arithmetic,
+even where it looks like you could.
+
+## Formulation and validation references
+
+- Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,
+  ch. 8 — the analytic Mie solution used as the validation reference.
+- C. Müller, *Foundations of the Mathematical Theory of Electromagnetic
+  Waves*, Springer, 1969 — the Müller-type boundary integral formulation.
