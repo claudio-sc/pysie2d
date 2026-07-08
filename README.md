@@ -25,11 +25,21 @@ field outside the boundary, internal field inside):
 
 ![Near-field map](figures/nearfield_map.png)
 
+Relative local density of states (Purcell map) around the same Gielis `m = 6`
+star, at one of its `qsca` resonances: a line-dipole emitter placed in a red
+lobe decays faster than in free space (`1 + 4·Im S > 1`), while blue regions
+suppress it. The six-fold pattern mirrors the particle's symmetry. The drive
+*and* the decay rate of an embedded emitter both come from this map — it is the
+entry point of quantum-dynamics calculations downstream:
+
+![Purcell map](figures/purcell_map.png)
+
 Regenerate them with:
 
 ```bash
 uv run python examples/convergence_study.py
 uv run python examples/nearfield_map.py
+uv run python examples/purcell_map.py
 ```
 
 ## Formulation (summary)
@@ -60,6 +70,15 @@ efficiencies agree with Mie to a few parts in `10³`; the error decreases with
 `nn` until it reaches the fixed angular-quadrature floor of the far-field
 integrator. See `tests/` for the exact tolerances and the reasoning behind them.
 
+The line-dipole / self-Green machinery (v0.2) is validated the same way:
+reciprocity of the scattered field (to `10⁻⁶`), the free-space limit
+(`LDOS → 1` far from the particle), LDOS positivity, and — the strong anchor —
+the self-Green function of a circular cylinder against its closed-form
+Graf-addition-theorem sum on both `Re S` and `Im S`. That near-field anchor
+converges at first order in `nn`, so it is run at `nn = 1000` to reach `1 %`;
+the resolved scattered-field sign convention is recorded in
+[docs/conventions.md](docs/conventions.md).
+
 ## Install / run / test
 
 Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
@@ -83,19 +102,34 @@ result = BIESolver(geom, mat).scatter(wavelength=600.0)
 print(result.efficiencies())                       # {'qsca', 'qext', 'qabs'}
 ```
 
+Line-dipole emitter and Purcell effect:
+
+```python
+from pysie2d import BIESolver, Geometry, Material, relative_ldos
+
+geom = Geometry.gielis(rad=200, n_pts=300, m=6, n1=6, n2=12, n3=12)  # Gielis star
+solver = BIESolver(geom, Material(n_core=2.0))
+print(relative_ldos(solver, wavelength=540.0, x_s=430.0, z_s=0.0))  # LDOS vs free space
+```
+
 ## Performance
 
 The system is a dense `2nn × 2nn` complex matrix; at `nn = 300` (a `600 × 600`
 solve) a single wavelength takes below one second in a modern computer, so wavelength
 sweeps are cheap serial `for` loops — no parallelism required.
 
+For a Purcell map, every grid point is a different source position, hence a
+different right-hand side — but the matrix `M(λ)` is the same for all of them.
+`relative_ldos_map` therefore factorises `M` **once** with
+`scipy.linalg.lu_factor` and reuses it across all sources (`lu_solve`), turning
+what would be an hour-long sweep into a few seconds.
+
 ## Roadmap
 
 - **v0.1.0** — core scattering: plane-wave excitation, near/far fields,
-  cross-section efficiencies, Mie validation, convergence study, CI. _(this
-  release)_
+  cross-section efficiencies, Mie validation, convergence study, CI.
 - **v0.2.0** — line-dipole (point-source) excitation and the self-Green
-  function → relative LDOS / Purcell maps.
+  function → relative LDOS / Purcell maps. _(this release)_
 - **v0.3.0** — quasi-normal-mode extraction via Beyn's contour method,
   validated against analytic Mie resonances.
 
