@@ -62,6 +62,27 @@ This is intentional: it is what makes quasi-normal-mode extraction (a planned
 extension) possible. Do not "simplify" any code path to real-only arithmetic,
 even where it looks like you could.
 
+## 7. Self-Green function sign convention (v0.2)
+
+The self-Green function `S(r_s, r_s, ω)` is the *scattered* field from a
+line-dipole source evaluated back at the source point. The literature genuinely
+differs on the sign convention for the scattered field, so the analytic
+reference `reference.mie.self_green_cylinder` carries an explicit global sign:
+
+    c_n = SIGN · b_n  (TE, pol=2)   /   c_n = SIGN · a_n  (TM, pol=1)
+
+`SIGN = -1` was pinned by matching the BIE solver against the analytic Graf
+addition-theorem sum (test `test_self_green_vs_analytic_cylinder`): with this
+sign the two agree on both `Re S` and `Im S` across `d ∈ {1.2a … 3a}` and both
+polarisations. The reciprocity, free-space-limit, and LDOS-positivity tests
+triangulate the rest, so the solver computes the physical Green function up to
+this one documented convention.
+
+The free-space normalisation of the LDOS uses `Im[g₀(r→r)] = 1/4` (the log
+divergence of `H₀^{(1)}` lives in its imaginary part; with the `i/4` prefactor
+the imaginary part of `g₀` tends to `J₀(0)/4 = 1/4`), giving
+`relative_ldos = 1 + 4·Im(S)`.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

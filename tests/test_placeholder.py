@@ -2,4 +2,4 @@ import pysie2d
 
 
 def test_import():
-    assert pysie2d.__version__ == "0.1.0"
+    assert pysie2d.__version__ == "0.2.0"

@@ -170,3 +170,57 @@ def efficiencies(
         result[f"Q_sca_{label}"] = qsca
         result[f"Q_abs_{label}"] = qext - qsca
     return result
+
+
+# ---------------------------------------------------------------------------
+# Self-Green function of a circular cylinder (analytic anchor for v0.2)
+# ---------------------------------------------------------------------------
+
+
+def self_green_cylinder(
+    x: float,
+    m: complex,
+    k: float,
+    d: float,
+    pol: int,
+    n_max: int | None = None,
+) -> complex:
+    """Analytic self-Green function S(r_s, r_s) for a circular cylinder.
+
+    A line-dipole source sits at distance ``d`` from the cylinder centre
+    (``d > a``); ``S`` is the *scattered* field evaluated back at the source.
+    Via Graf's addition theorem the modal sum is
+
+        S(r_s, r_s) = (i/4) · Σ_{n=-∞}^{∞} c_n · [H_n^{(1)}(k·d)]²
+                    = (i/4) · ( c_0 H_0² + 2 Σ_{n≥1} c_n H_n² ),
+
+    folding to n ≥ 0 using c_{-n} = c_n and H_{-n}² = H_n².
+
+    Convention: ``c_n = SIGN · b_n`` (TE, ``pol=2``) or ``SIGN · a_n``
+    (TM, ``pol=1``), where the global ``SIGN`` fixes the scattered-field sign
+    convention. The literature genuinely differs here; ``SIGN`` was pinned to
+    the BIE solver's convention by the ``test_self_green_vs_analytic_cylinder``
+    validation and is documented in ``docs/conventions.md``.
+
+    Args:
+        x: Size parameter k·a.
+        m: Relative refractive index n_cyl / n_med.
+        k: Background wavenumber 2π/λ (rad/nm).
+        d: Source distance from the cylinder centre (nm); must exceed a.
+        pol: Polarisation code: 2 = TE (b_n), 1 = TM (a_n).
+        n_max: Highest order included (default: Wiscombe criterion).
+
+    Returns:
+        The complex self-Green function S(r_s, r_s).
+    """
+    # Sign convention pinned against the BIE solver (see module/conventions).
+    SIGN = -1.0
+    if n_max is None:
+        n_max = _nmax(x)
+    orders = np.arange(n_max + 1)
+    a_arr, b_arr = mie_coefficients(x, m, n_max)
+    c = SIGN * (b_arr if pol == 2 else a_arr)
+    h = hankel1(orders, k * d)
+    terms = c * h**2
+    total = terms[0] + 2.0 * np.sum(terms[1:])
+    return complex(0.25j * total)
