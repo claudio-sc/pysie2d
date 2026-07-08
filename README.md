@@ -1,24 +1,17 @@
 # pysie2d
 
-A 2-D boundary-integral (Müller-type BIE) solver for time-harmonic
+A 2-D surface-integral-equation solver for time-harmonic
 electromagnetic scattering from a single smooth cylinder — circular or
-Gielis-superformula cross-section — in a homogeneous background. Validated
+Gielis-superformula cross-section, embedded in a homogeneous background. Validated
 against analytic Mie theory, with a typed public API and CI.
 
 ## Scope and non-goals
 
 This package is distilled from a larger private research code; it deliberately
 covers only the **homogeneous-background, single-particle core** — the part
-that can be validated end-to-end against a closed-form reference. The following
-capabilities of the parent code are intentionally **out of scope** here:
-
-- layered / substrate media (half-space and slab Green functions),
-- waveguide coupling,
-- periodic arrays and SSH-type chains,
-- multi-particle systems (dimers, arrays),
-- inverse design / optimisation,
-- result databases and Dask batch pipelines,
-- quasi-normal-mode extraction _(planned; see roadmap)_.
+that can be validated end-to-end against a closed-form reference. Potential extensions
+in the mid/long-term include slab waveguide backgrounds, multiple-particle simulations,
+and quasinormal-mode searches based on the surface-integral matrix operator.
 
 ## Figures
 
@@ -43,9 +36,8 @@ uv run python examples/nearfield_map.py
 
 - The cylinder is invariant along its axis, so Maxwell reduces to a scalar
   Helmholtz problem for one field component (`E_y` for TE, `H_y` for TM).
-- The field is represented by single- and double-layer potentials on the
-  boundary; matching across the interface gives a Müller-type second-kind
-  boundary integral equation.
+- The self-consistent field solution is given **everywhere** in terms of the surface field and its normal derivative;
+  matching across the interface gives a Fredholm integral equation of the second kind.
 - Discretising the boundary with `nn` quadrature points yields a dense
   `2nn × 2nn` complex system `M(λ)·ei = rhs`, solved directly.
 - The logarithmic Green-function singularity is handled analytically in the
@@ -56,8 +48,7 @@ uv run python examples/nearfield_map.py
 Full details and every sign/layout convention are in
 [docs/conventions.md](docs/conventions.md). The analytic reference is Bohren &
 Huffman, *Absorption and Scattering of Light by Small Particles*, ch. 8; the
-integral formulation follows C. Müller, *Foundations of the Mathematical Theory
-of Electromagnetic Waves* (Springer, 1969).
+surface-integral formulation follows [Valencia et al's formulation](https://doi.org/10.1364/JOSAB.20.002150).
 
 ## Validation
 
@@ -95,8 +86,8 @@ print(result.efficiencies())                       # {'qsca', 'qext', 'qabs'}
 ## Performance
 
 The system is a dense `2nn × 2nn` complex matrix; at `nn = 300` (a `600 × 600`
-solve) a single wavelength takes milliseconds, so wavelength sweeps are cheap
-serial `for` loops — no parallelism required.
+solve) a single wavelength takes below one second in a modern computer, so wavelength
+sweeps are cheap serial `for` loops — no parallelism required.
 
 ## Roadmap
 
