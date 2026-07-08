@@ -1,5 +1,6 @@
 """BIESolver / ScatterResult façade for single-particle scattering."""
 
+import functools
 from collections.abc import Callable
 
 import numpy as np
@@ -8,7 +9,7 @@ from .fields import eval_field, far_field
 from .geometry import Geometry
 from .kernels import assemble_matrix
 from .material import Material
-from .sources import plane_wave_rhs
+from .sources import line_dipole_rhs, plane_wave_rhs
 
 PI = np.pi
 
@@ -148,6 +149,38 @@ class BIESolver:
         self.geometry = geometry
         self.material = material
 
+    def assemble(self, wavelength: float) -> np.ndarray:
+        """Assemble the 2nn × 2nn BIE system matrix M(λ).
+
+        The matrix depends only on the wavelength (and the fixed geometry and
+        material), not on the excitation, so it can be factorised once and
+        reused across many right-hand sides at the same wavelength — see
+        :func:`pysie2d.green.relative_ldos_map` for the LU-reuse pattern.
+
+        Args:
+            wavelength: Free-space wavelength (nm).
+
+        Returns:
+            complex (2·n_pts, 2·n_pts) system matrix.
+        """
+        g = self.geometry
+        mat = self.material
+        wnum = 2.0 * PI / wavelength
+        return assemble_matrix(
+            mat.pol,
+            g.n_pts,
+            g.f,
+            g.g,
+            g.df,
+            g.dg,
+            g.ddf,
+            g.ddg,
+            g.delt,
+            wnum,
+            mat.nc,
+            mat.eps,
+        )
+
     def scatter(
         self,
         wavelength: float,
@@ -169,22 +202,8 @@ class BIESolver:
         """
         g = self.geometry
         mat = self.material
-        wnum = 2.0 * PI / wavelength
 
-        m = assemble_matrix(
-            mat.pol,
-            g.n_pts,
-            g.f,
-            g.g,
-            g.df,
-            g.dg,
-            g.ddf,
-            g.ddg,
-            g.delt,
-            wnum,
-            mat.nc,
-            mat.eps,
-        )
+        m = self.assemble(wavelength)
 
         if incident_rhs is not None:
             rhs = incident_rhs(g.n_pts, wavelength, g.f, g.g)
@@ -193,3 +212,30 @@ class BIESolver:
 
         ei = np.linalg.solve(m, rhs)
         return ScatterResult(ei, g, mat, wavelength, angle)
+
+    def scatter_dipole(
+        self,
+        wavelength: float,
+        x_s: float,
+        z_s: float,
+    ) -> ScatterResult:
+        """Solve the BIE for a line-dipole (2-D point) source at (x_s, z_s).
+
+        Convenience wrapper that binds the source position into
+        :func:`pysie2d.sources.line_dipole_rhs` and plugs it into the
+        ``incident_rhs`` hook of :meth:`scatter`.
+
+        Args:
+            wavelength: Free-space wavelength (nm).
+            x_s: Source x-coordinate (nm).
+            z_s: Source z-coordinate (nm).
+
+        Returns:
+            ScatterResult carrying the scattered-field solution vector.
+
+        Raises:
+            ValueError: If the source is inside the particle or too close to
+                its surface (see :func:`pysie2d.sources.line_dipole_rhs`).
+        """
+        rhs = functools.partial(line_dipole_rhs, x_s=x_s, z_s=z_s)
+        return self.scatter(wavelength, incident_rhs=rhs)
