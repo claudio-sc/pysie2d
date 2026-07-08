@@ -43,7 +43,7 @@ N1, N2, N3 = 6.0, 12.0, 12.0
 WAVELENGTH = 540.0  # on a qsca resonance of this star (see module docstring)
 N_PTS = 300
 GRID_HALF_WIDTH = 3.0 * RAD
-GRID_N = 120  # coarse for a quick run
+GRID_N = 300  # coarse for a quick run
 
 
 def main() -> None:
