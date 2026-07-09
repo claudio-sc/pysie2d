@@ -18,12 +18,12 @@ and quasinormal-mode searches based on the surface-integral matrix operator.
 Relative error of the scattering efficiency `Q_sca` versus the number of
 boundary points, converging toward analytic Mie theory (both polarisations):
 
-![Convergence to Mie theory](figures/convergence_study.png)
+![Convergence to Mie theory](https://raw.githubusercontent.com/claudio-sc/pysie2d/v0.2.0/figures/convergence_study.png)
 
 Near field of a Gielis `m = 6` star under plane-wave illumination (scattered
 field outside the boundary, internal field inside):
 
-![Near-field map](figures/nearfield_map.png)
+![Near-field map](https://raw.githubusercontent.com/claudio-sc/pysie2d/v0.2.0/figures/nearfield_map.png)
 
 Relative local density of states (Purcell map) around the same Gielis `m = 6`
 star, at one of its `qsca` resonances: a line-dipole emitter placed in a red
@@ -32,7 +32,7 @@ suppress it. The six-fold pattern mirrors the particle's symmetry. The drive
 *and* the decay rate of an embedded emitter both come from this map — it is the
 entry point of quantum-dynamics calculations downstream:
 
-![Purcell map](figures/purcell_map.png)
+![Purcell map](https://raw.githubusercontent.com/claudio-sc/pysie2d/v0.2.0/figures/purcell_map.png)
 
 Regenerate them with:
 
@@ -56,7 +56,7 @@ uv run python examples/purcell_map.py
   `H_n^{(1)}`.
 
 Full details and every sign/layout convention are in
-[docs/conventions.md](docs/conventions.md). The analytic reference is Bohren &
+[docs/conventions.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md). The analytic reference is Bohren &
 Huffman, *Absorption and Scattering of Light by Small Particles*, ch. 8; the
 surface-integral formulation follows [Valencia et al's formulation](https://doi.org/10.1364/JOSAB.20.002150).
 
@@ -77,7 +77,7 @@ the self-Green function of a circular cylinder against its closed-form
 Graf-addition-theorem sum on both `Re S` and `Im S`. That near-field anchor
 converges at first order in `nn`, so it is run at `nn = 1000` to reach `1 %`;
 the resolved scattered-field sign convention is recorded in
-[docs/conventions.md](docs/conventions.md).
+[docs/conventions.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md).
 
 ## Install / run / test
 
