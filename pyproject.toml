@@ -39,3 +39,29 @@ convention = "google"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+commit_parser = "conventional"
+commit_parser_options = { ignore_merge_commits = true }
+major_on_zero = false
+build_command = "uv build"
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.changelog]
+changelog_file = "CHANGELOG.md"
+exclude_commit_patterns = [
+    '''chore(?:\([^)]*?\))?: .+''',
+    '''ci(?:\([^)]*?\))?: .+''',
+    '''test(?:\([^)]*?\))?: .+''',
+    '''Merged? .*''',
+]
+
+[tool.semantic_release.remote]
+type = "github"
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = true
