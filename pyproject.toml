@@ -45,7 +45,7 @@ version_toml = ["pyproject.toml:project.version"]
 commit_parser = "conventional"
 commit_parser_options = { ignore_merge_commits = true }
 major_on_zero = false
-build_command = "uv build"
+allow_zero_version = true
 
 [tool.semantic_release.branches.main]
 match = "main"
@@ -62,6 +62,3 @@ exclude_commit_patterns = [
 
 [tool.semantic_release.remote]
 type = "github"
-
-[tool.semantic_release.publish]
-upload_to_vcs_release = true
