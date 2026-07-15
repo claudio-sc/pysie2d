@@ -87,5 +87,4 @@ the imaginary part of `g₀` tends to `J₀(0)/4 = 1/4`), giving
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,
   ch. 8 — the analytic Mie solution used as the validation reference.
-- C. Müller, *Foundations of the Mathematical Theory of Electromagnetic
-  Waves*, Springer, 1969 — the Müller-type boundary integral formulation.
+- Valencia et al, *Second-harmonic generation in the scattering of light by   two-dimensional particles*, JOSA B, 2003 (10.1364/JOSAB.20.002150) — The surface integral formulation.
