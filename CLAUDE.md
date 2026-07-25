@@ -114,8 +114,9 @@ Everything else is a serial `for` loop by design; a single wavelength at
 
 ## Roadmap
 
-v0.1 core scattering → v0.2 line dipole, self-Green, LDOS/Purcell → **v0.3 QNM
-extraction via Beyn's contour method, validated against analytic Mie
+v0.1 core scattering → v0.2 line dipole, self-Green, LDOS/Purcell → v0.3
+performance (real-argument Hankel fast path, batched `relative_ldos_map`) →
+**v0.4 QNM extraction via Beyn's contour method, validated against analytic Mie
 resonances.** Longer term: slab-waveguide backgrounds, multiple particles.
 
 ## How to work here
