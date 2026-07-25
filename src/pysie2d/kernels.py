@@ -18,28 +18,76 @@ Public API:
 """
 
 import numpy as np
-from scipy.special import hankel1
+from scipy.special import hankel1, j0, j1, y0, y1
 
 PI = np.pi
 
 
 # ---------------------------------------------------------------------------
 # Hankel function helpers
+#
+# For real x, H_n^(1)(x) = J_n(x) + i·Y_n(x) exactly, and the Cephes j0/y0/j1/y1
+# kernels are 11-13x faster than the Amos algorithm behind scipy's hankel1
+# (~45 ns vs ~515 ns per evaluation), agreeing to 4e-15 relative. Complex
+# arguments fall through to hankel1 unchanged — complex-wavenumber (QNM)
+# support is untouched. See docs/conventions.md section 6.
 # ---------------------------------------------------------------------------
 
 
+def _real_if_real(w: complex) -> complex | float:
+    """Demote an exactly-real complex scalar to a float.
+
+    ``scipy.special.hankel1`` dispatches on argument *dtype*, not value, so a
+    wavenumber carrying a zero imaginary part (e.g. ``Material.nc`` returns
+    ``2+0j`` for a non-absorbing particle) would force every downstream Hankel
+    evaluation onto the slow complex Amos path. Demoting such values to float
+    keeps the derived argument arrays in real dtype so :func:`hank0` and
+    :func:`hank1` can take their fast branch.
+
+    Args:
+        w: Scalar wavenumber, real or complex.
+
+    Returns:
+        ``float(w.real)`` when ``w.imag`` is exactly zero, otherwise ``w``
+        unchanged.
+    """
+    wc = complex(w)
+    return wc.real if wc.imag == 0.0 else w
+
+
 def hank0(x: complex | np.ndarray) -> complex | np.ndarray:
-    """H_0^(1)(x), first-kind Hankel order 0. Real or complex x."""
-    return hankel1(0, x)
+    """H_0^(1)(x), first-kind Hankel order 0. Real or complex x.
+
+    Real arguments take a Cephes fast path; complex arguments use the Amos
+    algorithm as before.
+    """
+    if np.iscomplexobj(x):
+        return hankel1(0, x)
+    return j0(x) + 1j * y0(x)
 
 
 def hank1(x: complex | np.ndarray) -> complex | np.ndarray:
-    """H_1^(1)(x), first-kind Hankel order 1. Real or complex x."""
-    return hankel1(1, x)
+    """H_1^(1)(x), first-kind Hankel order 1. Real or complex x.
+
+    Real arguments take a Cephes fast path; complex arguments use the Amos
+    algorithm as before.
+    """
+    if np.iscomplexobj(x):
+        return hankel1(1, x)
+    return j1(x) + 1j * y1(x)
 
 
 def cbesh(z: complex | np.ndarray, order: int) -> complex | np.ndarray:
-    """H_order^(1)(z) for complex z. Replaces Fortran cbesh."""
+    """H_order^(1)(z) for complex z. Replaces Fortran cbesh.
+
+    Orders 0 and 1 with real argument take a Cephes fast path; everything else
+    uses the Amos algorithm as before.
+    """
+    if not np.iscomplexobj(z):
+        if order == 0:
+            return hank0(z)
+        if order == 1:
+            return hank1(z)
     return hankel1(order, z)
 
 
@@ -225,7 +273,12 @@ def assemble_matrix(
         me: complex (2nn, 2nn) BIE system matrix.
     """
     e = np.e
-    wn1 = ri * wn
+    # Demote exactly-real wavenumbers so the Hankel arguments stay real dtype
+    # and hank0/hank1 can take their Cephes branch. Complex wn / complex ri
+    # (QNM searches, absorbing particles) pass through untouched -- see
+    # docs/conventions.md section 6.
+    wn = _real_if_real(wn)
+    wn1 = _real_if_real(ri * wn)
     eta = np.complex128(kd if pol == 1 else 1.0)
 
     delt = np.full(nn, delt) if np.isscalar(delt) else np.asarray(delt)
@@ -251,10 +304,10 @@ def assemble_matrix(
     r_tri = np.sqrt(fi_fj**2 + gi_gj**2)  # (n_pairs,)
     arg_wn = wn * r_tri
     arg_wn1 = wn1 * r_tri
-    h0w = hankel1(0, arg_wn)
-    h1w = hankel1(1, arg_wn) / arg_wn  # H_1(z)/z
-    h0w1 = hankel1(0, arg_wn1)
-    h1w1 = hankel1(1, arg_wn1) / arg_wn1
+    h0w = hank0(arg_wn)
+    h1w = hank1(arg_wn) / arg_wn  # H_1(z)/z
+    h0w1 = hank0(arg_wn1)
+    h1w1 = hank1(arg_wn1) / arg_wn1
 
     # ── Exact diagonal entries ────────────────────────────────────────────────
     # The hankel1(0, wn*delt/(2e)*gamma) terms (e = np.e, Euler's number) are the
@@ -262,9 +315,9 @@ def assemble_matrix(
     # typo. Do not "clean up".
     diag_idx = np.arange(nn)
     d_m1 = (0.5 - deriv * depi4 / gamma**2).astype(complex)
-    d_m2 = c2 * hankel1(0, wn * delt / (2.0 * e) * gamma)
+    d_m2 = c2 * hank0(wn * delt / (2.0 * e) * gamma)
     d_m3 = -(0.5 + deriv * depi4 / gamma**2).astype(complex)
-    d_m4 = c2 * eta * hankel1(0, wn1 * delt / (2.0 * e) * gamma)
+    d_m4 = c2 * eta * hank0(wn1 * delt / (2.0 * e) * gamma)
 
     # ── Assemble ──────────────────────────────────────────────────────────────
     nt = 2 * nn

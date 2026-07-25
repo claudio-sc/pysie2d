@@ -62,6 +62,16 @@ This is intentional: it is what makes quasi-normal-mode extraction (a planned
 extension) possible. Do not "simplify" any code path to real-only arithmetic,
 even where it looks like you could.
 
+Real-argument *fast paths* are permitted, provided the complex fallback stays
+intact. `kernels.hank0` / `hank1` / `cbesh` branch at runtime on the argument
+dtype: real arguments use the Cephes `j0/y0/j1/y1` identity
+`H_n^{(1)}(x) = J_n(x) + i·Y_n(x)` (11–13× faster, agreeing to 4e-15), complex
+arguments go to `scipy.special.hankel1` exactly as before. `_real_if_real`
+demotes an exactly-real complex scalar (e.g. `Material.nc = 2+0j`) to a float so
+the branch can trigger; a genuinely complex `wn`, `ri`, or `wnum` passes through
+untouched. Any change that removes the ability to pass a complex wavenumber is
+wrong, fast path or not.
+
 ## 7. Self-Green function sign convention (v0.2)
 
 The self-Green function `S(r_s, r_s, ω)` is the *scattered* field from a

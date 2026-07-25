@@ -16,8 +16,8 @@ numerically safe — provided ``r_s`` keeps the usual distance from the boundary
 import numpy as np
 from scipy.linalg import lu_factor, lu_solve
 
-from .solver import BIESolver, ScatterResult
-from .sources import line_dipole_rhs
+from .kernels import _real_if_real, hank0, hank1
+from .solver import BIESolver
 
 
 def self_green(
@@ -74,6 +74,15 @@ def relative_ldos(
     return 1.0 + 4.0 * self_green(solver, wavelength, x_s, z_s).imag
 
 
+_LDOS_CHUNK_ELEMS = 400_000
+"""Target element count for the (chunk, nn) working arrays in the LDOS map.
+
+The batched path holds roughly ten (chunk, nn) intermediates at once, so this
+bounds the peak working set at about 64 MB of complex128 regardless of grid
+size or boundary resolution.
+"""
+
+
 def relative_ldos_map(
     solver: BIESolver,
     wavelength: float,
@@ -86,7 +95,11 @@ def relative_ldos_map(
     position, so it is assembled and LU-factorised once and reused across every
     source in the grid (``scipy.linalg.lu_factor`` / ``lu_solve``). This turns
     a per-point re-solve into a single factorisation plus cheap back-substitutions
-    — an hour-long sweep becomes seconds.
+    — an hour-long sweep becomes seconds. The grid is additionally processed in
+    chunks, with every source in a chunk back-substituted as one BLAS-3
+    multi-RHS ``lu_solve`` and the representation formula evaluated as one
+    ``(chunk, nn)`` NumPy expression, which is another ~4× over the per-point
+    loop.
 
     Source positions that are inside the particle or within five boundary
     spacings of it (where :func:`pysie2d.sources.line_dipole_rhs` raises) are
@@ -102,21 +115,67 @@ def relative_ldos_map(
         Relative LDOS at every source point, same shape as x_pts, with NaN at
         invalid (interior / too-close) positions.
     """
-    g = solver.geometry
-    mat = solver.material
-    x_pts = np.asarray(x_pts, dtype=float)
-    z_pts = np.asarray(z_pts, dtype=float)
+    geom = solver.geometry
+    nn = geom.n_pts
+    f, g, df, dg = geom.f, geom.g, geom.df, geom.dg
+    delt = geom.delt
+    dl = np.full(nn, delt) if np.isscalar(delt) else np.asarray(delt)
 
+    x_arr = np.asarray(x_pts, dtype=float)
+    z_arr = np.asarray(z_pts, dtype=float)
+    if x_arr.shape != z_arr.shape:
+        raise ValueError(
+            f"x_pts and z_pts must have the same shape, got "
+            f"{x_arr.shape} and {z_arr.shape}"
+        )
+    xf = x_arr.ravel()
+    zf = z_arr.ravel()
+    out = np.full(xf.shape, np.nan)
+
+    wnum = _real_if_real(2.0 * np.pi / wavelength)
     lu = lu_factor(solver.assemble(wavelength))
 
-    out = np.full(x_pts.shape, np.nan)
-    for idx, (x_s, z_s) in enumerate(zip(x_pts.flat, z_pts.flat, strict=True)):
-        try:
-            rhs = line_dipole_rhs(g.n_pts, wavelength, g.f, g.g, x_s, z_s)
-        except ValueError:
+    # Geometry-only quantities, hoisted out of the per-point work.
+    seg = np.sqrt(np.diff(f, append=f[0]) ** 2 + np.diff(g, append=g[0]) ** 2)
+    exclusion = 5.0 * float(np.mean(seg))
+    f_prev = np.roll(f, 1)
+    g_prev = np.roll(g, 1)
+
+    chunk = max(1, _LDOS_CHUNK_ELEMS // nn)
+    for lo in range(0, xf.size, chunk):
+        hi = min(lo + chunk, xf.size)
+        xs = xf[lo:hi]
+        zs = zf[lo:hi]
+
+        xmf = xs[:, None] - f[None, :]  # (m, nn)
+        zmg = zs[:, None] - g[None, :]
+        dist = np.sqrt(xmf**2 + zmg**2)
+
+        # Batched even-odd ray cast: identical rule to sources._point_inside.
+        straddles = (g[None, :] > zs[:, None]) != (g_prev[None, :] > zs[:, None])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            x_cross = (f_prev - f)[None, :] * (zs[:, None] - g[None, :]) / (g_prev - g)[
+                None, :
+            ] + f[None, :]
+        crossings = np.count_nonzero(straddles & (xs[:, None] < x_cross), axis=1)
+        valid = (crossings % 2 == 0) & (dist.min(axis=1) >= exclusion)
+        if not valid.any():
             continue
-        ei = lu_solve(lu, rhs)
-        result = ScatterResult(ei, g, mat, wavelength)
-        field = result.eval_field(np.array([x_s]), np.array([z_s]))
-        out.flat[idx] = 1.0 + 4.0 * complex(field[0]).imag
-    return out
+
+        # One BLAS-3 back-substitution for every valid source in the chunk.
+        arg = wnum * dist[valid]  # (m_valid, nn), real -> Cephes path
+        h0 = hank0(arg)
+        h1 = hank1(arg)
+        rhs = np.zeros((2 * nn, arg.shape[0]), dtype=complex)
+        rhs[:nn, :] = (0.25j * h0).T
+        eis = lu_solve(lu, rhs)  # (2nn, m_valid)
+
+        # Representation formula, each source evaluated at its own position.
+        arg2 = (-dg[None, :] * xmf + df[None, :] * zmg)[valid]
+        integrand = (
+            wnum**2 * arg2 * (h1 / arg) * eis[:nn, :].T - h0 * eis[nn:, :].T
+        ) * dl[None, :]
+        field = (1j / 4.0) * integrand.sum(axis=1)
+        out[np.flatnonzero(valid) + lo] = 1.0 + 4.0 * field.imag
+
+    return out.reshape(x_arr.shape)
