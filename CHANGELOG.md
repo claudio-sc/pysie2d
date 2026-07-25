@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.3.0 (2026-07-25)
+
+### Bug Fixes
+
+- Dispatch faster for non-qnm simulations
+  ([`898344e`](https://github.com/claudio-sc/pysie2d/commit/898344e29497eca85356ff30a521fc60c0f91adf))
+
+### Features
+
+- Claude memory
+  ([`14828eb`](https://github.com/claudio-sc/pysie2d/commit/14828eb7fa32efecf48e64e8c04b7fa5f1acaf07))
+
+
 ## Unreleased
 
 ### Performance
