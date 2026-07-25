@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from .kernels import hank0, hank1
+from .kernels import _real_if_real, hank0, hank1
 
 PI = np.pi
 
@@ -146,7 +146,10 @@ def eval_field(
     n_pts = len(x_pts)
     field = np.zeros(n_pts, dtype=complex)
 
-    wn1 = ri * wnum if ri is not None else None
+    # Demote exactly-real wavenumbers so exterior points (and interior points of
+    # a non-absorbing particle) reach the Cephes fast path in hank0/hank1.
+    wnum = _real_if_real(wnum)
+    wn1 = _real_if_real(ri * wnum) if ri is not None else None
 
     for j in range(n_pts):
         outside = _is_outside(x_pts[j], z_pts[j], f, g, df, dg)

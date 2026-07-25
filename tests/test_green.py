@@ -10,6 +10,7 @@ from pysie2d import (
     ScatterResult,
     line_dipole_rhs,
     relative_ldos,
+    relative_ldos_map,
     self_green,
 )
 from pysie2d.reference.mie import self_green_cylinder
@@ -110,3 +111,23 @@ def test_ldos_is_positive():
         x_s = d * np.cos(angle)
         z_s = d * np.sin(angle)
         assert relative_ldos(solver, WAVELENGTH, x_s, z_s) > 0.0
+
+
+def test_ldos_map_matches_pointwise(circle):
+    """The batched LDOS map agrees with per-point relative_ldos, NaNs included."""
+    geom = circle(n_pts=120)
+    mat = Material(n_core=1.5, n_clad=1.0, pol=2)
+    solver = BIESolver(geom, mat)
+    axis = np.linspace(-500.0, 500.0, 9)
+    xx, zz = np.meshgrid(axis, axis)
+
+    mapped = relative_ldos_map(solver, 600.0, xx, zz)
+
+    for i in range(xx.shape[0]):
+        for j in range(xx.shape[1]):
+            try:
+                expected = relative_ldos(solver, 600.0, xx[i, j], zz[i, j])
+            except ValueError:
+                assert np.isnan(mapped[i, j])
+            else:
+                assert mapped[i, j] == pytest.approx(expected, rel=1e-9)

@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## Unreleased
+
+### Performance
+
+- Cephes fast path for real-argument Hankel functions: `hank0`/`hank1`/`cbesh`
+  use the `J_n + i·Y_n` identity when the argument is real, giving 5× faster
+  `assemble_matrix` for non-absorbing particles and 1.8× for absorbing ones.
+  Complex wavenumbers (QNM) are bit-identical and unchanged.
+
+- Batch `relative_ldos_map`: one multi-RHS BLAS-3 `lu_solve` and one vectorised
+  representation-formula evaluation per chunk instead of a per-point loop, 3.7×
+  end to end (7.5× per valid point). NaN mask unchanged.
+
+
 ## v0.2.2 (2026-07-15)
 
 ### Bug Fixes
