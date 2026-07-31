@@ -23,7 +23,13 @@ POL_TAG = {2: "TE", 1: "TM"}
 
 
 def size_parameter(wavelength: float) -> float:
-    """Size parameter x = k·a = 2π·n_clad·a/λ for the shared circle."""
+    """Size parameter x = k_bg·a = 2π·n_clad·a/λ_vac for the shared circle.
+
+    Mirrors the public :func:`pysie2d.size_parameter` but takes the radius
+    from the module fixture, so tests can compute x without building a
+    Geometry. ``test_conventions.test_size_parameter_matches_fixture`` pins
+    the two together.
+    """
     return 2.0 * np.pi * N_CLAD * RAD / wavelength
 
 

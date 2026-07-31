@@ -7,8 +7,8 @@ from pysie2d.material import Material
 
 
 @pytest.mark.parametrize("pol", [1, 2])
-@pytest.mark.parametrize("wn", [2.0 * np.pi / 600.0, 2.0 * np.pi / 600.0 + 1e-4j])
-def test_fast_assembly_matches_reference(pol, wn):
+@pytest.mark.parametrize("wnum_bg", [2.0 * np.pi / 600.0, 2.0 * np.pi / 600.0 + 1e-4j])
+def test_fast_assembly_matches_reference(pol, wnum_bg):
     # Two functions implement identical arithmetic in a different loop order,
     # so they must agree to rounding. Any looser agreement means the port
     # broke an expression.
@@ -26,7 +26,7 @@ def test_fast_assembly_matches_reference(pol, wn):
         geom.ddf,
         geom.ddg,
         geom.delt,
-        wn,
+        wnum_bg,
         mat.nc,
         mat.eps,
     )

@@ -54,6 +54,12 @@ uv run python examples/purcell_map.py
   diagonal terms; complex wavenumbers are supported throughout.
 - Lengths are in nm, the time convention is `exp(-iωt)`, and outgoing waves are
   `H_n^{(1)}`.
+- **Wavelengths are vacuum wavelengths.** `Material.n_core`, `Material.n_clad`
+  and `Material.epsi` are absolute; the background index enters through the
+  single conversion `Material.wnum_bg(λ_vac) = 2π·n_clad/λ_vac`, and the
+  operator sees only background-relative quantities (`Material.nc`,
+  `Material.eps`). The Mie size parameter `x = 2π·n_clad·rad/λ_vac` is exposed
+  as the derived `pysie2d.size_parameter` (circular geometry only).
 
 Full details and every sign/layout convention are in
 [docs/conventions.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md). The analytic reference is Bohren &
@@ -97,7 +103,7 @@ from pysie2d import BIESolver, Geometry, Material
 
 geom = Geometry.gielis(rad=200, n_pts=300, m=0)   # circular cylinder, nm
 mat = Material(n_core=1.5, n_clad=1.0, pol=2)      # TE
-result = BIESolver(geom, mat).scatter(wavelength=600.0)
+result = BIESolver(geom, mat).scatter(wavelength=600.0)  # vacuum nm
 
 print(result.efficiencies())                       # {'qsca', 'qext', 'qabs'}
 ```
@@ -109,7 +115,8 @@ from pysie2d import BIESolver, Geometry, Material, relative_ldos
 
 geom = Geometry.gielis(rad=200, n_pts=300, m=6, n1=6, n2=12, n3=12)  # Gielis star
 solver = BIESolver(geom, Material(n_core=2.0))
-print(relative_ldos(solver, wavelength=540.0, x_s=430.0, z_s=0.0))  # LDOS vs free space
+# wavelength is vacuum nm; the LDOS is relative to the unbounded background
+print(relative_ldos(solver, wavelength=540.0, x_s=430.0, z_s=0.0))
 ```
 
 ## Performance

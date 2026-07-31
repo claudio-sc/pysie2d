@@ -20,10 +20,68 @@ Mapping to analytic Mie coefficients (Bohren & Huffman ch. 8):
 - `pol = 2` (TE, `E_y`) ↔ `b_n` ↔ efficiency keys `Q_*_TE`.
 - `pol = 1` (TM, `H_y`) ↔ `a_n` ↔ efficiency keys `Q_*_TM`.
 
-## 2. Units
+## 2. Units, wavelength, and the background index
 
-Lengths are in **nanometres**, everywhere. The free-space wavenumber is
-`k = 2π/λ` with `λ` in nm, so `k` is in rad/nm.
+Lengths are in **nanometres**, everywhere.
+
+### 2.1 Public wavelengths are vacuum wavelengths
+
+Every wavelength on the public façade — `BIESolver.scatter`, `.scatter_dipole`,
+`.assemble`, `ScatterResult.wavelength`, `self_green`, `relative_ldos`,
+`relative_ldos_map`, and the `QNMSolver.modes` search rectangle — is a **vacuum**
+wavelength `λ_vac` in nm. There is no second reading anywhere on that surface, so
+the parameter is named plainly `wavelength`.
+
+`Material.n_core` and `Material.n_clad` are independent **absolute** refractive
+indices. `Material.epsi` is likewise an **absolute** imaginary permittivity,
+referred to vacuum exactly like `n_core`.
+
+### 2.2 Internals are background-relative
+
+The operator is non-dimensionalised to a background of index 1. It sees only
+
+- the **background wavenumber** `k_bg = 2π·n_clad/λ_vac` (rad/nm), and
+- background-relative material quantities: `Material.nc = n_core/n_clad` (the
+  `m` of Mie theory) and `Material.eps = (n_core² + i·epsi)/n_clad²`.
+
+Because `epsi` is absolute, making it relative divides it by `n_clad²` — the
+same factor that turns `n_core²` into `Material.epsr`. `Material.epsi_rel`
+exposes that value.
+
+### 2.3 One conversion point, and why the primitives take no wavelength
+
+`Material.wnum_bg(λ_vac)` is the **only** place the background index enters a
+wavenumber. Every low-level primitive — `assemble_matrix`,
+`assemble_matrix_reference`, `eval_field`, `far_field`, `plane_wave_rhs`,
+`line_dipole_rhs`, and `reference.mie.self_green_cylinder` — takes `wnum_bg`
+and **no wavelength at all**.
+
+That is deliberate, and it is the invariant to protect. The façade methods call
+each other (`scatter` → `assemble`, `relative_ldos_map` → `assemble`,
+`self_green` → `scatter_dipole`), so if two of them each converted a wavelength
+the factor `n_clad` would be applied twice. With no wavelength below the façade
+there is nothing to convert twice. A custom `incident_rhs` callable therefore has
+signature `(nn, wnum_bg, f, g) → complex (2·nn,)`.
+
+At `n_clad = 1` the vacuum and background readings coincide, which is where the
+entire fixture suite runs — `tests/test_conventions.py` is what distinguishes
+them, in both directions.
+
+### 2.4 Size parameter
+
+    x = k_bg·a = 2π·n_clad·rad/λ_vac
+
+referred to the cladding, matching Mie theory and every function in
+`pysie2d.reference.mie`. It is **derived only** — `pysie2d.size_parameter`,
+`ScatterResult.size_parameter`, `QNMResult.size_parameters` — and never an
+input, for the same reason complex frequency is not an input (§8): a second
+entry point lets the two disagree, and `x` additionally depends on the geometry.
+
+It is defined only for a **circular** boundary: on a non-circular Gielis shape
+`Geometry.rad` is a scale parameter with no single physical radius behind it, so
+`size_parameter` raises rather than returning a meaningless number.
+`Geometry.is_circle` is the test, and it is numerical — several Gielis parameter
+sets (`m = 0`, or `n1 = n2 = n3 = 2` at any `m`) produce a genuine circle.
 
 ## 3. Time convention
 
@@ -68,8 +126,8 @@ dtype: real arguments use the Cephes `j0/y0/j1/y1` identity
 `H_n^{(1)}(x) = J_n(x) + i·Y_n(x)` (11–13× faster, agreeing to 4e-15), complex
 arguments go to `scipy.special.hankel1` exactly as before. `_real_if_real`
 demotes an exactly-real complex scalar (e.g. `Material.nc = 2+0j`) to a float so
-the branch can trigger; a genuinely complex `wn`, `ri`, or `wnum` passes through
-untouched. Any change that removes the ability to pass a complex wavenumber is
+the branch can trigger; a genuinely complex `wnum_bg`, `ri`, or `wnum_core`
+passes through untouched. Any change that removes the ability to pass a complex wavenumber is
 wrong, fast path or not.
 
 ## 7. Self-Green function sign convention (v0.2)
@@ -88,7 +146,10 @@ polarisations. The reciprocity, free-space-limit, and LDOS-positivity tests
 triangulate the rest, so the solver computes the physical Green function up to
 this one documented convention.
 
-The free-space normalisation of the LDOS uses `Im[g₀(r→r)] = 1/4` (the log
+The LDOS is normalised to the **homogeneous background**, not to vacuum. This
+distinction was vacuous while every case ran at `n_clad = 1` and is now
+load-bearing: at `n_clad ≠ 1` a Purcell factor of 1 means "as in the unbounded
+cladding", not "as in vacuum". The normalisation uses `Im[g₀(r→r)] = 1/4` (the log
 divergence of `H₀^{(1)}` lives in its imaginary part; with the `i/4` prefactor
 the imaginary part of `g₀` tends to `J₀(0)/4 = 1/4`), giving
 `relative_ldos = 1 + 4·Im(S)`.
@@ -131,12 +192,15 @@ is not a hazard, because `M(λ)` is assembled per polarisation.
 Mode **vectors** are exposed raw, in the `φ`/`χ` layout of §4. They are not
 normalised as mode fields — that needs a QNM norm, which is out of scope.
 
-> **Note.** Public wavelengths are documented as vacuum wavelengths (§2) but the
-> implementation currently forms `k = 2π/λ`, which is the *medium* reading. The
-> two coincide only at `n_clad = 1`, which is where every test in the suite —
-> including the QNM anchor — runs. Reconciling this is a breaking change to the
-> driven solver, shipping separately in v0.4.0; see
-> `docs/design/beyn-port-spec.md` §2.
+Search rectangles and mode wavelengths are both **vacuum** wavelengths (§2),
+with no conversion on the return leg: the contour is drawn directly on
+`BIESolver.assemble`, which is itself the single vacuum-to-background conversion
+point, so the eigenvalues come back in the coordinate the box was given in.
+
+`QNMResult.size_parameters` exposes the modes in the analytic anchor's
+coordinate. Note that a rectangle in `x` is **not** a rectangle in `λ`:
+`λ = 2π·n_clad·rad/x` is a Möbius map and does not carry corners to corners. A
+completeness argument must be made in the coordinates the box is drawn in.
 
 ## Formulation and validation references
 

@@ -7,8 +7,10 @@ Reference: Bohren & Huffman, "Absorption and Scattering of Light by Small
 Particles", Chapter 8, eqs. (8.30) and (8.32).
 
 Notation:
-    x: size parameter x = k_med * a = 2*pi * n_med * a / lambda_0.
-    m: relative refractive index m = n_cyl / n_med (may be complex).
+    x: size parameter x = k_bg * a = 2*pi * n_clad * a / lambda_vac,
+       referred to the cladding (pysie2d.size_parameter).
+    m: relative refractive index m = n_core / n_clad (may be complex);
+       this is pysie2d Material.nc.
 
 Polarisations:
     TM (Case II, E perp. cylinder axis) → coefficients a_n (eq. 8.32).
@@ -48,8 +50,8 @@ def an(n: int | np.ndarray, x: Complexable, m: complex) -> complex | np.ndarray:
 
     Args:
         n: Order(s) of the coefficient.
-        x: Size parameter k_med * a.
-        m: Relative refractive index n_cyl / n_med.
+        x: Size parameter x = k_bg·a = 2π·n_clad·a/λ_vac.
+        m: Relative refractive index n_core/n_clad (``Material.nc``).
 
     Returns:
         The TM coefficient a_n (scalar or array, matching n).
@@ -75,8 +77,8 @@ def bn(n: int | np.ndarray, x: Complexable, m: complex) -> complex | np.ndarray:
 
     Args:
         n: Order(s) of the coefficient.
-        x: Size parameter k_med * a.
-        m: Relative refractive index n_cyl / n_med.
+        x: Size parameter x = k_bg·a = 2π·n_clad·a/λ_vac.
+        m: Relative refractive index n_core/n_clad (``Material.nc``).
 
     Returns:
         The TE coefficient b_n (scalar or array, matching n).
@@ -116,8 +118,8 @@ def mie_coefficients(
     """Return arrays (a, b) of Mie coefficients for orders n = 0 … n_max.
 
     Args:
-        x: Size parameter k_med * a.
-        m: Relative refractive index n_cyl / n_med.
+        x: Size parameter x = k_bg·a = 2π·n_clad·a/λ_vac.
+        m: Relative refractive index n_core/n_clad (``Material.nc``).
         n_max: Highest order included (default: Wiscombe criterion).
 
     Returns:
@@ -152,8 +154,8 @@ def efficiencies(
     where c_n = a_n (TM) or b_n (TE).
 
     Args:
-        x: Size parameter k_med * a.
-        m: Relative refractive index n_cyl / n_med.
+        x: Size parameter x = k_bg·a = 2π·n_clad·a/λ_vac.
+        m: Relative refractive index n_core/n_clad (``Material.nc``).
         n_max: Highest order included (default: Wiscombe criterion).
 
     Returns:
@@ -186,7 +188,7 @@ def efficiencies(
 def self_green_cylinder(
     x: Complexable,
     m: complex,
-    k: float,
+    wnum_bg: float,
     d: float,
     pol: int,
     n_max: int | None = None,
@@ -197,7 +199,7 @@ def self_green_cylinder(
     (``d > a``); ``S`` is the *scattered* field evaluated back at the source.
     Via Graf's addition theorem the modal sum is
 
-        S(r_s, r_s) = (i/4) · Σ_{n=-∞}^{∞} c_n · [H_n^{(1)}(k·d)]²
+        S(r_s, r_s) = (i/4) · Σ_{n=-∞}^{∞} c_n · [H_n^{(1)}(k_bg·d)]²
                     = (i/4) · ( c_0 H_0² + 2 Σ_{n≥1} c_n H_n² ),
 
     folding to n ≥ 0 using c_{-n} = c_n and H_{-n}² = H_n².
@@ -209,9 +211,13 @@ def self_green_cylinder(
     validation and is documented in ``docs/conventions.md``.
 
     Args:
-        x: Size parameter k·a.
-        m: Relative refractive index n_cyl / n_med.
-        k: Background wavenumber 2π/λ (rad/nm).
+        x: Size parameter x = k_bg·a = 2π·n_clad·a/λ_vac, referred to the
+            cladding (see ``pysie2d.size_parameter``).
+        m: Relative refractive index n_core/n_clad (``Material.nc``).
+        wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), where
+            λ_vac is the public **vacuum** wavelength. Build it with
+            :meth:`pysie2d.material.Material.wnum_bg`; this function takes no
+            wavelength, so the vacuum conversion cannot be applied twice.
         d: Source distance from the cylinder centre (nm); must exceed a.
         pol: Polarisation code: 2 = TE (b_n), 1 = TM (a_n).
         n_max: Highest order included (default: Wiscombe criterion).
@@ -226,7 +232,7 @@ def self_green_cylinder(
     orders = np.arange(n_max + 1)
     a_arr, b_arr = mie_coefficients(x, m, n_max)
     c = SIGN * (b_arr if pol == 2 else a_arr)
-    h = hankel1(orders, k * d)
+    h = hankel1(orders, wnum_bg * d)
     terms = c * h**2
     total = terms[0] + 2.0 * np.sum(terms[1:])
     return complex(0.25j * total)
@@ -260,7 +266,7 @@ def qnm_denominator(
     Args:
         n: Order(s) of the coefficient.
         x: Size parameter, generally complex.
-        m: Relative refractive index n_cyl / n_med.
+        m: Relative refractive index n_core/n_clad (``Material.nc``).
         pol: Polarisation code: 2 = TE (b_n), 1 = TM (a_n).
 
     Returns:
@@ -343,7 +349,7 @@ def qnm_size_parameters(
 
     Args:
         n: Azimuthal order.
-        m: Relative refractive index n_cyl / n_med.
+        m: Relative refractive index n_core/n_clad (``Material.nc``).
         pol: Polarisation code: 2 = TE (b_n), 1 = TM (a_n).
         x_range: ``(re_lo, re_hi)`` bounds on ``Re x``; ``re_lo`` must be
             positive, which keeps every Hankel argument off the ``H^(1)``
@@ -420,18 +426,24 @@ def qnm_wavelengths(
     n_max: int | None = None,
     im_x_floor: float = 1.0e-4,
     im_x_max: float = 1.5,
+    n_clad: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Analytic QNM wavelengths of a circular cylinder, over all orders.
 
+    Returns **vacuum** wavelengths, matching the rest of the public surface
+    (``docs/conventions.md`` §2): ``λ_vac = 2π·n_clad·rad/x``. This is the
+    coordinate :meth:`pysie2d.qnm.QNMSolver.modes` reports its modes in, so
+    the two are directly comparable at any ``n_clad``.
+
     The search rectangle is specified in the **size parameter** ``x``, not in
-    ``λ``. ``λ = 2π·rad/x`` is a Möbius map, so a rectangle in one is not a
+    ``λ``. ``λ_vac = 2π·n_clad·rad/x`` is a Möbius map, so a rectangle in one is not a
     rectangle in the other: a completeness claim only transfers between the two
     after the corner mapping is checked. Tests that need a λ-rectangle must
     verify completeness in their own coordinates.
 
     Args:
         rad: Cylinder radius (nm).
-        m: Relative refractive index n_cyl / n_med.
+        m: Relative refractive index n_core/n_clad (``Material.nc``).
         pol: Polarisation code: 2 = TE (b_n), 1 = TM (a_n).
         x_range: ``(re_lo, re_hi)`` bounds on ``Re x``, with ``re_lo > 0``.
         n_max: Highest order searched. Default ``ceil(|m|·re_hi) + 5`` — the
@@ -439,12 +451,13 @@ def qnm_wavelengths(
         im_x_floor: Smallest ``|Im x|`` sampled; a Q ceiling, see
             ``qnm_size_parameters``.
         im_x_max: Largest ``|Im x|`` searched.
+        n_clad: Background refractive index, needed to return vacuum
+            wavelengths. Default 1.0, where vacuum and background coincide.
 
     Returns:
         orders: int (K,) azimuthal order of each mode.
-        wavelengths: complex (K,) wavelengths ``2π·rad/x`` **in the background
-            medium**, sorted by ``Re λ``. Multiply by ``n_clad`` for vacuum
-            wavelengths; the two coincide for the ``n_clad = 1`` anchor.
+        wavelengths: complex (K,) **vacuum** wavelengths ``2π·n_clad·rad/x``
+            (nm), sorted by ``Re λ``.
         multiplicity: int (K,) 1 for ``n = 0``, else 2 — every ``n ≥ 1`` mode
             of a circle is doubly degenerate through ``exp(±inθ)``.
 
@@ -468,7 +481,7 @@ def qnm_wavelengths(
             )
         for x in roots:
             orders.append(n)
-            lams.append(2.0 * np.pi * rad / x)
+            lams.append(2.0 * np.pi * n_clad * rad / x)
             mults.append(1 if n == 0 else 2)
 
     order_by_re = np.argsort([lam.real for lam in lams])

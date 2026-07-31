@@ -110,14 +110,14 @@ def assemble_matrix_reference(
     ddf: np.ndarray,
     ddg: np.ndarray,
     delt: float | np.ndarray,
-    wn: complex,
+    wnum_bg: complex,
     ri: complex,
     kd: complex,
 ) -> np.ndarray:
     """Assemble the 2nn × 2nn BIE system matrix (slow reference loop).
 
     Verbatim translation of subroutine matm from the original Fortran source.
-    Accepts complex *wn* for quasi-normal-mode (complex-λ) computations.
+    Accepts complex *wnum_bg* for quasi-normal-mode (complex-λ) computations.
 
     This slow, loop-based routine is kept **only** as the truth anchor for the
     parity test against :func:`assemble_matrix`: the two implement identical
@@ -135,8 +135,11 @@ def assemble_matrix_reference(
         ddg: (nn,) second derivative of g w.r.t. θ.
         delt: Quadrature θ-step. Scalar for uniform-theta; per-point array for
             arc-length sampling.
-        wn: Free-space wavenumber 2π/λ (rad/nm). Pass a complex value for
-            quasi-normal-mode searches.
+        wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), where
+            λ_vac is the public **vacuum** wavelength. Build it with
+            :meth:`pysie2d.material.Material.wnum_bg`; this function takes no
+            wavelength, so the vacuum conversion cannot be applied twice.
+            Pass a complex value for quasi-normal-mode searches.
         ri: Refractive index of the particle: nc = √(εᵣ + iεᵢ).
         kd: Dielectric constant of the particle: ε = εᵣ + iεᵢ.
 
@@ -145,23 +148,23 @@ def assemble_matrix_reference(
 
     Matrix block structure:
         The 2nn × 2nn matrix is partitioned into four nn × nn blocks:
-            M1  (rows 0:nn,    cols 0:nn)    φ–φ coupling,  background wn
-            M2  (rows 0:nn,    cols nn:2nn)  φ–χ coupling,  background wn
-            M3  (rows nn:2nn,  cols 0:nn)    χ–φ coupling,  particle wn1
-            M4  (rows nn:2nn,  cols nn:2nn)  χ–χ coupling,  particle wn1
+            M1  (rows 0:nn,    cols 0:nn)    φ–φ coupling,  background wnum_bg
+            M2  (rows 0:nn,    cols nn:2nn)  φ–χ coupling,  background wnum_bg
+            M3  (rows nn:2nn,  cols 0:nn)    χ–φ coupling,  particle wnum_core
+            M4  (rows nn:2nn,  cols nn:2nn)  χ–χ coupling,  particle wnum_core
     """
     nt = 2 * nn
     me = np.zeros((nt, nt), dtype=complex)
     e = np.e
-    wn1 = ri * wn
+    wnum_core = ri * wnum_bg
     eta = kd if pol == 1 else complex(1.0)
 
     # Allow delt to be a scalar (uniform theta) or a per-point array (arc-length).
     # All quadrature weights are indexed by the source column j.
     delt = np.full(nn, delt) if np.isscalar(delt) else np.asarray(delt)
-    c1 = 0.25j * wn**2 * delt  # (nn,)
+    c1 = 0.25j * wnum_bg**2 * delt  # (nn,)
     c2 = 0.25j * delt  # (nn,)
-    c3 = 0.25j * wn1**2 * delt  # (nn,)
+    c3 = 0.25j * wnum_core**2 * delt  # (nn,)
     depi4 = delt / (4.0 * PI)  # (nn,)
 
     gamma = np.sqrt(df**2 + dg**2)
@@ -171,7 +174,7 @@ def assemble_matrix_reference(
     for i in range(nn):
         for j in range(i + 1, nn):
             r2 = (f[i] - f[j]) ** 2 + (g[i] - g[j]) ** 2
-            arg1 = wn * np.sqrt(r2)
+            arg1 = wnum_bg * np.sqrt(r2)
             arg2 = (f[i] - f[j]) * dg[j] - (g[i] - g[j]) * df[j]
             arg2p = (f[j] - f[i]) * dg[i] - (g[j] - g[i]) * df[i]
             h1a1 = hank1(arg1) / arg1
@@ -184,17 +187,17 @@ def assemble_matrix_reference(
     for i in range(nn):
         for j in range(i + 1, nn):
             r2 = (f[i] - f[j]) ** 2 + (g[i] - g[j]) ** 2
-            h0 = hank0(wn * np.sqrt(r2))
+            h0 = hank0(wnum_bg * np.sqrt(r2))
             me[i, j + nn] = c2[j] * h0
             me[j, i + nn] = c2[i] * h0
     for i in range(nn):
-        me[i, i + nn] = c2[i] * hank0(wn * delt[i] / (2.0 * e) * gamma[i])
+        me[i, i + nn] = c2[i] * hank0(wnum_bg * delt[i] / (2.0 * e) * gamma[i])
 
     # ---- Block M3 (χ–φ) -----------------------------------------------
     for i in range(nn):
         for j in range(i + 1, nn):
             r2 = (f[i] - f[j]) ** 2 + (g[i] - g[j]) ** 2
-            arg1c = wn1 * np.sqrt(r2)
+            arg1c = wnum_core * np.sqrt(r2)
             arg2 = (f[i] - f[j]) * dg[j] - (g[i] - g[j]) * df[j]
             arg2p = (f[j] - f[i]) * dg[i] - (g[j] - g[i]) * df[i]
             h1c = cbesh(arg1c, 1) / arg1c
@@ -207,12 +210,12 @@ def assemble_matrix_reference(
     for i in range(nn):
         for j in range(i + 1, nn):
             r2 = (f[i] - f[j]) ** 2 + (g[i] - g[j]) ** 2
-            h0c = cbesh(wn1 * np.sqrt(r2), 0)
+            h0c = cbesh(wnum_core * np.sqrt(r2), 0)
             me[i + nn, j + nn] = eta * c2[j] * h0c
             me[j + nn, i + nn] = eta * c2[i] * h0c
     for i in range(nn):
         me[i + nn, i + nn] = (
-            c2[i] * eta * cbesh(wn1 * delt[i] / (2.0 * e) * gamma[i], 0)
+            c2[i] * eta * cbesh(wnum_core * delt[i] / (2.0 * e) * gamma[i], 0)
         )
 
     return me
@@ -233,7 +236,7 @@ def assemble_matrix(
     ddf: np.ndarray,
     ddg: np.ndarray,
     delt: float | np.ndarray,
-    wn: complex,
+    wnum_bg: complex,
     ri: complex,
     kd: complex,
 ) -> np.ndarray:
@@ -243,7 +246,7 @@ def assemble_matrix(
 
     1. Upper-triangle Hankel evaluation: r[i,j] = r[j,i], so Hankel
        functions are evaluated on only nn*(nn-1)/2 unique distances instead
-       of nn², halving the dominant cost for complex wn (QNM mode).
+       of nn², halving the dominant cost for complex wnum_bg (QNM mode).
     2. Vectorised scipy.special.hankel1: a single C-level call per Hankel
        order replaces nn*(nn-1)/2 scalar Python calls per block.
     3. Both (i,j) and (j,i) matrix entries are filled from the same Hankel
@@ -264,8 +267,11 @@ def assemble_matrix(
         ddg: (nn,) second derivative of g w.r.t. θ.
         delt: Quadrature θ-step. Scalar for uniform-theta; per-point array for
             arc-length sampling.
-        wn: Free-space wavenumber 2π/λ (rad/nm). Pass a complex value for
-            quasi-normal-mode searches.
+        wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), where
+            λ_vac is the public **vacuum** wavelength. Build it with
+            :meth:`pysie2d.material.Material.wnum_bg`; this function takes no
+            wavelength, so the vacuum conversion cannot be applied twice.
+            Pass a complex value for quasi-normal-mode searches.
         ri: Refractive index of the particle: nc = √(εᵣ + iεᵢ).
         kd: Dielectric constant of the particle: ε = εᵣ + iεᵢ.
 
@@ -274,17 +280,17 @@ def assemble_matrix(
     """
     e = np.e
     # Demote exactly-real wavenumbers so the Hankel arguments stay real dtype
-    # and hank0/hank1 can take their Cephes branch. Complex wn / complex ri
+    # and hank0/hank1 can take their Cephes branch. Complex wnum_bg / complex ri
     # (QNM searches, absorbing particles) pass through untouched -- see
     # docs/conventions.md section 6.
-    wn = _real_if_real(wn)
-    wn1 = _real_if_real(ri * wn)
+    wnum_bg = _real_if_real(wnum_bg)
+    wnum_core = _real_if_real(ri * wnum_bg)
     eta = np.complex128(kd if pol == 1 else 1.0)
 
     delt = np.full(nn, delt) if np.isscalar(delt) else np.asarray(delt)
-    c1 = 0.25j * wn**2 * delt  # (nn,)
+    c1 = 0.25j * wnum_bg**2 * delt  # (nn,)
     c2 = 0.25j * delt  # (nn,)
-    c3 = 0.25j * wn1**2 * delt  # (nn,)
+    c3 = 0.25j * wnum_core**2 * delt  # (nn,)
     depi4 = delt / (4.0 * PI)  # (nn,)
 
     gamma = np.sqrt(df**2 + dg**2)
@@ -302,22 +308,23 @@ def assemble_matrix(
 
     # ── Vectorised Hankel on the unique distances (half the nn² evaluations) ─
     r_tri = np.sqrt(fi_fj**2 + gi_gj**2)  # (n_pairs,)
-    arg_wn = wn * r_tri
-    arg_wn1 = wn1 * r_tri
-    h0w = hank0(arg_wn)
-    h1w = hank1(arg_wn) / arg_wn  # H_1(z)/z
-    h0w1 = hank0(arg_wn1)
-    h1w1 = hank1(arg_wn1) / arg_wn1
+    arg_wnum = wnum_bg * r_tri
+    arg_wnum_core = wnum_core * r_tri
+    h0w = hank0(arg_wnum)
+    h1w = hank1(arg_wnum) / arg_wnum  # H_1(z)/z
+    h0w1 = hank0(arg_wnum_core)
+    h1w1 = hank1(arg_wnum_core) / arg_wnum_core
 
     # ── Exact diagonal entries ────────────────────────────────────────────────
-    # The hankel1(0, wn*delt/(2e)*gamma) terms (e = np.e, Euler's number) are the
+    # The hankel1(0, wnum_bg*delt/(2e)*gamma) terms (e = np.e, Euler's number) are
+    # the
     # analytic handling of the logarithmic Green-function singularity — not a
     # typo. Do not "clean up".
     diag_idx = np.arange(nn)
     d_m1 = (0.5 - deriv * depi4 / gamma**2).astype(complex)
-    d_m2 = c2 * hank0(wn * delt / (2.0 * e) * gamma)
+    d_m2 = c2 * hank0(wnum_bg * delt / (2.0 * e) * gamma)
     d_m3 = -(0.5 + deriv * depi4 / gamma**2).astype(complex)
-    d_m4 = c2 * eta * hank0(wn1 * delt / (2.0 * e) * gamma)
+    d_m4 = c2 * eta * hank0(wnum_core * delt / (2.0 * e) * gamma)
 
     # ── Assemble ──────────────────────────────────────────────────────────────
     nt = 2 * nn

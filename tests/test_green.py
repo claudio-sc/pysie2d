@@ -15,7 +15,10 @@ from pysie2d import (
 )
 from pysie2d.reference.mie import self_green_cylinder
 
-WAVELENGTH = 600.0
+WAVELENGTH = 600.0  # vacuum nm
+# The dipole-guard tests only need *a* wavenumber: they assert on the geometric
+# exclusion zone, which does not depend on it.
+WNUM_BG = 2.0 * np.pi * N_CLAD / WAVELENGTH
 
 
 def _cross_scattered(
@@ -62,12 +65,12 @@ def test_self_green_vs_analytic_cylinder(factorized_solver, d_over_a):
     # Strong anchor: for a circular cylinder the self-Green function has a
     # closed form via Graf's addition theorem (reference.mie.self_green_cylinder).
     pol, geom, mat, lu = factorized_solver
-    k = 2.0 * np.pi / WAVELENGTH
+    k = mat.wnum_bg(WAVELENGTH)
     x = size_parameter(WAVELENGTH)
-    m = N_CORE / N_CLAD
+    m = complex(mat.nc)  # relative index; see test_efficiencies
 
     d = d_over_a * RAD
-    rhs = line_dipole_rhs(ANCHOR_NN, WAVELENGTH, geom.f, geom.g, d, 0.0)
+    rhs = line_dipole_rhs(ANCHOR_NN, mat.wnum_bg(WAVELENGTH), geom.f, geom.g, d, 0.0)
     ei = lu_solve(lu, rhs)
     s_bie = complex(
         ScatterResult(ei, geom, mat, WAVELENGTH).eval_field(
@@ -95,9 +98,9 @@ def test_dipole_source_guards():
     # spacings of the surface, where the incident field is near-singular.
     geom = Geometry.gielis(rad=RAD, n_pts=300, m=0)
     with pytest.raises(ValueError, match="inside"):
-        line_dipole_rhs(geom.n_pts, WAVELENGTH, geom.f, geom.g, 0.0, 0.0)
+        line_dipole_rhs(geom.n_pts, WNUM_BG, geom.f, geom.g, 0.0, 0.0)
     with pytest.raises(ValueError, match="5 boundary spacings"):
-        line_dipole_rhs(geom.n_pts, WAVELENGTH, geom.f, geom.g, RAD + 1.0, 0.0)
+        line_dipole_rhs(geom.n_pts, WNUM_BG, geom.f, geom.g, RAD + 1.0, 0.0)
 
 
 def test_ldos_is_positive():

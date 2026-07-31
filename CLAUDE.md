@@ -35,10 +35,25 @@ decision** — raise it, don't just add it.
    Never simplify a path to real-only arithmetic, however dead the complex
    branch looks.
 2. **Conventions are fixed.** `pol = 2` → TE (`E_y`, Mie `b_n`, `Q_*_TE`);
-   `pol = 1` → TM (`H_y`, `a_n`, `Q_*_TM`). Lengths in nm, `k = 2π/λ` in rad/nm.
-   Time convention `exp(-iωt)`, outgoing waves `H_n^{(1)}`. `ei[:nn]` = φ,
-   `ei[nn:]` = χ. `Geometry.g` is a z-coordinate array, **not** a Green function.
-   Self-Green sign `SIGN = -1`; `relative_ldos = 1 + 4·Im S`.
+   `pol = 1` → TM (`H_y`, `a_n`, `Q_*_TM`). Lengths in nm. Time convention
+   `exp(-iωt)`, outgoing waves `H_n^{(1)}`. `ei[:nn]` = φ, `ei[nn:]` = χ.
+   `Geometry.g` is a z-coordinate array, **not** a Green function. Self-Green
+   sign `SIGN = -1`; `relative_ldos = 1 + 4·Im S`.
+
+   **Wavelengths are vacuum, wavenumbers are background** (conventions §2).
+   Public methods take `wavelength` = λ_vac in nm; low-level primitives take
+   `wnum_bg = 2π·n_clad/λ_vac` and **no wavelength at all**, so the conversion
+   — `Material.wnum_bg` — happens exactly once per call path. Never give a
+   primitive a wavelength parameter back: façade methods call each other, and
+   two conversion points means `n_clad` applied twice. `Material.epsi` is
+   **absolute**; `nc` and `eps` are background-relative. Size parameter
+   `x = 2π·n_clad·rad/λ_vac` is derived-only and circle-only.
+
+   **QNM half-plane** (conventions §8): `Im λ > 0` for decaying modes and
+   `Re λ > 0` to keep Hankel arguments off the `H^{(1)}` branch cut — both
+   asserted, because holomorphy is the premise of the contour argument.
+   `Q = Re λ / (2 Im λ)`. Poles do **not** come in conjugate pairs; the reality
+   condition is `λ → −λ̄`.
 3. **New physics needs an independent validation anchor.** A closed form, an
    analytic limit, or a second method — not agreement between two paths in this
    repo, which only proves they share assumptions. The package's stated scope is

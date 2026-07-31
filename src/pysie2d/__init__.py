@@ -6,7 +6,9 @@ Public API:
     BIESolver: solver façade; call ``scatter``/``scatter_dipole`` to obtain a
         ``ScatterResult``.
     ScatterResult: carries the solution and exposes far/near-field analysis.
-    assemble_matrix: the vectorised BIE system-matrix assembly.
+    assemble_matrix, assemble_matrix_reference: the vectorised BIE
+        system-matrix assembly and its loop-order reference implementation,
+        kept as a validation anchor.
     plane_wave_rhs, line_dipole_rhs: excitation right-hand sides.
     eval_field, far_field: field-evaluation primitives.
     self_green, relative_ldos, relative_ldos_map: self-Green function and
@@ -14,6 +16,13 @@ Public API:
     QNMSolver: quasi-normal-mode façade; call ``modes`` to obtain a
         ``QNMResult``.
     QNMResult: mode wavelengths, vectors, and extraction diagnostics.
+    size_parameter: derived Mie size parameter x = 2π·n_clad·rad/λ_vac.
+
+All public wavelengths are **vacuum** wavelengths in nm; the low-level
+primitives (``assemble_matrix``, ``assemble_matrix_reference``,
+``eval_field``, ``far_field``, ``plane_wave_rhs``, ``line_dipole_rhs``)
+take a background wavenumber
+``wnum_bg = 2π·n_clad/λ_vac`` instead. See ``docs/conventions.md`` §2.
 """
 
 from .fields import eval_field, far_field
@@ -22,7 +31,7 @@ from .green import relative_ldos, relative_ldos_map, self_green
 from .kernels import assemble_matrix, assemble_matrix_reference
 from .material import Material
 from .qnm import QNMResult, QNMSolver
-from .solver import BIESolver, ScatterResult
+from .solver import BIESolver, ScatterResult, size_parameter
 from .sources import line_dipole_rhs, plane_wave_rhs
 
 __version__ = "0.2.0"
@@ -43,4 +52,5 @@ __all__ = [
     "relative_ldos",
     "relative_ldos_map",
     "self_green",
+    "size_parameter",
 ]

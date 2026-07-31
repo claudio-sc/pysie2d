@@ -10,7 +10,8 @@ def test_convergence():
     # finest grid, and monotone non-increase after the first point.
     wavelength = 600.0
     x = size_parameter(wavelength)
-    ref = mie.efficiencies(x, N_CORE / N_CLAD)["Q_sca_TE"]
+    # Material.nc is the relative index; never divide it by n_clad again.
+    ref = mie.efficiencies(x, complex(Material(N_CORE, N_CLAD).nc))["Q_sca_TE"]
 
     n_values = [40, 80, 160, 320]
     errors = []

@@ -8,7 +8,11 @@ with no initial guess and no scan.
 Mirrors the driven solver: same ``(geometry, material)`` construction, one
 method returning a result object, derived physics as properties.
 
-Conventions (docs/conventions.md §8). Wavelengths are vacuum nm. Under
+Conventions (docs/conventions.md §§2, 8). Wavelengths are vacuum nm, in and
+out: the search rectangle is given in vacuum λ and the mode wavelengths come
+back in vacuum λ. There is no conversion on the return leg because the contour
+is drawn directly on :meth:`pysie2d.solver.BIESolver.assemble`, which is itself
+the single vacuum-to-background conversion point. Under
 ``exp(-iωt)`` a decaying mode has ``Im ω < 0``, hence ``Im k < 0``, hence
 **``Im λ > 0``** — a search box must lie in the upper half λ-plane, and in
 ``Re λ > 0`` so that every Hankel argument stays off the ``H^(1)`` branch cut.
@@ -23,7 +27,7 @@ import numpy as np
 from .beyn import beyn_modes
 from .geometry import Geometry
 from .material import Material
-from .solver import BIESolver
+from .solver import BIESolver, size_parameter
 
 # Two eigenvalues closer than this, relatively, are the same mode: the ±n
 # partners of a circle. *(measured: a true degenerate pair agrees to 2.4e-13,
@@ -83,8 +87,32 @@ class QNMResult:
 
     @property
     def quality_factors(self) -> np.ndarray:
-        """Q = Re λ / (2 Im λ), exactly equal to −Re ω / (2 Im ω)."""
+        """Q = Re λ / (2 Im λ), exactly equal to −Re ω / (2 Im ω).
+
+        Invariant under the vacuum/background rescaling of λ, since that is a
+        real positive factor common to numerator and denominator.
+        """
         return self.wavelengths.real / (2.0 * self.wavelengths.imag)
+
+    @property
+    def size_parameters(self) -> np.ndarray:
+        """Complex size parameters x = 2π·n_clad·rad/λ_vac of the modes.
+
+        The coordinate the analytic anchor (:mod:`pysie2d.reference.mie`) works
+        in. Derived only — :meth:`QNMSolver.modes` searches rectangles in λ, and
+        a box in ``x`` is *not* a box in λ: ``λ = 2π·n_clad·rad/x`` is a Möbius
+        map, so it does not carry corners to corners. See :func:`~pysie2d.solver.
+        size_parameter`.
+
+        Raises:
+            ValueError: If the geometry is not circular.
+        """
+        return np.array(
+            [
+                size_parameter(self.geometry, self.material, lam)
+                for lam in self.wavelengths
+            ]
+        )
 
     @property
     def n_modes(self) -> int:
@@ -133,8 +161,8 @@ class QNMSolver:
         independent of how many modes are inside.
 
         Args:
-            z_lo: Bottom-left corner of the search rectangle, vacuum nm.
-            z_hi: Top-right corner, vacuum nm.
+            z_lo: Bottom-left corner of the search rectangle, **vacuum** nm.
+            z_hi: Top-right corner, **vacuum** nm.
             n_quad_per_side: Gauss-Legendre nodes per contour edge. The
                 default resolves the contour integral far below the
                 discretisation error in ``n_pts`` *(measured: identical modes
@@ -183,7 +211,7 @@ class QNMSolver:
         )
 
     def _sigma_ratio(self, wavelength: complex) -> float:
-        """σ_min/σ_max of M at one wavelength.
+        """σ_min/σ_max of M at one **vacuum** wavelength.
 
         A full SVD of the 2·n_pts matrix, run once per mode. Inverse iteration
         on the factorisation would be ~100× cheaper and is worth doing once

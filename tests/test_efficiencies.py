@@ -26,7 +26,10 @@ def test_efficiencies_match_mie(circle, wavelength, pol):
     eff = result.efficiencies()
 
     x = size_parameter(wavelength)
-    m = complex(mat.nc) / N_CLAD
+    # mat.nc is already the *relative* index n_core/n_clad — the m of Mie
+    # theory. Dividing by n_clad again double-counts the background; it was
+    # invisible only because this fixture runs at n_clad = 1.
+    m = complex(mat.nc)
     ref = mie.efficiencies(x, m)
     tag = POL_TAG[pol]
 
@@ -47,7 +50,10 @@ def test_absorbing_particle(circle, pol):
     eff = result.efficiencies()
 
     x = size_parameter(wavelength)
-    m = complex(mat.nc) / N_CLAD
+    # mat.nc is already the *relative* index n_core/n_clad — the m of Mie
+    # theory. Dividing by n_clad again double-counts the background; it was
+    # invisible only because this fixture runs at n_clad = 1.
+    m = complex(mat.nc)
     ref = mie.efficiencies(x, m)
     tag = POL_TAG[pol]
 
