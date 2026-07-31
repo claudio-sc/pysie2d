@@ -149,7 +149,7 @@ class BIESolver:
         self.geometry = geometry
         self.material = material
 
-    def assemble(self, wavelength: float) -> np.ndarray:
+    def assemble(self, wavelength: float | complex) -> np.ndarray:
         """Assemble the 2nn × 2nn BIE system matrix M(λ).
 
         The matrix depends only on the wavelength (and the fixed geometry and
@@ -158,7 +158,10 @@ class BIESolver:
         :func:`pysie2d.green.relative_ldos_map` for the LU-reuse pattern.
 
         Args:
-            wavelength: Free-space wavelength (nm).
+            wavelength: Free-space wavelength (nm). A **complex** wavelength is
+                the quasi-normal-mode case: the whole assembly path is complex
+                throughout, and :class:`pysie2d.qnm.QNMSolver` calls this very
+                method on its contour.
 
         Returns:
             complex (2·n_pts, 2·n_pts) system matrix.

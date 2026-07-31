@@ -93,6 +93,51 @@ divergence of `H₀^{(1)}` lives in its imaginary part; with the `i/4` prefactor
 the imaginary part of `g₀` tends to `J₀(0)/4 = 1/4`), giving
 `relative_ldos = 1 + 4·Im(S)`.
 
+## 8. The quasi-normal-mode half-plane (v0.5)
+
+A quasi-normal mode is a source-free solution: a complex wavelength where
+`M(λ)` is singular. `QNMSolver.modes` searches a **rectangle in complex λ**,
+matching the driven API's argument. Complex frequency is a documented
+conversion, `ω = 2πc/λ`, not a second entry point.
+
+Under `exp(-iωt)` (§3) a decaying mode has `Im ω < 0`, hence `Im k < 0`, hence
+
+    Im λ > 0.
+
+A search box must therefore lie strictly in `Im λ > 0`, and strictly in
+`Re λ > 0` — the latter keeps every Hankel argument off the `H^{(1)}` branch cut
+on the negative real axis, which is what makes `M(λ)` holomorphic on the
+rectangle. Holomorphy is the premise of the contour argument, not a detail, so
+both bounds are asserted rather than documented.
+
+The quality factor is
+
+    Q = Re λ / (2 Im λ),   exactly equal to −Re ω / (2 Im ω).
+
+**Poles do not occur in conjugate pairs.** The reality condition is `λ → −λ̄`,
+which places mirror partners at negative `Re λ`, outside the physical region.
+Carrying real-eigenvalue intuition into this non-Hermitian problem and expecting
+`λ̄` to be a mode is the natural mistake; `test_no_conjugate_pair_symmetry` is
+the guard.
+
+**Degeneracy is structural for a circle.** Every `n ≥ 1` mode is doubly
+degenerate through `exp(±inθ)`; only `n = 0` is simple. Degenerate partners are
+reported as separate entries with `multiplicity = 2`, never collapsed — the pair
+carries two independent mode vectors, and merging them would make the count
+disagree with the analytic table. Note also the identity
+`D^{TM}_0 ≡ D^{TE}_1`, so those two families land on the same wavelengths; this
+is not a hazard, because `M(λ)` is assembled per polarisation.
+
+Mode **vectors** are exposed raw, in the `φ`/`χ` layout of §4. They are not
+normalised as mode fields — that needs a QNM norm, which is out of scope.
+
+> **Note.** Public wavelengths are documented as vacuum wavelengths (§2) but the
+> implementation currently forms `k = 2π/λ`, which is the *medium* reading. The
+> two coincide only at `n_clad = 1`, which is where every test in the suite —
+> including the QNM anchor — runs. Reconciling this is a breaking change to the
+> driven solver, shipping separately in v0.4.0; see
+> `docs/design/beyn-port-spec.md` §2.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

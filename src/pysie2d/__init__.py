@@ -11,6 +11,9 @@ Public API:
     eval_field, far_field: field-evaluation primitives.
     self_green, relative_ldos, relative_ldos_map: self-Green function and
         LDOS / Purcell-effect analysis (line-dipole excitation).
+    QNMSolver: quasi-normal-mode façade; call ``modes`` to obtain a
+        ``QNMResult``.
+    QNMResult: mode wavelengths, vectors, and extraction diagnostics.
 """
 
 from .fields import eval_field, far_field
@@ -18,6 +21,7 @@ from .geometry import Geometry
 from .green import relative_ldos, relative_ldos_map, self_green
 from .kernels import assemble_matrix, assemble_matrix_reference
 from .material import Material
+from .qnm import QNMResult, QNMSolver
 from .solver import BIESolver, ScatterResult
 from .sources import line_dipole_rhs, plane_wave_rhs
 
@@ -27,6 +31,8 @@ __all__ = [
     "BIESolver",
     "Geometry",
     "Material",
+    "QNMResult",
+    "QNMSolver",
     "ScatterResult",
     "assemble_matrix",
     "assemble_matrix_reference",
