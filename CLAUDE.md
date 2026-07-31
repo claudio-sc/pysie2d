@@ -1,9 +1,5 @@
 # pysie2d
 
-A 2-D surface-integral-equation (Müller BIE) solver for time-harmonic EM
-scattering from a single smooth cylinder in a homogeneous background. Public,
-MIT, CI-gated, validated against analytic Mie theory.
-
 ## Read first
 
 [docs/conventions.md](docs/conventions.md). Every gotcha in this solver traces
@@ -11,17 +7,7 @@ back to a convention listed there — read it before reading code. When a change
 pins a *new* convention (a sign, a normalisation, a layout), record it there in
 the same change.
 
-## Commands
-
-```bash
-uv sync                       # environment
-uv run pytest                 # validation suite
-uv run ruff format --check .  # formatting
-uv run ruff check .           # lint
-uv run python examples/convergence_study.py   # regenerate figures
-uv run python examples/nearfield_map.py
-uv run python examples/purcell_map.py
-```
+## Dependencies
 
 Python 3.12+, uv, numpy + scipy only. **Adding a runtime dependency is a scope
 decision** — raise it, don't just add it.
@@ -67,10 +53,9 @@ decision** — raise it, don't just add it.
 
 ## Style
 
-- Google-style docstrings with `Args`/`Returns`/`Raises`; ruff `D`, `N`, `E`,
-  `F`, `B`, `I`, `C4`, `A` are on, line length 88. Per-file ignores exist for
-  math notation (`reference/mie.py` keeps `J_n`/`H_n`) — extend that list rather
-  than renaming physics.
+- Google-style docstrings with `Args`/`Returns`/`Raises`. Per-file ruff ignores
+  exist for math notation (`reference/mie.py` keeps `J_n`/`H_n`) — extend that
+  list rather than renaming physics.
 - Unicode in docstrings and comments is welcome here (φ, χ, λ, `H₀^{(1)}`); it
   makes the formulation readable against the cited papers.
 - Comments explain *why the physics or numerics demands this*, not what the line
@@ -85,26 +70,8 @@ decision** — raise it, don't just add it.
 
 ## Figures
 
-The three `examples/` scripts generate the README figures, and they are part of
-the package's public face. **Load the `dataviz` skill before writing or changing
-any plotting code** — take its color formula, accessibility checks, and mark
-specs; ignore the dashboard/KPI material, which does not apply here.
-
-Conventions specific to these figures:
-
-- `purcell_map` is **diverging around a physically meaningful midpoint**
-  (`relative_ldos = 1`, the free-space value). Enhancement and suppression must
-  be visually symmetric about it, and the midpoint must be pinned — an
-  auto-scaled diverging colormap that centres on the data mean is wrong here.
-- `nearfield_map` is sequential magnitude data; use a perceptually uniform
-  colormap, not `jet`.
-- `convergence_study` is log-log error vs `nn` for both polarisations. If a
-  convergence *order* is being claimed, show the reference slope.
-- Masked regions (the NaNs `relative_ldos_map` returns inside and near the
-  particle) must read as "no data", visually distinct from a low value.
-- Axes carry units (nm). Both polarisations should be distinguishable without
-  relying on colour alone.
-- `MPLBACKEND=Agg` in CI; figures must render headless.
+The three `examples/` scripts generate the README figures. Their conventions
+live in [examples/CLAUDE.md](examples/CLAUDE.md).
 
 ## Review
 
