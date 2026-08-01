@@ -15,6 +15,7 @@ authority — the migration table, the injection-test evidence — it says so.
 | `docs/design/beyn-port-spec.md` | The implementation spec, draft 2. §§1–5 are built; §§6–13 are forward-looking. | **The authority on intent.** Section numbers below refer to it. |
 | `docs/design/beyn-port-strategy.md` | The earlier high-level strategy. | **Superseded.** Provenance only. |
 | `docs/design/qnm-methods.pdf` | Background on QNM extraction methods. | Reference. |
+| `docs/design/performance.md` | Where the runtime actually goes, measured; the accepted threading plan; the rejected JAX migration. | **Read before optimising anything.** It corrects two of the spec's performance numbers. |
 | `docs/conventions.md` §2, §8 | Shipped normative text: vacuum wavelengths, the QNM half-plane. | **Normative.** No live caveats remain. |
 | `CLAUDE.md` | Repo working agreement. | Non-negotiables 1–4 apply, especially #3 (independent anchor) and #4 (justify every tolerance). |
 
@@ -22,7 +23,8 @@ authority — the migration table, the injection-test evidence — it says so.
 
 ## 1. Where the repo actually is
 
-`uv run pytest` → **90 passed in 27 s**. `uv run ruff check .` and
+`uv run pytest` → **90 passed in 27 s**, against a **5-minute wall-clock budget**
+for the whole suite (raised 2026-07-31; see §2, Q5). `uv run ruff check .` and
 `ruff format --check .` clean, 26 files. All three `examples/` scripts render
 headless.
 
@@ -95,10 +97,31 @@ Recorded so nobody re-opens them.
   was an open worry; it dissolved.
 - **Q3 degenerate poles** — reported twice, with a `multiplicity` array. Shipped.
 - **Q4 naming** — `QNMSolver` / `.modes()` / `wavelengths`. Shipped.
-- **Q5 CI budget** — accepted unmarked; the whole suite is 27 s, well inside the
-  spec's +60–90 s worry.
+- **Q5 CI budget** — accepted unmarked, and since **raised to a 5-minute
+  wall-clock budget for the whole suite** (2026-07-31). The suite is 27 s today.
+  Spec §13 Q5's "+60–90 s on a 55 s baseline" is superseded; tests should be
+  resolved well enough to prove the physics rather than trimmed to save seconds.
 - **Q6 `CLAUDE.md`** — edited with permission; the `Im λ > 0` / `Q` convention
   and the vacuum-wavelength rule are both in non-negotiable #2.
+
+Taken 2026-07-31, after the convention release:
+
+- **`assemble_matrix_dwn` returns the fused `(M, dM)`**, sharing
+  `h0w`/`h1w`/`h0w1`/`h1w1` — spec §6.1's recommended form, ~1.3× cheaper than
+  two passes. This follows from the next decision rather than from the speed:
+  a bit-identity test needs an `M` to compare against.
+- **The derivative parity test stays bit-identical** (`np.array_equal`, not
+  `np.allclose`). It is the right guard for ~50 lines of deliberate duplication
+  of the hot path, and the only freedom it costs — computing the derivative by
+  some other route — is one we have now explicitly declined (see below).
+- **JAX is rejected**, on measurement. `docs/design/performance.md` §4 has the
+  numbers; the short version is that `scipy.special.hankel1` on complex argument
+  is 95.5 % of a `modes()` call, JAX has no complex Hankel, and the migration
+  ceiling is ~1.02× against 5.02× for stdlib threading. Do not re-open without
+  new information.
+- **The contour loop will be threaded, inside `contour_moments`**, as the first
+  post-merge change: 5.02× measured, stdlib only, and it changes no number the
+  solver produces. Not before the merge — see §4.6.
 
 Evidence for the convention fix that is not repeated here: the pre/post
 worktree comparison over 31 quantities at `n_clad = 1` (**max abs diff 0.0** on
@@ -252,18 +275,28 @@ that release.
 
 Two steps, in order; the first exists only to serve the second.
 
-**(a) `dM/dλ` (spec §6.1).** `assemble_matrix_dwn` in `kernels.py`,
-`assemble_derivative` in `solver.py`. The identities are written out in spec §6.1
-and were verified against `kernels.py:285-338`. Two traps recorded there: the
-diagonal terms `d_m2`, `d_m4` need `H₁` at the log-singularity arguments, which
-assembly never computes; and the saving is 3 assemblies → 2 (~1.5×), not → 1.
-Exact only for **non-dispersive** materials — a real precondition, say so in the
-docstring, and note that the derivative is with respect to the wavenumber, so the
-façade owes it the vacuum-λ chain factor (conventions §2 — the conversion still
-happens exactly once).
+**(a) `dM/dλ` (spec §6.1).** `assemble_matrix_dwn` in `kernels.py` returning the
+fused **`(M, dM)`**, `assemble_derivative` in `solver.py`. The identities are
+written out in spec §6.1 and were verified against `kernels.py:285-338`. Two
+traps recorded there: the diagonal terms `d_m2`, `d_m4` need `H₁` at the
+log-singularity arguments, which assembly never computes; and the saving is 3
+assemblies → 2 (~1.5×), not → 1. Exact only for **non-dispersive** materials — a
+real precondition, say so in the docstring, and note that the derivative is with
+respect to the wavenumber, so the façade owes it the vacuum-λ chain factor
+(conventions §2 — the conversion still happens exactly once).
 *Check:* `test_matrix_derivative_matches_assembly` bit-identical via
 `np.array_equal`; `test_matrix_derivative_matches_central_difference` at real
 *and* complex `wn`, both polarisations, observed order 2.
+
+**Correction to spec §6.1, found while scoping this.** The fused form's ~1.3×
+saving is **unreachable through `newton_refine` as written**: `beyn.py:483-484`
+calls `m_builder(lam)` and `dm_builder(lam)` as two independent callables, so the
+Hankel work happens twice per Newton iteration however well `assemble_matrix_dwn`
+shares internally. **Accept the two assemblies** (~190 ms per mode; Newton
+converges in one step on a simple pole per spec §6.2) and say so in the
+docstring. Do **not** change `newton_refine` to take a single `(M, dM)` callable
+— that trades `beyn.py`'s EM-free purity, the most portable and most reusable
+property in the repo, for 1.3× on 4 % of the runtime.
 
 **(b) `QNMResult.refine(*, tol=1e-9, max_iter=30) -> QNMResult` (spec §6.2, D3).**
 Returns a *new* frozen result plus the `converged` field. Opt-in — the docs must
@@ -284,10 +317,14 @@ Two things that will go wrong if they are not read first:
   flagged, never raise** — a circle's `n ≥ 1` modes are all degenerate, so this is
   the common case, not the corner case.
 
-CI cost: refinement adds assemblies per mode. The suite is at 27 s with headroom
-against spec §13 Q5's +60–90 s budget, but measure it — if the three façade tests
-push the suite past ~60 s, cut their mode count before reaching for a `slow`
-marker.
+CI cost: refinement adds assemblies per mode. **The suite's budget is now 5
+minutes wall-clock** — raised deliberately from spec §13 Q5's 55 s baseline +
+60–90 s estimate, which is superseded. At 27 s today that is ~10× headroom, so
+resolution is no longer the scarce resource: prefer a well-resolved test that
+proves the physics over a cheap one that needs a tolerance argument. Still
+report the suite time in the commit message, and if a single test dominates say
+why. Past 5 minutes, cut mode count or `nn` before reaching for a `slow`
+marker — a second CI step is still not wanted.
 
 ### 4.3 A user-facing QNM section — *blocker, the real one*
 
@@ -349,12 +386,28 @@ survives into the released changelog.
 Deliberately after the merge, in this order. Each is an improvement to a working
 feature, not a repair of a broken one.
 
+- **Thread the contour loop — the highest value per line in the repo.**
+  `ThreadPoolExecutor` over the contour nodes in `contour_moments`: **5.02×
+  measured** at 8 workers on 93 % of `modes()`, stdlib only, and it changes no
+  number the solver produces. `scipy.special.hankel1` releases the GIL, which is
+  why this works and why `multiprocessing` would be strictly worse. Details,
+  measurements, and the two traps (per-node LU-failure status must be returned
+  rather than accumulated in a shared counter; `warnings.warn` from a worker does
+  not reliably reach the caller) are in `docs/design/performance.md` §3.1.
+  Post-merge only — it touches a green module for a speedup, which is exactly
+  what the merge gate exists to defer.
 - **`σ_min` by inverse iteration (spec §6.3).** Now unblocked by 4.2, which forms
-  the LU — but a performance nicety, not a capability, so it stays here. Three
-  iterations of `y = M⁻¹v; z = M⁻ᴴy` seeded with the mode vector reproduced the
-  full-SVD value to `2.6e−7` relative in 2–6 ms against 497 ms. Avoid, per the
-  spec: Lanczos/`svds`, adaptive iteration counts, chasing accuracy at generic
-  points.
+  the LU — but a performance nicety, and a smaller one than the spec suggests.
+  Measured at the fixture: `_sigma_ratio` is 2.7 % of a `modes()` call and its own
+  dominant term is *another assembly* (94 ms), not the SVD (38 ms). The spec's
+  "497 ms vs 2–6 ms" was measured at a larger `nn`. Avoid, per the spec:
+  Lanczos/`svds`, adaptive iteration counts, chasing accuracy at generic points.
+- **Structured Hankel evaluation — parked, not rejected.** 13× measured at 7e-15
+  relative accuracy, and it multiplies with the threading. But it is a
+  from-scratch special-function implementation needing its own anchor under
+  non-negotiable #3; `performance.md` §3.2 states the validation burden and what
+  the probe did *not* cover. A feature with a validation plan, not an
+  optimisation.
 - The seven carried-over items in Gotcha 9.
 
 ---
