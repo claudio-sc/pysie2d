@@ -42,6 +42,10 @@ testpaths = ["tests"]
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
+# Without this, __init__.py is not bumped and silently falls behind: it sat at
+# 0.2.0 through the v0.2.1, v0.2.2 and v0.3.0 releases because only pyproject
+# was listed here.
+version_variables = ["src/pysie2d/__init__.py:__version__"]
 commit_parser = "conventional"
 commit_parser_options = { ignore_merge_commits = true }
 major_on_zero = false
