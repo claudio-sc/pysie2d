@@ -15,7 +15,7 @@ import numpy as np
 
 from .fields import eval_field, far_field
 from .geometry import Geometry
-from .kernels import assemble_matrix
+from .kernels import assemble_matrix, assemble_matrix_dwn
 from .material import Material
 from .sources import line_dipole_rhs, plane_wave_rhs
 
@@ -242,6 +242,64 @@ class BIESolver:
             mat.nc,
             mat.eps,
         )
+
+    def assemble_derivative(self, wavelength: float | complex) -> np.ndarray:
+        """Analytic derivative dM/dλ of the BIE system matrix, λ vacuum in nm.
+
+        The companion to :meth:`assemble`, and the callable bordered Newton
+        refinement needs: :func:`pysie2d.beyn.newton_refine` takes a
+        ``dm_builder: λ → dM/dλ`` alongside its ``m_builder``.
+
+        This is the **only** place the wavelength chain factor is applied.
+        :func:`pysie2d.kernels.assemble_matrix_dwn` differentiates with respect
+        to the background wavenumber, in keeping with every primitive in that
+        module taking no wavelength; here ``k_bg = 2π·n_clad/λ_vac`` gives
+
+            ``dM/dλ = (dM/dk)·(dk/dλ) = −(k/λ)·dM/dk``
+
+        with the same ``k`` the assembly was built from, so ``n_clad`` enters
+        once on both legs (``docs/conventions.md`` §2). A caller applying the
+        factor itself would be a second conversion point, which is what that
+        convention exists to prevent.
+
+        Exact only for a **non-dispersive** material — see
+        :func:`pysie2d.kernels.assemble_matrix_dwn`, which states the
+        precondition and the identities.
+
+        The matrix half of the fused pair is discarded here, which is
+        deliberate: ``newton_refine`` asks for ``M`` and ``dM`` through two
+        independent callables, and that keeps :mod:`pysie2d.beyn` free of any
+        electromagnetics. It costs almost nothing — the pair is 1.05× one
+        assembly, so a Newton step is 2.05 assemblies rather than the 2.0 a
+        single fused callback would buy *(measured at nn = 200, complex λ)*.
+        The fused return exists so the parity test has an ``M`` to compare
+        against, not to save time here.
+
+        Args:
+            wavelength: **Vacuum** wavelength (nm). Complex for the
+                quasi-normal-mode case, exactly as :meth:`assemble`.
+
+        Returns:
+            complex (2·n_pts, 2·n_pts) matrix dM/dλ (units of M per nm).
+        """
+        g = self.geometry
+        mat = self.material
+        wnum_bg = mat.wnum_bg(wavelength)
+        _, dm_dk = assemble_matrix_dwn(
+            mat.pol,
+            g.n_pts,
+            g.f,
+            g.g,
+            g.df,
+            g.dg,
+            g.ddf,
+            g.ddg,
+            g.delt,
+            wnum_bg,
+            mat.nc,
+            mat.eps,
+        )
+        return dm_dk * (-wnum_bg / wavelength)
 
     def scatter(
         self,
