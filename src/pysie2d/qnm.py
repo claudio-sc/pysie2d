@@ -20,11 +20,11 @@ Both are asserted. Poles do *not* come in conjugate pairs: the reality
 condition is ``λ → −λ̄``, which puts mirror partners at negative ``Re λ``.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
-from .beyn import beyn_modes
+from .beyn import beyn_modes, newton_refine
 from .geometry import Geometry
 from .material import Material
 from .solver import BIESolver, size_parameter
@@ -34,6 +34,24 @@ from .solver import BIESolver, size_parameter
 # while the nearest distinct mode in the same spectrum is 20 nm away, so the
 # grouping is not a close call.)*
 DEGENERACY_RTOL = 1.0e-9
+
+# Above this condition number the bordered Newton system has no single
+# well-defined solution and its step is discarded. Bordered Newton assumes a
+# one-dimensional null space; a degenerate pole has a two-dimensional one, so
+# the Jacobian is singular in exact arithmetic. The threshold is not a close
+# call *(measured: cond(J) = 1.5e3 on the simple TE n=0 pole against 3.2e15 and
+# 5.4e15 on the degenerate TE n=3 pair — twelve orders of magnitude apart)*,
+# which is why a single fixed number is defensible here rather than a tuned or
+# adaptive one: anything from ~1e8 to ~1e14 classifies this spectrum
+# identically.
+#
+# Exported because it is the one number a user needs to reproduce a decision
+# the library made on their behalf. ``QNMResult.refine`` silently keeps the
+# contour estimate wherever ``cond_jacobian`` exceeds this, so a caller reading
+# ``converged == False`` can only tell "degenerate, skipped by design" from
+# "Newton failed" by comparing against the same threshold — and hard-coding
+# 1e12 at the call site would silently drift the day this value changes.
+DEGENERATE_COND = 1.0e12
 
 
 @dataclass(frozen=True)
@@ -65,6 +83,24 @@ class QNMResult:
         edge_margin: float (K,) distance from each mode to the nearest contour
             edge, as a fraction of the shorter side. A value near zero means
             the box is clipping the pole and the result is not trustworthy.
+        converged: bool (K,) whether bordered Newton converged on each mode.
+            Straight out of :meth:`QNMSolver.modes` this is **all False, which
+            means no refinement was attempted** — not that anything failed. A
+            mode from a well-drawn contour is already converged to far below
+            the discretisation error and needs no refinement; see
+            :meth:`refine`, which is the only thing that sets this True.
+        cond_jacobian: float (K,) condition number of the bordered Newton
+            Jacobian at each mode, ``NaN`` where refinement was not attempted.
+            Above ``DEGENERATE_COND`` the pole is degenerate — the bordered
+            system assumes a one-dimensional null space and a degenerate pole
+            has two — so :meth:`refine` keeps the contour estimate and reports
+            it here rather than returning a polished-looking number. Read
+            alongside ``multiplicity``: the two detect degeneracy by
+            independent means, eigenvalue spacing versus the conditioning of
+            the actual linear algebra, and a disagreement is informative. A
+            ``multiplicity`` of 1 with a singular Jacobian says a degenerate
+            partner is missing — clipped by the box, most likely — or that two
+            distinct modes are closer than ``DEGENERACY_RTOL`` resolves.
         z_lo: complex bottom-left corner of the search rectangle.
         z_hi: complex top-right corner.
         geometry: The scatterer boundary.
@@ -80,6 +116,8 @@ class QNMResult:
     rank: int
     cancellation: float
     edge_margin: np.ndarray
+    converged: np.ndarray
+    cond_jacobian: np.ndarray
     z_lo: complex
     z_hi: complex
     geometry: Geometry
@@ -118,6 +156,86 @@ class QNMResult:
     def n_modes(self) -> int:
         """Number of modes found inside the rectangle."""
         return int(self.wavelengths.size)
+
+    def refine(self, *, tol: float = 1.0e-9, max_iter: int = 30) -> "QNMResult":
+        """Polish each mode with bordered Newton, returning a new result.
+
+        **This is insurance, not accuracy, and it is opt-in for that reason.**
+        On a well-drawn contour the extraction is already converged to ~1e-8 nm
+        while the *discretisation* error is 0.38 nm at ``n_pts = 200`` — so
+        100 % of the error against the analytic pole is ``n_pts`` and 0 % is
+        extraction, and refining changes the answer in the eighth decimal of a
+        number that is wrong in the first. What this buys is the recovery path
+        for a contour too coarse or too badly placed to locate the pole, and
+        the ``converged`` flag. **If a mode is not accurate enough, raise
+        ``n_pts``** — refining is tuning the wrong knob.
+
+        Degenerate poles are found, reported, and deliberately **not** refined:
+        bordered Newton assumes a simple eigenvalue, so on the doubly
+        degenerate ``n ≥ 1`` modes of a circle — the common case, not the
+        corner case — the contour estimate is kept and ``cond_jacobian``
+        records why. Nothing raises.
+
+        Requires a **non-dispersive** material, inherited from the analytic
+        derivative this drives
+        (:func:`pysie2d.kernels.assemble_matrix_dwn`).
+
+        Cost is ``max_iter``-bounded but typically one iteration per mode on a
+        simple pole, each iteration two assemblies *(measured: 2.05 assemblies,
+        the derivative being 1.05× the matrix)*, plus one assembly and SVD per
+        mode to bring ``sigma_ratio`` with it.
+
+        Args:
+            tol: Convergence threshold on the Newton step size, in nm.
+            max_iter: Iteration cap per mode.
+
+        Returns:
+            A new :class:`QNMResult`. ``wavelengths`` carry the polished values
+            where refinement succeeded and the contour estimate everywhere
+            else; ``converged`` and ``cond_jacobian`` are filled in;
+            ``multiplicity``, ``sigma_ratio`` and ``edge_margin`` are
+            recomputed at the new wavelengths so no diagnostic describes a
+            wavelength that is no longer in the result. ``vectors`` are carried
+            through **unpolished** — :func:`pysie2d.beyn.newton_refine` returns
+            the eigenvalue but not the null-space vector it moved alongside it,
+            and a mode field is not normalised here anyway (D4).
+        """
+        bie = BIESolver(self.geometry, self.material)
+        lams = self.wavelengths.copy()
+        converged = np.zeros(self.n_modes, dtype=bool)
+        cond_jacobian = np.full(self.n_modes, np.nan)
+
+        for k in range(self.n_modes):
+            polished = newton_refine(
+                bie.assemble,
+                bie.assemble_derivative,
+                self.wavelengths[k],
+                self.vectors[:, k],
+                self.z_lo,
+                self.z_hi,
+                tol=tol,
+                max_iter=max_iter,
+            )
+            cond_jacobian[k] = polished.cond_jacobian
+            # newton_refine reports the conditioning but does not act on it —
+            # it will happily take a step on a singular bordered system, and
+            # the line search only guarantees the residual fell, not that the
+            # step meant anything. Discarding it here is what makes "flagged,
+            # skipped, never raises" true.
+            if polished.cond_jacobian > DEGENERATE_COND:
+                continue
+            lams[k] = polished.eigenvalue
+            converged[k] = polished.converged
+
+        return replace(
+            self,
+            wavelengths=lams,
+            multiplicity=_multiplicity(lams),
+            sigma_ratio=np.array([_sigma_ratio(bie, lam) for lam in lams]),
+            edge_margin=_edge_margin(lams, self.z_lo, self.z_hi),
+            converged=converged,
+            cond_jacobian=cond_jacobian,
+        )
 
 
 class QNMSolver:
@@ -198,12 +316,17 @@ class QNMSolver:
             wavelengths=lams,
             vectors=found.vectors,
             multiplicity=_multiplicity(lams),
-            sigma_ratio=np.array([self._sigma_ratio(lam) for lam in lams]),
+            sigma_ratio=np.array([_sigma_ratio(self._bie, lam) for lam in lams]),
             sv_ratio=found.sv_ratio,
             max_gap=found.max_gap,
             rank=found.rank,
             cancellation=found.cancellation,
             edge_margin=_edge_margin(lams, z_lo, z_hi),
+            # No refinement has been attempted: all-False plus all-NaN is the
+            # unambiguous reading of "not tried", and neither is a verdict on
+            # the modes. QNMResult.refine fills both in.
+            converged=np.zeros(lams.size, dtype=bool),
+            cond_jacobian=np.full(lams.size, np.nan),
             z_lo=z_lo,
             z_hi=z_hi,
             geometry=self.geometry,
@@ -211,15 +334,14 @@ class QNMSolver:
         )
 
     def _sigma_ratio(self, wavelength: complex) -> float:
-        """σ_min/σ_max of M at one **vacuum** wavelength.
+        """σ_min/σ_max of M at one **vacuum** wavelength, on this solver.
 
-        A full SVD of the 2·n_pts matrix, run once per mode. Inverse iteration
-        on the factorisation would be ~100× cheaper and is worth doing once
-        refinement exists to supply the LU; with a handful of modes the full
-        SVD is not the cost that matters.
+        Bound method over :func:`_sigma_ratio` so the singularity measure has
+        one implementation while both the solver and
+        :meth:`QNMResult.refine` — which has a result, not a solver — can reach
+        it.
         """
-        s = np.linalg.svd(self._bie.assemble(wavelength), compute_uv=False)
-        return float(s[-1] / s[0])
+        return _sigma_ratio(self._bie, wavelength)
 
     @staticmethod
     def _validate_region(z_lo: complex, z_hi: complex) -> None:
@@ -250,6 +372,21 @@ class QNMSolver:
                 f"a decaying mode has Im(lambda) > 0, so a box reaching "
                 f"Im(lambda) = {z_lo.imag} is searching for growing modes"
             )
+
+
+def _sigma_ratio(bie: BIESolver, wavelength: complex) -> float:
+    """σ_min/σ_max of M at one **vacuum** wavelength.
+
+    A full SVD of the 2·n_pts matrix, run once per mode. Module-level rather
+    than a QNMSolver method because :meth:`QNMResult.refine` needs the same
+    number at the moved wavelengths, and a diagnostic with two implementations
+    is a diagnostic that will eventually disagree with itself.
+
+    Inverse iteration on a factorisation would be ~100× cheaper (spec §6.3);
+    with a handful of modes the full SVD is not the cost that matters.
+    """
+    s = np.linalg.svd(bie.assemble(wavelength), compute_uv=False)
+    return float(s[-1] / s[0])
 
 
 def _multiplicity(lams: np.ndarray) -> np.ndarray:

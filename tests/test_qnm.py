@@ -72,6 +72,28 @@ def te_degenerate():
     return qnm_solver(pol=2).modes(*BOX_TE_DEGENERATE, n_quad_per_side=N_SIDE)
 
 
+# A deliberately badly drawn box for the refinement tests: the left edge is
+# pushed to 530 nm, ~0.5 nm from the pole, so edge_margin falls to 0.018 — the
+# regime the diagnostic exists to warn about. It also swallows TE n=2 at
+# 550.47+20.24j, so it returns three modes and the anchor one must be picked
+# out by proximity.
+BAD_BOX_TE_SIMPLE = (530.0 + 15.0j, 560.0 + 40.0j)
+N_SIDE_COARSE = 4
+
+
+@pytest.fixture(scope="module")
+def te_simple_refined(te_simple):
+    """The simple anchor after one refinement pass: ~1 s."""
+    return te_simple.refine()
+
+
+@pytest.fixture(scope="module")
+def te_badly_placed():
+    """Extraction from BAD_BOX_TE_SIMPLE, and the same refined: ~4 s."""
+    res = qnm_solver(pol=2).modes(*BAD_BOX_TE_SIMPLE, n_quad_per_side=N_SIDE_COARSE)
+    return res, res.refine()
+
+
 def test_beyn_matches_analytic_pole_te(te_simple):
     """The BIE operator is singular at the Mie pole — the go/no-go itself.
 
@@ -291,3 +313,117 @@ def test_modes_are_seed_independent(te_simple):
 
     assert other.n_modes == te_simple.n_modes
     assert np.allclose(other.wavelengths, te_simple.wavelengths, atol=1.0e-9)
+
+
+# ---------------------------------------------------------------------------
+# Refinement (spec §6.2)
+#
+# What refinement does here is converge onto the singularity of the
+# *discretised* operator. It does not, and cannot, move the answer towards the
+# analytic Mie pole: at n_pts = 200 the discretisation error is 0.38 nm while
+# the contour estimate is already within 1e-5 nm of the discrete pole, so 100 %
+# of the remaining error belongs to n_pts. The tests below are written around
+# that fact rather than against it — see test_refine_does_not_beat_
+# discretisation, which pins it.
+# ---------------------------------------------------------------------------
+
+
+def test_fresh_result_reports_no_refinement_attempted(te_simple, te_degenerate):
+    """all-False plus all-NaN is the documented reading of "not tried".
+
+    Neither field is a verdict on the modes: every mode in te_simple is good.
+    The pairing matters — False alone would read as failure, and NaN keeps a
+    user's ``cond_jacobian > DEGENERATE_COND`` test from classifying an
+    unrefined mode as degenerate, since every comparison against NaN is False.
+    """
+    for res in (te_simple, te_degenerate):
+        assert not res.converged.any()
+        assert np.isnan(res.cond_jacobian).all()
+        assert res.converged.shape == res.cond_jacobian.shape == res.wavelengths.shape
+
+
+def test_refine_is_idempotent_at_convergence(te_simple, te_simple_refined):
+    """A second pass has nothing left to do — the fixed point is a fixed point.
+
+    The first pass is not a no-op: it moves λ by 8.6e-6 nm *(measured)*, the
+    distance from the contour estimate to the true pole of the discretised
+    operator. It is the *second* pass that must not move, and 1e-12 nm is the
+    step tolerance refine() was asked for, so anything at or below it means the
+    iteration recognised its own fixed point rather than orbiting it.
+    """
+    assert te_simple_refined.converged.all()
+    again = te_simple_refined.refine()
+
+    assert abs(again.wavelengths[0] - te_simple_refined.wavelengths[0]) < 1.0e-12
+    assert again.converged.all()
+    # cond(J) on a simple pole is ~1e3 *(measured 1.05e3)*, twelve orders below
+    # DEGENERATE_COND. Asserting it here is what makes the degenerate test's
+    # threshold a separation rather than a cutoff.
+    assert te_simple_refined.cond_jacobian[0] < 1.0e6
+
+
+def test_refine_drives_the_operator_to_singularity(te_badly_placed):
+    """Refinement's actual claim, stated without a reference wavelength.
+
+    A QNM *is* a wavelength where M(λ) is singular, so σ_min/σ_max is the
+    property being converged on, and unlike a distance to some other
+    computation it is not circular — nothing in this assertion was produced by
+    the code under test.
+
+    The contour here is badly drawn on purpose (edge_margin 0.018, the pole
+    ~0.5 nm from the left edge). It still yields a usable estimate, which is
+    the honest finding: σ_min/σ_max falls from 3.0e-7 to 1.6e-17 *(measured)*,
+    i.e. to the floor set by the conditioning of a 400×400 complex matrix,
+    while λ itself moves by only 3e-4 nm. Refinement buys singularity, not
+    accuracy. 1e-12 is four decades below the worst measured "before" and eight
+    above the "after", so it separates the two without pinning either.
+    """
+    coarse, refined = te_badly_placed
+    k = int(np.argmin(np.abs(coarse.wavelengths - ANCHOR_TE_SIMPLE)))
+
+    assert coarse.edge_margin[k] < 0.05  # the box really is badly placed
+    assert coarse.sigma_ratio[k] > 1.0e-12
+    assert refined.sigma_ratio[k] < 1.0e-12
+    assert refined.converged[k]
+    # The mode did not move far while becoming far more singular. 1e-3 nm is
+    # loose enough to cover any of the boxes tried and still 400× below the
+    # discretisation error, so it cannot hide a mode jumping to a neighbour.
+    assert abs(refined.wavelengths[k] - coarse.wavelengths[k]) < 1.0e-3
+
+
+def test_refine_does_not_beat_discretisation(te_simple, te_simple_refined):
+    """The claim the documentation has to make, as a test.
+
+    Users will reach for refine() when a mode is not accurate enough. It will
+    not help: the error against the analytic Mie pole is 0.45 nm before and
+    0.45 nm after, unchanged to eight decimals, because it is 100 % first-order
+    discretisation in n_pts. The knob that moves this number is n_pts —
+    test_pole_error_is_first_order_in_resolution is the one that shows it.
+    """
+    err_before = abs(te_simple.wavelengths[0] - ANCHOR_TE_SIMPLE)
+    err_after = abs(te_simple_refined.wavelengths[0] - ANCHOR_TE_SIMPLE)
+
+    assert err_before > 0.4  # the discretisation error, not a small residual
+    # Refinement moved λ by 8.6e-6 nm, so it cannot change this error by more.
+    assert abs(err_after - err_before) < 1.0e-4
+
+
+def test_refine_flags_degenerate_pole(te_degenerate):
+    """Every n ≥ 1 circle mode is degenerate, so this is the common case.
+
+    Bordered Newton assumes a one-dimensional null space; the ±n pair gives it
+    two, and the Jacobian is singular in exact arithmetic (cond 3.2e15 and
+    5.4e15 here, *measured*). The requirement is that refine() notices, keeps
+    the contour estimate untouched, and returns normally — a raised exception
+    would make refine() unusable on any circle, and a silently "refined"
+    wavelength would be worse.
+    """
+    refined = te_degenerate.refine()
+
+    assert te_degenerate.n_modes == 2
+    assert (te_degenerate.multiplicity == 2).all()
+    assert (refined.cond_jacobian > 1.0e12).all()
+    assert not refined.converged.any()
+    # Bit-identical, not merely close: the Newton step was discarded, not taken
+    # and found small. A "close" assertion would pass on a step that was taken.
+    assert np.array_equal(refined.wavelengths, te_degenerate.wavelengths)

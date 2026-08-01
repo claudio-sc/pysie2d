@@ -15,7 +15,10 @@ Public API:
         LDOS / Purcell-effect analysis (line-dipole excitation).
     QNMSolver: quasi-normal-mode façade; call ``modes`` to obtain a
         ``QNMResult``.
-    QNMResult: mode wavelengths, vectors, and extraction diagnostics.
+    QNMResult: mode wavelengths, vectors, and extraction diagnostics; call
+        ``refine`` for bordered-Newton polishing.
+    DEGENERATE_COND: the ``cond_jacobian`` threshold above which a pole is
+        taken to be degenerate and left unrefined.
     size_parameter: derived Mie size parameter x = 2π·n_clad·rad/λ_vac.
 
 All public wavelengths are **vacuum** wavelengths in nm; the low-level
@@ -30,7 +33,7 @@ from .geometry import Geometry
 from .green import relative_ldos, relative_ldos_map, self_green
 from .kernels import assemble_matrix, assemble_matrix_reference
 from .material import Material
-from .qnm import QNMResult, QNMSolver
+from .qnm import DEGENERATE_COND, QNMResult, QNMSolver
 from .solver import BIESolver, ScatterResult, size_parameter
 from .sources import line_dipole_rhs, plane_wave_rhs
 
@@ -38,6 +41,7 @@ __version__ = "0.2.0"
 
 __all__ = [
     "BIESolver",
+    "DEGENERATE_COND",
     "Geometry",
     "Material",
     "QNMResult",
