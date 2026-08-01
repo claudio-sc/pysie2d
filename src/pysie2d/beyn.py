@@ -411,12 +411,25 @@ class RefinedMode:
             degenerate eigenvalue makes it singular — the bordered system
             assumes a one-dimensional null space — so a value above ~1e12
             means the result is not to be trusted, not that it failed loudly.
+        vector: complex (N,) the null-space vector polished alongside
+            ``eigenvalue``, or the unrefined input when no step was accepted.
+            The bordered system solves for the pair jointly, so returning only
+            the eigenvalue would leave a caller holding a vector one Newton
+            step staler than the λ beside it.
+
+            Normalised to the **anchor**, ``conj(v0)·vector = 1``, which is the
+            constraint the iteration enforces — *not* to unit length. A caller
+            wanting unit columns must renormalise; the anchor is what keeps the
+            phase tied to ``v0`` rather than free, so renormalising by
+            ``‖vector‖`` preserves the gauge while rescaling does not disturb
+            it.
     """
 
     eigenvalue: complex
     converged: bool
     step: float
     cond_jacobian: float
+    vector: np.ndarray
 
 
 def newton_refine(
@@ -457,7 +470,8 @@ def newton_refine(
         max_iter: Iteration cap.
 
     Returns:
-        The refined eigenvalue and its convergence diagnostics.
+        The refined eigenvalue, its null-space vector, and the convergence
+        diagnostics.
     """
     c_anchor = v0.conj()
     scale = c_anchor @ v0  # ‖v0‖² for a unit-norm input, so real and positive
@@ -532,5 +546,9 @@ def newton_refine(
             break
 
     return RefinedMode(
-        eigenvalue=lam, converged=converged, step=step, cond_jacobian=cond_j
+        eigenvalue=lam,
+        converged=converged,
+        step=step,
+        cond_jacobian=cond_j,
+        vector=v,
     )

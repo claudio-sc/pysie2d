@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from conftest import QNM_N_CORE, RAD
-from pysie2d import Geometry, Material, QNMSolver
+from pysie2d import BIESolver, Geometry, Material, QNMSolver
 
 # Anchors from the Phase-1 table in test_mie_qnm.py, vacuum nm.
 # TE n=0: simple (multiplicity 1), but crowded in Re λ — TE n=5 sits at
@@ -427,3 +427,43 @@ def test_refine_flags_degenerate_pole(te_degenerate):
     # Bit-identical, not merely close: the Newton step was discarded, not taken
     # and found small. A "close" assertion would pass on a step that was taken.
     assert np.array_equal(refined.wavelengths, te_degenerate.wavelengths)
+    # The vectors are discarded with the wavelength. Polishing them would be
+    # worse than useless here: with a two-dimensional null space the pair is
+    # only defined up to a rotation within it, so a "polished" partner could
+    # silently duplicate the other one.
+    assert np.array_equal(refined.vectors, te_degenerate.vectors)
+
+
+def test_refine_polishes_the_mode_vector(te_simple, te_simple_refined):
+    """A refined result must not disagree with itself.
+
+    Before this, refine() moved λ onto the singularity and left ``vectors``
+    where the contour put them, so ``sigma_ratio`` reported 1e-16 — the
+    operator *is* singular there — while the mode vector could only
+    demonstrate 1e-8. Polishing the pair together closes that: the residual
+    falls from 5.7e-8 to 3.3e-16 *(measured)*.
+
+    Columns stay unit-norm, and stay in the gauge the contour set: the Newton
+    anchor conj(v0)·v = 1 fixes the phase against the input vector, so
+    renormalising by a positive real cannot rotate it. Without that, columns
+    from modes() and refine() would not be comparable.
+    """
+    bie = BIESolver(te_simple.geometry, te_simple.material)
+
+    def residual(lam, v):
+        m = bie.assemble(lam)
+        return np.linalg.norm(m @ v) / (np.linalg.norm(m, 2) * np.linalg.norm(v))
+
+    v_before = te_simple.vectors[:, 0]
+    v_after = te_simple_refined.vectors[:, 0]
+
+    assert residual(te_simple.wavelengths[0], v_before) > 1.0e-9
+    assert residual(te_simple_refined.wavelengths[0], v_after) < 1.0e-13
+
+    assert np.linalg.norm(v_after) == pytest.approx(1.0)
+    # <v_before, v_after> = 1, not merely |<v_before, v_after>| = 1. The
+    # modulus alone is phase-blind and would pass on any gauge; requiring the
+    # inner product itself to be +1 is what pins the phase. A vector recomputed
+    # from an SVD of M(λ) would satisfy every assertion above and fail this
+    # one, which is the whole reason the Newton iterate is the one kept.
+    assert abs(np.vdot(v_before, v_after) - 1.0) < 1.0e-6

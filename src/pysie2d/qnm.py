@@ -195,13 +195,16 @@ class QNMResult:
             else; ``converged`` and ``cond_jacobian`` are filled in;
             ``multiplicity``, ``sigma_ratio`` and ``edge_margin`` are
             recomputed at the new wavelengths so no diagnostic describes a
-            wavelength that is no longer in the result. ``vectors`` are carried
-            through **unpolished** — :func:`pysie2d.beyn.newton_refine` returns
-            the eigenvalue but not the null-space vector it moved alongside it,
-            and a mode field is not normalised here anyway (D4).
+            wavelength that is no longer in the result. ``vectors`` are
+            polished alongside their wavelengths — the bordered system solves
+            for the pair jointly — and renormalised to unit columns in the
+            gauge the contour estimate set. Degenerate modes keep their contour
+            vectors untouched, along with their wavelengths. Unit-norm is still
+            not a *mode* normalisation: a QNM norm remains out of scope (D4).
         """
         bie = BIESolver(self.geometry, self.material)
         lams = self.wavelengths.copy()
+        vectors = self.vectors.copy()
         converged = np.zeros(self.n_modes, dtype=bool)
         cond_jacobian = np.full(self.n_modes, np.nan)
 
@@ -226,10 +229,24 @@ class QNMResult:
                 continue
             lams[k] = polished.eigenvalue
             converged[k] = polished.converged
+            # newton_refine normalises to its anchor, conj(v0)·v = 1, while
+            # these columns are unit. Rescaling by a positive real does not
+            # touch the phase, so the polished column keeps the gauge the
+            # contour estimate set and the two stay comparable.
+            #
+            # The division is a no-op on every path reachable today: beyn_modes
+            # emits unit columns, which makes the anchor scale 1. It is kept
+            # because "unit columns" is this class's documented contract and
+            # the alternative is an unstated dependency on two other modules'
+            # conventions agreeing. Not covered by a test for the same reason
+            # it is a no-op — test_beyn's scaled-input case is what shows the
+            # two normalisations are genuinely different constraints.
+            vectors[:, k] = polished.vector / np.linalg.norm(polished.vector)
 
         return replace(
             self,
             wavelengths=lams,
+            vectors=vectors,
             multiplicity=_multiplicity(lams),
             sigma_ratio=np.array([_sigma_ratio(bie, lam) for lam in lams]),
             edge_margin=_edge_margin(lams, self.z_lo, self.z_hi),

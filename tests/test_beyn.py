@@ -376,3 +376,52 @@ def test_beyn_poles_requires_the_cancellation_diagnostic():
     assert cancellation > EMPTY_CANCELLATION
     with pytest.raises(ValueError, match="saturated"):
         beyn_poles(a0, a1, cancellation, Z_LO, Z_HI)
+
+
+def test_newton_refine_polishes_the_vector_with_the_eigenvalue():
+    """The bordered system solves for (v, λ) jointly, so both must come back.
+
+    Returning λ alone would hand the caller a vector one Newton step staler
+    than the wavelength beside it — an internally inconsistent pair, where the
+    eigenvalue claims a singularity the vector cannot demonstrate. On the
+    coarse nonlinear pencil the stale vector leaves a residual of 3.8e-10 at
+    the refined λ while the polished one reaches 3.4e-17 *(measured)*, seven
+    orders apart.
+
+    The residual is normalised by ‖M‖ and ‖v‖ so it measures direction, not
+    the arbitrary scale of either.
+    """
+    exact = 2.0 + 0.1j
+    m_builder, dm_builder = make_pencil([exact], nonlinear=True)
+    coarse = beyn_modes(m_builder, Z_LO, Z_HI, n_quad_per_side=3)
+    v0 = coarse.vectors[:, 0]
+
+    refined = newton_refine(
+        m_builder, dm_builder, coarse.eigenvalues[0], v0, Z_LO, Z_HI
+    )
+
+    def residual(lam, v):
+        m = m_builder(lam)
+        return np.linalg.norm(m @ v) / (np.linalg.norm(m, 2) * np.linalg.norm(v))
+
+    stale = residual(refined.eigenvalue, v0)
+    polished = residual(refined.eigenvalue, refined.vector)
+    # A factor of 1e3 is four decades inside the seven measured, so this fails
+    # on a vector that was returned unpolished but not on ordinary variation.
+    assert polished < stale / 1.0e3
+
+    # The documented normalisation: anchored, conj(v0)·v = 1, not unit length.
+    # A caller renormalising to unit columns depends on this being the
+    # constraint that is enforced *(measured exactly 1.0 here)*.
+    assert abs(np.vdot(v0, refined.vector) - 1.0) < 1.0e-9
+
+    # The two normalisations coincide only because beyn_modes hands out unit
+    # columns. Feeding a scaled vector separates them — the anchor still holds
+    # while the length does not — which is why a caller wanting unit columns
+    # must divide rather than assume. Without this case the division in
+    # QNMResult.refine would be untestable through any public path.
+    scaled = newton_refine(
+        m_builder, dm_builder, coarse.eigenvalues[0], 3.0 * v0, Z_LO, Z_HI
+    )
+    assert abs(np.vdot(3.0 * v0, scaled.vector) - 1.0) < 1.0e-9
+    assert abs(np.linalg.norm(scaled.vector) - 1.0) > 0.1
