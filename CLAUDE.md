@@ -87,11 +87,20 @@ minimalism pass will read them as duplication.
 
 ## Performance shape
 
-The one structural win is **factorise once, solve many** where `M(λ)` is
-independent of the right-hand side: `relative_ldos_map` LU-factorises once and
-reuses across all source positions. The mirror trap is "optimising" a loop where
-`M` genuinely changes each iteration — a wavelength sweep has nothing to reuse.
-Everything else is a serial `for` loop by design; a single wavelength at
+**This is a special-function-bound code.** At complex λ,
+`scipy.special.hankel1` is 98 % of one assembly and 95 % of a whole
+`QNMSolver.modes()` call; dense linear algebra is 2 %. Optimise anything else and
+you are optimising 2 % of the runtime. `hankel1` also **releases the GIL**, so
+threading a loop of assemblies is a real 5× and `multiprocessing` is strictly
+worse. Numbers, and the rejected alternatives, in
+[docs/design/performance.md](docs/design/performance.md) — read it before
+optimising.
+
+The one structural win on the driven side is **factorise once, solve many** where
+`M(λ)` is independent of the right-hand side: `relative_ldos_map` LU-factorises
+once and reuses across all source positions. The mirror trap is "optimising" a
+loop where `M` genuinely changes each iteration — a wavelength sweep has nothing
+to reuse, and the win there is concurrency, not reuse. A single wavelength at
 `nn = 300` is sub-second.
 
 ## Roadmap
