@@ -210,6 +210,29 @@ def test_primitives_take_a_wavenumber_not_a_wavelength():
     assert np.allclose(rhs[geom.n_pts :], 0.0)
 
 
+@pytest.mark.parametrize("wavelength", [600.0, 600.0 + 40.0j])
+def test_assemble_derivative_applies_the_wavelength_chain_factor(circle, wavelength):
+    # kernels.assemble_matrix_dwn differentiates with respect to k_bg, and
+    # BIESolver.assemble_derivative is the single place the chain factor
+    # dk/dλ = −k/λ is applied. Differencing `assemble` — the façade method that
+    # takes a vacuum wavelength — is what makes this test see the whole chain:
+    # n_clad = 1.3 so a factor of n_clad dropped from k gives a 23 % error, and
+    # the minus sign is the difference between 9e-8 and 2.0.
+    geom = circle(64)
+    mat = Material(n_core=N_CORE, n_clad=1.3, pol=2)
+    solver = BIESolver(geom, mat)
+
+    dm = solver.assemble_derivative(wavelength)
+    h = 1e-4 * abs(wavelength)
+    fd = (solver.assemble(wavelength + h) - solver.assemble(wavelength - h)) / (2.0 * h)
+
+    # Measured 9.0e-8 (real λ) and 9.4e-8 (complex λ); the bound sits ~10×
+    # above, and the residual is the O(h²) truncation of the difference, not
+    # the derivative. Order 2 in h is asserted in test_kernels.py, on the
+    # wavenumber derivative this one wraps.
+    assert np.max(np.abs(fd - dm)) / np.max(np.abs(dm)) < 1e-6
+
+
 def test_size_parameter_is_referred_to_the_cladding(circle):
     geom = circle(64)
     mat = Material(n_core=N_CORE, n_clad=1.3)
