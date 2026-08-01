@@ -154,7 +154,7 @@ divergence of `H₀^{(1)}` lives in its imaginary part; with the `i/4` prefactor
 the imaginary part of `g₀` tends to `J₀(0)/4 = 1/4`), giving
 `relative_ldos = 1 + 4·Im(S)`.
 
-## 8. The quasi-normal-mode half-plane (v0.5)
+## 8. The quasi-normal-mode half-plane (v0.4)
 
 A quasi-normal mode is a source-free solution: a complex wavelength where
 `M(λ)` is singular. `QNMSolver.modes` searches a **rectangle in complex λ**,
