@@ -242,9 +242,10 @@ has nothing to do with Beyn. TE `n=3` at `760.69 + 7.95j` is far more forgiving.
 1. `CHANGELOG.md` holds a stale `## Unreleased / Performance` block describing
    work already in v0.3.0, with the hand-written breaking-change section above
    it. Semantic-release inserts rather than folds. Reconcile after 0.4.0 cuts.
-2. `figures/purcell_map.png` is stale in git — pre- and post-change code
-   regenerate an identical md5 that differs from the committed file, so it
-   predates this work. Regeneration is deterministic.
+2. ~~`figures/purcell_map.png` is stale in git.~~ **Closed 2026-08-08.** The
+   committed file predated the code; regeneration was re-confirmed
+   deterministic (two consecutive runs, identical md5, differing from the
+   committed blob) and the current output is now committed.
 3. `Material.nc` is wrong for gain (`epsi < 0`): the principal-root closed form
    reconstructs `Im nc` from `|eps|`, returning a lossy index and `nc² ≠ eps`.
    Pre-existing; docstring and test scope the identity to passive materials.
