@@ -1,7 +1,7 @@
 """Self-Green function and local density of states (LDOS / Purcell effect).
 
-A line-dipole source at ``r_s`` radiates the free-space field
-``ψ_inc(r) = (i/4)·H₀^{(1)}(k·|r − r_s|)``. Solving the BIE with this incident
+A line-dipole source at ``r_s`` radiates the homogeneous-background field
+``ψ_inc(r) = (i/4)·H₀^{(1)}(k_bg·|r − r_s|)``. Solving the BIE with this incident
 field and evaluating the *scattered* field back at the source gives the
 self-Green function ``S(r_s, r_s, ω)`` — how strongly the environment scatters
 the emitter's own field onto itself. ``Im S`` sets the environment-modified
@@ -34,7 +34,7 @@ def self_green(
 
     Args:
         solver: Configured BIE solver (geometry + material).
-        wavelength: Free-space wavelength (nm).
+        wavelength: **Vacuum** wavelength (nm).
         x_s: Source x-coordinate (nm).
         z_s: Source z-coordinate (nm).
 
@@ -52,24 +52,29 @@ def relative_ldos(
     x_s: float,
     z_s: float,
 ) -> float:
-    """Local density of states relative to free space.
+    """Local density of states relative to the homogeneous background.
 
     Derivation of the normalisation. As ``z → 0``,
     ``H₀^{(1)}(z) → 1 + (2i/π)·ln(z)``: the log divergence sits in the
     imaginary part, while the real part tends to ``J₀(0) = 1``. With the
     ``i/4`` prefactor of the 2-D Green function, ``Im[g₀(r→r)] = 1/4``. The
-    LDOS relative to free space is therefore
+    LDOS relative to the unbounded background is therefore
 
         relative_ldos = 1 + Im(S) / Im(g₀_self) = 1 + 4·Im(S).
 
+    The reference is the **background**, not vacuum: ``Im[g₀(r→r)] = 1/4``
+    independently of ``k``, so at ``n_clad ≠ 1`` a value of 1 means "as in the
+    unbounded cladding". See ``docs/conventions.md`` §6.
+
     Args:
         solver: Configured BIE solver (geometry + material).
-        wavelength: Free-space wavelength (nm).
+        wavelength: **Vacuum** wavelength (nm).
         x_s: Source x-coordinate (nm).
         z_s: Source z-coordinate (nm).
 
     Returns:
-        The relative LDOS (1.0 in free space; > 1 for enhancement).
+        The relative LDOS (1.0 in the unbounded background; > 1 for
+        enhancement).
     """
     return 1.0 + 4.0 * self_green(solver, wavelength, x_s, z_s).imag
 
@@ -107,7 +112,7 @@ def relative_ldos_map(
 
     Args:
         solver: Configured BIE solver (geometry + material).
-        wavelength: Free-space wavelength (nm).
+        wavelength: **Vacuum** wavelength (nm).
         x_pts: Source x-coordinates (nm), any shape.
         z_pts: Source z-coordinates (nm), same shape as x_pts.
 
@@ -132,7 +137,9 @@ def relative_ldos_map(
     zf = z_arr.ravel()
     out = np.full(xf.shape, np.nan)
 
-    wnum = _real_if_real(2.0 * np.pi / wavelength)
+    # `assemble` converts the vacuum wavelength internally; this local copy is
+    # the same background wavenumber, built from the same single conversion.
+    wnum_bg = _real_if_real(solver.material.wnum_bg(wavelength))
     lu = lu_factor(solver.assemble(wavelength))
 
     # Geometry-only quantities, hoisted out of the per-point work.
@@ -163,7 +170,7 @@ def relative_ldos_map(
             continue
 
         # One BLAS-3 back-substitution for every valid source in the chunk.
-        arg = wnum * dist[valid]  # (m_valid, nn), real -> Cephes path
+        arg = wnum_bg * dist[valid]  # (m_valid, nn), real -> Cephes path
         h0 = hank0(arg)
         h1 = hank1(arg)
         rhs = np.zeros((2 * nn, arg.shape[0]), dtype=complex)
@@ -173,7 +180,7 @@ def relative_ldos_map(
         # Representation formula, each source evaluated at its own position.
         arg2 = (-dg[None, :] * xmf + df[None, :] * zmg)[valid]
         integrand = (
-            wnum**2 * arg2 * (h1 / arg) * eis[:nn, :].T - h0 * eis[nn:, :].T
+            wnum_bg**2 * arg2 * (h1 / arg) * eis[:nn, :].T - h0 * eis[nn:, :].T
         ) * dl[None, :]
         field = (1j / 4.0) * integrand.sum(axis=1)
         out[np.flatnonzero(valid) + lo] = 1.0 + 4.0 * field.imag

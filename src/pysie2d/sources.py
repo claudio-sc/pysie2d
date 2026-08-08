@@ -10,9 +10,6 @@ import numpy as np
 
 from .kernels import hank0
 
-PI = np.pi
-
-
 # ---------------------------------------------------------------------------
 # Incident plane-wave RHS  (subroutine ein)
 # ---------------------------------------------------------------------------
@@ -21,7 +18,7 @@ PI = np.pi
 def plane_wave_rhs(
     nn: int,
     titad: float,
-    lambd: float,
+    wnum_bg: complex,
     f: np.ndarray,
     g: np.ndarray,
 ) -> np.ndarray:
@@ -32,19 +29,21 @@ def plane_wave_rhs(
     Args:
         nn: Number of boundary points.
         titad: Incidence angle (degrees).
-        lambd: Wavelength (nm).
+        wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), where
+            λ_vac is the public **vacuum** wavelength. Build it with
+            :meth:`pysie2d.material.Material.wnum_bg`; this function takes no
+            wavelength, so the vacuum conversion cannot be applied twice.
         f: (nn,) boundary x coordinates (nm).
         g: (nn,) boundary z coordinates (nm).
 
     Returns:
-        ei: complex (2*nn,) with ei[:nn] = exp(i k (f sinθ − g cosθ)) and
+        ei: complex (2*nn,) with ei[:nn] = exp(i k_bg (f sinθ − g cosθ)) and
             ei[nn:] = 0.
     """
     theta = np.deg2rad(titad)
-    wnum = 2.0 * PI / lambd
     fb = f * np.sin(theta) - g * np.cos(theta)
     ei = np.zeros(2 * nn, dtype=complex)
-    ei[:nn] = np.exp(1j * wnum * fb)
+    ei[:nn] = np.exp(1j * wnum_bg * fb)
     return ei
 
 
@@ -83,7 +82,7 @@ def _point_inside(x_s: float, z_s: float, f: np.ndarray, g: np.ndarray) -> bool:
 
 def line_dipole_rhs(
     nn: int,
-    wavelength: float,
+    wnum_bg: complex,
     f: np.ndarray,
     g: np.ndarray,
     x_s: float,
@@ -91,21 +90,24 @@ def line_dipole_rhs(
 ) -> np.ndarray:
     """Right-hand side for a line-dipole (2-D point) source at (x_s, z_s).
 
-    The source radiates the free-space field
-    ``ψ_inc(r) = (i/4)·H₀^{(1)}(k·|r − r_s|)``, i.e. the 2-D free-space Green
-    function ``g₀``. Mirrors :func:`plane_wave_rhs`: only the φ half
-    ``ei[:nn]`` is populated, the χ half ``ei[nn:]`` stays zero.
+    The source radiates the background field
+    ``ψ_inc(r) = (i/4)·H₀^{(1)}(k_bg·|r − r_s|)``, i.e. the 2-D homogeneous-
+    background Green function ``g₀``. Mirrors :func:`plane_wave_rhs`: only the
+    φ half ``ei[:nn]`` is populated, the χ half ``ei[nn:]`` stays zero.
 
     Args:
         nn: Number of boundary points.
-        wavelength: Wavelength (nm).
+        wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), where
+            λ_vac is the public **vacuum** wavelength. Build it with
+            :meth:`pysie2d.material.Material.wnum_bg`; this function takes no
+            wavelength, so the vacuum conversion cannot be applied twice.
         f: (nn,) boundary x coordinates (nm).
         g: (nn,) boundary z coordinates (nm).
         x_s: Source x-coordinate (nm).
         z_s: Source z-coordinate (nm).
 
     Returns:
-        ei: complex (2*nn,) with ei[:nn] = 0.25j·H₀^{(1)}(k·dist) and
+        ei: complex (2*nn,) with ei[:nn] = 0.25j·H₀^{(1)}(k_bg·dist) and
             ei[nn:] = 0, where ``dist`` is the source-to-boundary distance.
 
     Raises:
@@ -127,7 +129,6 @@ def line_dipole_rhs(
             f"({5.0 * spacing:.3g} nm) of the surface; move it farther out"
         )
 
-    wnum = 2.0 * PI / wavelength
     ei = np.zeros(2 * nn, dtype=complex)
-    ei[:nn] = 0.25j * hank0(wnum * dist)
+    ei[:nn] = 0.25j * hank0(wnum_bg * dist)
     return ei

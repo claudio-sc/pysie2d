@@ -455,6 +455,24 @@ class Geometry:
         """Number of boundary quadrature points."""
         return len(self.f)
 
+    @property
+    def is_circle(self) -> bool:
+        """True if every boundary point sits at ``rad`` from the centre.
+
+        Tested numerically rather than from the Gielis ``m`` parameter, so it
+        also answers for a Geometry built directly from externally supplied
+        arrays. The tolerance is ``1e-12`` relative — the circle branch of the
+        superformula sets ``r = rad`` in closed form (``arg = 0`` makes
+        ``co = 1``, ``se = 0``), so the deviation is rounding, not discretisation,
+        and anything larger is a genuinely non-circular shape.
+
+        Only a circle has a size parameter. Several Gielis parameter sets give
+        one — ``m = 0``, and also ``n1 = n2 = n3 = 2`` at any ``m`` — which is
+        why this is a numerical test rather than a check on ``m``.
+        """
+        r = np.hypot(self.f - self.x0, self.g - self.z0)
+        return bool(np.all(np.abs(r - self.rad) <= 1e-12 * self.rad))
+
     @classmethod
     def gielis(
         cls,

@@ -1,9 +1,5 @@
 # pysie2d
 
-A 2-D surface-integral-equation (Müller BIE) solver for time-harmonic EM
-scattering from a single smooth cylinder in a homogeneous background. Public,
-MIT, CI-gated, validated against analytic Mie theory.
-
 ## Read first
 
 [docs/conventions.md](docs/conventions.md). Every gotcha in this solver traces
@@ -11,20 +7,18 @@ back to a convention listed there — read it before reading code. When a change
 pins a *new* convention (a sign, a normalisation, a layout), record it there in
 the same change.
 
-## Commands
-
-```bash
-uv sync                       # environment
-uv run pytest                 # validation suite
-uv run ruff format --check .  # formatting
-uv run ruff check .           # lint
-uv run python examples/convergence_study.py   # regenerate figures
-uv run python examples/nearfield_map.py
-uv run python examples/purcell_map.py
-```
+## Dependencies
 
 Python 3.12+, uv, numpy + scipy only. **Adding a runtime dependency is a scope
 decision** — raise it, don't just add it.
+
+**Touching `[project].dependencies` means running `uv lock` in the same commit.**
+Both workflows install with `uv sync --locked`, which fails on a lockfile that
+disagrees with `pyproject.toml` rather than quietly installing the stale
+resolution. `uv.lock` also pins the package's *own* version; semantic-release
+stamps that at release time (`build_command = "uv lock --offline"`, with
+`uv.lock` in `assets`), so never bump that line by hand — it used to drift a
+release behind and get corrected after the fact.
 
 ## Non-negotiables
 
@@ -35,10 +29,25 @@ decision** — raise it, don't just add it.
    Never simplify a path to real-only arithmetic, however dead the complex
    branch looks.
 2. **Conventions are fixed.** `pol = 2` → TE (`E_y`, Mie `b_n`, `Q_*_TE`);
-   `pol = 1` → TM (`H_y`, `a_n`, `Q_*_TM`). Lengths in nm, `k = 2π/λ` in rad/nm.
-   Time convention `exp(-iωt)`, outgoing waves `H_n^{(1)}`. `ei[:nn]` = φ,
-   `ei[nn:]` = χ. `Geometry.g` is a z-coordinate array, **not** a Green function.
-   Self-Green sign `SIGN = -1`; `relative_ldos = 1 + 4·Im S`.
+   `pol = 1` → TM (`H_y`, `a_n`, `Q_*_TM`). Lengths in nm. Time convention
+   `exp(-iωt)`, outgoing waves `H_n^{(1)}`. `ei[:nn]` = φ, `ei[nn:]` = χ.
+   `Geometry.g` is a z-coordinate array, **not** a Green function. Self-Green
+   sign `SIGN = -1`; `relative_ldos = 1 + 4·Im S`.
+
+   **Wavelengths are vacuum, wavenumbers are background** (conventions §2).
+   Public methods take `wavelength` = λ_vac in nm; low-level primitives take
+   `wnum_bg = 2π·n_clad/λ_vac` and **no wavelength at all**, so the conversion
+   — `Material.wnum_bg` — happens exactly once per call path. Never give a
+   primitive a wavelength parameter back: façade methods call each other, and
+   two conversion points means `n_clad` applied twice. `Material.epsi` is
+   **absolute**; `nc` and `eps` are background-relative. Size parameter
+   `x = 2π·n_clad·rad/λ_vac` is derived-only and circle-only.
+
+   **QNM half-plane** (conventions §8): `Im λ > 0` for decaying modes and
+   `Re λ > 0` to keep Hankel arguments off the `H^{(1)}` branch cut — both
+   asserted, because holomorphy is the premise of the contour argument.
+   `Q = Re λ / (2 Im λ)`. Poles do **not** come in conjugate pairs; the reality
+   condition is `λ → −λ̄`.
 3. **New physics needs an independent validation anchor.** A closed form, an
    analytic limit, or a second method — not agreement between two paths in this
    repo, which only proves they share assumptions. The package's stated scope is
@@ -52,10 +61,9 @@ decision** — raise it, don't just add it.
 
 ## Style
 
-- Google-style docstrings with `Args`/`Returns`/`Raises`; ruff `D`, `N`, `E`,
-  `F`, `B`, `I`, `C4`, `A` are on, line length 88. Per-file ignores exist for
-  math notation (`reference/mie.py` keeps `J_n`/`H_n`) — extend that list rather
-  than renaming physics.
+- Google-style docstrings with `Args`/`Returns`/`Raises`. Per-file ruff ignores
+  exist for math notation (`reference/mie.py` keeps `J_n`/`H_n`) — extend that
+  list rather than renaming physics.
 - Unicode in docstrings and comments is welcome here (φ, χ, λ, `H₀^{(1)}`); it
   makes the formulation readable against the cited papers.
 - Comments explain *why the physics or numerics demands this*, not what the line
@@ -70,26 +78,8 @@ decision** — raise it, don't just add it.
 
 ## Figures
 
-The three `examples/` scripts generate the README figures, and they are part of
-the package's public face. **Load the `dataviz` skill before writing or changing
-any plotting code** — take its color formula, accessibility checks, and mark
-specs; ignore the dashboard/KPI material, which does not apply here.
-
-Conventions specific to these figures:
-
-- `purcell_map` is **diverging around a physically meaningful midpoint**
-  (`relative_ldos = 1`, the free-space value). Enhancement and suppression must
-  be visually symmetric about it, and the midpoint must be pinned — an
-  auto-scaled diverging colormap that centres on the data mean is wrong here.
-- `nearfield_map` is sequential magnitude data; use a perceptually uniform
-  colormap, not `jet`.
-- `convergence_study` is log-log error vs `nn` for both polarisations. If a
-  convergence *order* is being claimed, show the reference slope.
-- Masked regions (the NaNs `relative_ldos_map` returns inside and near the
-  particle) must read as "no data", visually distinct from a low value.
-- Axes carry units (nm). Both polarisations should be distinguishable without
-  relying on colour alone.
-- `MPLBACKEND=Agg` in CI; figures must render headless.
+The three `examples/` scripts generate the README figures. Their conventions
+live in [examples/CLAUDE.md](examples/CLAUDE.md).
 
 ## Review
 
@@ -105,18 +95,28 @@ minimalism pass will read them as duplication.
 
 ## Performance shape
 
-The one structural win is **factorise once, solve many** where `M(λ)` is
-independent of the right-hand side: `relative_ldos_map` LU-factorises once and
-reuses across all source positions. The mirror trap is "optimising" a loop where
-`M` genuinely changes each iteration — a wavelength sweep has nothing to reuse.
-Everything else is a serial `for` loop by design; a single wavelength at
+**This is a special-function-bound code.** At complex λ,
+`scipy.special.hankel1` is 98 % of one assembly and 95 % of a whole
+`QNMSolver.modes()` call; dense linear algebra is 2 %. Optimise anything else and
+you are optimising 2 % of the runtime. `hankel1` also **releases the GIL**, so
+threading a loop of assemblies is a real 5× and `multiprocessing` is strictly
+worse. Numbers, and the rejected alternatives, in
+[docs/design/performance.md](docs/design/performance.md) — read it before
+optimising.
+
+The one structural win on the driven side is **factorise once, solve many** where
+`M(λ)` is independent of the right-hand side: `relative_ldos_map` LU-factorises
+once and reuses across all source positions. The mirror trap is "optimising" a
+loop where `M` genuinely changes each iteration — a wavelength sweep has nothing
+to reuse, and the win there is concurrency, not reuse. A single wavelength at
 `nn = 300` is sub-second.
 
 ## Roadmap
 
 v0.1 core scattering → v0.2 line dipole, self-Green, LDOS/Purcell → v0.3
-performance (real-argument Hankel fast path, batched `relative_ldos_map`) →
-**v0.4 QNM extraction via Beyn's contour method, validated against analytic Mie
+performance (Cephes Hankel fast path, batched factorise-once
+`relative_ldos_map`) → **v0.4 vacuum wavelength conventions (breaking) + QNM
+extraction via Beyn's contour method, validated against analytic Mie
 resonances.** Longer term: slab-waveguide backgrounds, multiple particles.
 
 ## How to work here
