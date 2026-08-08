@@ -106,10 +106,10 @@ to reuse, and the win there is concurrency, not reuse. A single wavelength at
 ## Roadmap
 
 v0.1 core scattering → v0.2 line dipole, self-Green, LDOS/Purcell → v0.3
-performance (Cephes Hankel fast path, factorise-once LDOS maps) → **v0.4 vacuum
-wavelength conventions (breaking) + QNM extraction via Beyn's contour method,
-validated against analytic Mie resonances.** Longer term: slab-waveguide
-backgrounds, multiple particles.
+performance (Cephes Hankel fast path, batched factorise-once
+`relative_ldos_map`) → **v0.4 vacuum wavelength conventions (breaking) + QNM
+extraction via Beyn's contour method, validated against analytic Mie
+resonances.** Longer term: slab-waveguide backgrounds, multiple particles.
 
 ## How to work here
 

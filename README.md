@@ -184,11 +184,21 @@ The system is a dense `2nn × 2nn` complex matrix; at `nn = 300` (a `600 × 600`
 solve) a single wavelength takes below one second in a modern computer, so wavelength
 sweeps are cheap serial `for` loops — no parallelism required.
 
+Matrix assembly dominates a single solve, and almost all of that cost is Hankel
+evaluation. For real arguments `H_n^{(1)} = J_n + i·Y_n` exactly, and the Cephes
+`J_n`/`Y_n` kernels are an order of magnitude faster than the general
+complex-argument algorithm — so `hank0`/`hank1`/`cbesh` dispatch on the argument
+at runtime, making `assemble_matrix` about 5× faster for a non-absorbing
+particle and 1.8× for an absorbing one. Complex wavenumbers take the original
+path and are bit-identical, which is what keeps quasi-normal-mode work possible.
+
 For a Purcell map, every grid point is a different source position, hence a
 different right-hand side — but the matrix `M(λ)` is the same for all of them.
 `relative_ldos_map` therefore factorises `M` **once** with
-`scipy.linalg.lu_factor` and reuses it across all sources (`lu_solve`), turning
-what would be an hour-long sweep into a few seconds.
+`scipy.linalg.lu_factor` and reuses it across all sources, and it batches the
+reuse: one multi-RHS BLAS-3 `lu_solve` and one vectorised representation-formula
+evaluation per chunk rather than a per-point loop (7.5× per source point). What
+would be an hour-long sweep takes seconds.
 
 ## Roadmap
 
@@ -197,7 +207,7 @@ what would be an hour-long sweep into a few seconds.
 - **v0.2.0** — line-dipole (point-source) excitation and the self-Green
   function → relative LDOS / Purcell maps.
 - **v0.3.0** — performance: Cephes fast path for real-argument Hankel
-  functions, factorise-once/solve-many for LDOS maps.
+  functions and a batched, factorise-once `relative_ldos_map`.
 - **v0.4.0** — vacuum-wavelength and background-index conventions (breaking),
   and quasi-normal-mode extraction via Beyn's contour method, validated
   against analytic Mie resonances. _(this release)_
