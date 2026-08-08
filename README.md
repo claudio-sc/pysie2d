@@ -9,9 +9,11 @@ against analytic Mie theory, with a typed public API and CI.
 
 This package is distilled from a larger private research code; it deliberately
 covers only the **homogeneous-background, single-particle core** — the part
-that can be validated end-to-end against a closed-form reference. Potential extensions
-in the mid/long-term include slab waveguide backgrounds, multiple-particle simulations,
-and quasinormal-mode searches based on the surface-integral matrix operator.
+that can be validated end-to-end against a closed-form reference. That core now
+includes quasi-normal-mode extraction from the surface-integral operator
+(see [Quasi-normal modes](#quasi-normal-modes)). Potential extensions in the
+mid/long-term include slab waveguide backgrounds and multiple-particle
+simulations.
 
 ## Figures
 
@@ -34,12 +36,31 @@ entry point of quantum-dynamics calculations downstream:
 
 ![Purcell map](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/purcell_map.png)
 
+Quasi-normal modes of a circular cylinder in the complex wavelength plane,
+extracted from seven search boxes and plotted over the analytic Mie poles of the
+same cylinder (open marks analytic, filled extracted). The axes are log-log so
+that each iso-`Q` contour is a straight line, since `Q = Re λ / (2 Im λ)`:
+
+![QNM spectrum](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/qnm_spectrum.png)
+
+The same physics, one contour. A single rectangle spanning 600 nm of `Re λ`
+returns **all eleven** TE modes inside it — counting the doubly degenerate pairs
+— from one call and 128 matrix assemblies. Beyn's method costs
+`4·n_quad_per_side` assemblies *whatever* is inside the contour, so eleven modes
+cost no more than one; only the probe count has to exceed the mode count. Grey
+marks are poles outside the box (three of them leak a rank direction in, hence
+`rank = 14` against 11 modes):
+
+![Wide-window QNM extraction](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/qnm_wide_window.png)
+
 Regenerate them with:
 
 ```bash
 uv run python examples/convergence_study.py
 uv run python examples/nearfield_map.py
 uv run python examples/purcell_map.py
+uv run python examples/qnm_spectrum.py
+uv run python examples/qnm_wide_window.py
 ```
 
 ## Formulation (summary)
@@ -85,6 +106,14 @@ converges at first order in `nn`, so it is run at `nn = 1000` to reach `1 %`;
 the resolved scattered-field sign convention is recorded in
 [docs/conventions.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md).
 
+Quasi-normal-mode extraction (v0.4) is anchored the same way, in three
+independent layers: the analytic Mie poles are located first and their
+completeness checked against a winding-number count; the contour algorithm is
+checked on synthetic matrix pencils with known spectra; and only then is the
+composition tested — that the BIE operator's singularities *are* the Mie poles,
+to within its discretisation error and nothing more. That error converges at
+first order in `nn`, in both `Re λ` and `Im λ`.
+
 ## Install / run / test
 
 Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
@@ -118,6 +147,36 @@ solver = BIESolver(geom, Material(n_core=2.0))
 # wavelength is vacuum nm; the LDOS is relative to the unbounded background
 print(relative_ldos(solver, wavelength=540.0, x_s=430.0, z_s=0.0))
 ```
+
+## Quasi-normal modes
+
+A quasi-normal mode is a source-free solution: a complex wavelength where the
+boundary-integral operator `M(λ)` is singular. `QNMSolver` finds **every** mode
+inside a rectangle of the complex λ-plane by contour integration (Beyn's
+method) — no initial guess and no scan, at a cost independent of how many modes
+are inside.
+
+```python
+from pysie2d import Geometry, Material, QNMSolver
+
+geom = Geometry.gielis(rad=200, n_pts=200, m=0)
+mat = Material(n_core=3.0, n_clad=1.0, pol=2)             # TE
+res = QNMSolver(geom, mat).modes(745 + 2j, 775 + 15j)     # box corners, vacuum nm
+
+print(res.wavelengths)      # 760.326 + 7.770j, twice — a degenerate pair
+print(res.quality_factors)  # Q = Re λ / (2 Im λ)
+print(res.edge_margin)      # contour-quality diagnostic; near zero is a warning
+```
+
+Search boxes must lie in `Im λ > 0` (the decaying half-plane under `exp(-iωt)`)
+and `Re λ > 0` (which keeps `M(λ)` holomorphic); both are asserted. Poles do
+**not** come in conjugate pairs here, and every `n ≥ 1` mode of a circle is
+doubly degenerate.
+
+**Read [docs/qnm-guide.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/qnm-guide.md)
+before using this** — it covers how to place a box, how to read the diagnostics,
+what `refine()` does and does not buy you, and the limitations the feature ships
+with.
 
 ## Performance
 
