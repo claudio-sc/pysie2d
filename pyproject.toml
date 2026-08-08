@@ -46,12 +46,12 @@ version_toml = ["pyproject.toml:project.version"]
 # 0.2.0 through the v0.2.1, v0.2.2 and v0.3.0 releases because only pyproject
 # was listed here.
 version_variables = ["src/pysie2d/__init__.py:__version__"]
-# uv.lock pins the root package's own version too, and semantic-release does not
-# stamp it, so it lagged a release behind and was corrected by hand each time.
-# `uv lock --offline` rewrites exactly that one line — no network, no dependency
-# re-resolution — and `assets` puts the result in the release commit.
-build_command = "uv lock --offline"
-assets = ["uv.lock"]
+# No build_command: it runs inside the semantic-release action's own container,
+# which has neither uv nor the runner's PATH, so `uv lock` there exits 127 and
+# aborts the release. `version_variables = ["uv.lock:version"]` is worse — it
+# rewrites *every* `version = "..."` in the lockfile, not just the root package's.
+# Stamping uv.lock therefore needs a command proven to run in that container;
+# until then the lockfile lags one release and CI installs with --frozen.
 commit_parser = "conventional"
 commit_parser_options = { ignore_merge_commits = true }
 major_on_zero = false

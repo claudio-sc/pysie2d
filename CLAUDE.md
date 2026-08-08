@@ -13,12 +13,18 @@ Python 3.12+, uv, numpy + scipy only. **Adding a runtime dependency is a scope
 decision** — raise it, don't just add it.
 
 **Touching `[project].dependencies` means running `uv lock` in the same commit.**
-Both workflows install with `uv sync --locked`, which fails on a lockfile that
-disagrees with `pyproject.toml` rather than quietly installing the stale
-resolution. `uv.lock` also pins the package's *own* version; semantic-release
-stamps that at release time (`build_command = "uv lock --offline"`, with
-`uv.lock` in `assets`), so never bump that line by hand — it used to drift a
-release behind and get corrected after the fact.
+Both workflows install with `uv sync --frozen`, which installs the locked
+resolution *without* checking it against `pyproject.toml`, so a stale lockfile
+stays CI-green and bites someone later.
+
+`uv sync --locked` would assert it instead, but it cannot be switched on until
+the release commit stamps `uv.lock`: semantic-release does not, so after every
+bump the lockfile pins the previous version and `--locked` would fail on main.
+Two fixes that do *not* work, both tried: `build_command = "uv lock"` runs
+inside the semantic-release action's container, which has no `uv` (exit 127,
+release aborted), and `version_variables = ["uv.lock:version"]` rewrites every
+dependency's version, not just the root package's. Re-lock by running `uv lock`
+after a release rather than editing that version line by hand.
 
 ## Non-negotiables
 
