@@ -1,7 +1,12 @@
 # QNM / Beyn port — status and merge gate
 
-Status as of **2026-07-31, end of the convention-fix session**. Branch
+Status as of **2026-08-08, end of the documentation session**. Branch
 `beyn-port`, not merged. Written to be read on its own.
+
+**The whole merge gate of §4 is now closed.** §§4.1, 4.2 and 4.5 shipped on
+2026-08-01; §§4.3 and 4.4 on 2026-08-08. Sections below are updated in place;
+§3's gotchas remain live reading, since they describe the feature rather than
+the work left on it.
 
 This replaces the earlier handoff note of the same name (the one carrying the
 "superseded in part" banner) and folds in `convention-fix-status.md`, which was
@@ -23,12 +28,13 @@ authority — the migration table, the injection-test evidence — it says so.
 
 ## 1. Where the repo actually is
 
-`uv run pytest` → **90 passed in 27 s**, against a **5-minute wall-clock budget**
-for the whole suite (raised 2026-07-31; see §2, Q5). `uv run ruff check .` and
-`ruff format --check .` clean, 26 files. All three `examples/` scripts render
-headless.
+`uv run pytest` → **115 passed in ~20-27 s**, against a **5-minute wall-clock
+budget** for the whole suite (raised 2026-07-31; see §2, Q5). `uv run ruff check
+.` and `ruff format --check .` clean, 28 files. All five `examples/` scripts
+render headless.
 
-Committed on `beyn-port`, ahead of `main` by three commits:
+Committed on `beyn-port`, ahead of `main` by eleven commits. The three that
+carry the port:
 
 - `b9e4817 fix: ongoing Beyn integration` — the port itself: `beyn.py`, `qnm.py`,
   the `reference/mie.py` analytic anchor, the three test files, exports,
@@ -38,11 +44,11 @@ Committed on `beyn-port`, ahead of `main` by three commits:
 - `000a9ca docs: add the Beyn port design record` — spec, strategy, this file,
   the PDF.
 
-**Working tree is not clean.** `CLAUDE.md` is modified and `examples/CLAUDE.md`
-is untracked — the split of the figure conventions into a directory-scoped
-instructions file, plus the removal of the commands block and the duplicated
-one-line description. That is the tidy-up work; it is written but **not
-committed**. Commit it before anything else, or it will be read as scratch.
+Everything after those is the merge-gate work of §4: the `CLAUDE.md` /
+`examples/CLAUDE.md` split, the version story, the analytic derivative and
+`refine()`, and — uncommitted at the time of writing — `docs/qnm-guide.md`,
+`examples/qnm_spectrum.py`, `examples/qnm_wide_window.py`, their two figures,
+and the README's QNM section.
 
 ### Phase status against the spec
 
@@ -52,12 +58,12 @@ committed**. Commit it before anything else, or it will be read as scratch.
 | §3 Phase 1 — analytic anchor | **Done** | `tests/test_mie_qnm.py`, 7 tests |
 | §4 Phase 2 — Beyn on synthetic pencils | **Done** | `tests/test_beyn.py`, 17 tests |
 | §5 Phase 3 — extractor + circle anchor | **Done** | `tests/test_qnm.py`, 16 tests |
-| §6.1 Phase 4 — analytic `dM/dλ` | **Not started — merge blocker** | no `assemble_matrix_dwn`, no `assemble_derivative` |
-| §6.2 Phase 5 — `QNMResult.refine()` | **Half — merge blocker** | `beyn.newton_refine` exists and is tested on synthetic pencils; unreachable from the façade |
+| §6.1 Phase 4 — analytic `dM/dλ` | **Shipped** | `kernels.assemble_matrix_dwn`, `solver.assemble_derivative`; 2 tests in `tests/test_kernels.py` |
+| §6.2 Phase 5 — `QNMResult.refine()` | **Shipped** | `qnm.QNMResult.refine`, `converged` + `cond_jacobian`; 5 tests in `tests/test_qnm.py` |
 | §6.3 — `σ_min` by inverse iteration | **Not started, knowingly** | `qnm._sigma_ratio` does a full SVD and says so |
 | §7 Public API | **Shipped, with drift** | see Gotcha 3 |
-| §11 `examples/qnm_spectrum.py` | **Missing** | `examples/` still has only the three v0.2 scripts |
-| §12 Repo drift | **Unfixed** | see Gotcha 5 — this is now the main merge blocker |
+| §11 `examples/qnm_spectrum.py` | **Shipped, plus one** | seven boxes over both polarisations, and `qnm_wide_window.py` — one contour, eleven modes; both figures in the README |
+| §12 Repo drift | **Fixed** | one version story, v0.4.0 = conventions + QNM; see Gotcha 5 |
 | §13 Open questions | **All six resolved** | Q1, Q2 answered in the spec; Q3–Q6 answered by what shipped, see §2 below |
 
 ### What exists
@@ -135,21 +141,25 @@ are in the `43f7c53` commit message, which is the authoritative copy.
 Ordered by how much damage they do if missed. Gotcha 1 of the previous version
 (the D1 deferral) is resolved and gone; the numbering below is fresh.
 
-### Gotcha 1 — refinement is unreachable today, because the analytic `dM/dλ` was never written *(merge blocker)*
+### Gotcha 1 — `refine()` is insurance, not accuracy, and will be mis-sold if this is forgotten
 
-`beyn.newton_refine` takes `dm_builder: Callable[[complex], np.ndarray]`. The
-algorithm side is complete and tested; the EM side that would supply that
-callable does not exist. So `QNMResult` has no `refine()` and no `converged`
-field, and spec §6.2's three façade tests are unwritten. This also blocks §6.3,
-which wants the LU that refinement would already have formed.
+*(The unreachability half of this gotcha is resolved: `assemble_derivative` and
+`QNMResult.refine()` shipped in §4.2. What remains is the part that keeps
+biting.)*
 
-**This ships before the merge** — §4.2. The one thing to keep straight while
-building it, because it will otherwise be mis-sold: per spec §6.2 refinement is
-**insurance, not accuracy**. On a well-resolved simple pole the Beyn estimate is
-already converged to ~1e−8 nm while the *discretisation* error is 0.38 nm — 100 %
-of the error at the anchor is `nn`, 0 % is extraction. What `refine()` buys is
-the coarse-contour recovery path and a `converged` flag, not a better number at
-a good contour.
+Per spec §6.2, refinement is **insurance, not accuracy**. On a well-resolved
+simple pole the Beyn estimate is already converged to ~1e−8 nm while the
+*discretisation* error is 0.38 nm — 100 % of the error at the anchor is `nn`,
+0 % is extraction. At the default `n_quad_per_side = 12` the refined and
+unrefined TE `n=0` wavelengths agree to every digit printed
+*(measured: both `530.455508+26.138381j`, Re-λ error 0.3766 nm either way)*;
+what refinement changes is `sigma_ratio`, `1.5e-14 → 1.3e-17`.
+
+What `refine()` buys is the coarse-contour recovery path and a `converged` flag.
+The recovery is real and worth having *(measured: from a box clipping the pole
+at `edge_margin = 0.018` and a coarse `n_quad_per_side = 4`, refinement returns
+a value **bit-identical** to the well-drawn box's refined result)*. `docs/qnm-guide.md`
+§3 and §4 say all of this to users; keep them saying it.
 
 ### Gotcha 2 — `rank` can legitimately exceed `n_modes`
 
@@ -162,9 +172,11 @@ bug** — do not "fix" it by forcing the two to agree.
 
 Gained: `rank`, `cancellation` (how completely the contour integral cancelled),
 `edge_margin` (distance to the nearest contour edge as a fraction of the shorter
-side), `size_parameters`. Lost: `converged` — which §4.2 puts back, since it is
-the natural output of the refinement step and the field a user checks before
-trusting a mode. The three diagnostics `sigma_ratio`, `cancellation`,
+side), `size_parameters`. Lost then restored: `converged` — §4.2 put it back,
+alongside `cond_jacobian`, since it is the natural output of the refinement step
+and the field a user checks before trusting a mode. Note that straight out of
+`.modes()` it is all-`False`/all-`NaN`, meaning *not attempted* rather than
+*failed*. The three diagnostics `sigma_ratio`, `cancellation`,
 `edge_margin` remain the *pre*-refinement quality signals: they say whether the
 box was drawn well, which `converged` does not.
 
@@ -178,7 +190,7 @@ orders, or a higher `m`, crosses the floor **silently**. The mitigation is the
 design: `test_root_count_matches_winding_number` asserts completeness
 independently of the seeder. Keep it that way.
 
-### Gotcha 5 — three version stories in one repo *(merge blocker)*
+### Gotcha 5 — three version stories in one repo *(fixed 2026-08-01; kept as the record of what was wrong)*
 
 - `pyproject.toml` → `0.3.0`; semantic-release will cut `0.4.0` from the
   breaking commit on merge.
@@ -190,7 +202,10 @@ independently of the seeder. Keep it that way.
 - `CLAUDE.md` roadmap and `README.md` §Roadmap both say **v0.3.0 = QNM
   extraction**, but v0.3.0 shipped as a performance release.
 
-One story: **v0.4.0 = conventions, v0.5.0 = QNM.** See §4.1.
+One story, and the one that shipped: **v0.4.0 = conventions + QNM, in a single
+release.** `pyproject.toml`, `__init__.py` (now driven by `version_variables`),
+`conventions.md` §8, and both roadmaps agree; `test_placeholder.py` compares
+against `importlib.metadata` so the drift cannot recur. See §4.1.
 
 ### Gotcha 6 — a rectangle in `x` is not a rectangle in `λ`
 
@@ -258,7 +273,14 @@ Each item states its check, per CLAUDE.md's "define the check before the work".
 4.2 is the only one with real numerical risk; do it first, since 4.3 and 4.4
 both describe its output.
 
-### 4.1 Commit the tidy-up, then fix the version story — *blocker*
+### 4.1 Commit the tidy-up, then fix the version story — ✅ done 2026-08-01
+
+> **Outcome differed from the plan below.** The version story shipped as a
+> *single* release — **v0.4.0 = conventions + QNM** — not the v0.4.0/v0.5.0
+> split proposed here. `conventions.md` §8's heading was moved to `(v0.4)` to
+> match, and `CLAUDE.md`/`README.md` roadmaps say the same. `version_variables`
+> and the `importlib.metadata` assertion in `test_placeholder.py` shipped as
+> written.
 
 Commit the `CLAUDE.md` / `examples/CLAUDE.md` split. Then pick one story:
 **v0.4.0 = conventions, v0.5.0 = QNM.** Add
@@ -271,7 +293,13 @@ that release.
 **Check:** `git status` clean; one version visible from `pyproject.toml`,
 `__init__`, and the roadmap; suite still 90 green; `ruff check .` clean.
 
-### 4.2 Analytic `dM/dλ`, then `QNMResult.refine()` — *blocker, and the only numerical work left*
+### 4.2 Analytic `dM/dλ`, then `QNMResult.refine()` — ✅ done 2026-08-01
+
+> Shipped as specified, plus one addition: `refine()` polishes the **mode
+> vectors** alongside their wavelengths (the bordered system solves for the
+> pair jointly), covered by `test_refine_polishes_the_mode_vector`.
+> `test_refine_recovers_from_coarse_contour` shipped under the name
+> `test_refine_drives_the_operator_to_singularity`.
 
 Two steps, in order; the first exists only to serve the second.
 
@@ -326,7 +354,13 @@ report the suite time in the commit message, and if a single test dominates say
 why. Past 5 minutes, cut mode count or `nn` before reaching for a `slow`
 marker — a second CI step is still not wanted.
 
-### 4.3 A user-facing QNM section — *blocker, the real one*
+### 4.3 A user-facing QNM section — ✅ done 2026-08-08
+
+> Shipped as **`docs/qnm-guide.md`**, linked from a new README
+> *Quasi-normal modes* section. All six required topics are covered in the
+> order below; every code snippet in it was executed and its printed output
+> pasted back verbatim. The §5 worked example is the acceptance check itself —
+> the TE `n=3` mode at `760.69 + 7.95j`, boxed, run, and read.
 
 `README.md` does not mention QNMs outside a roadmap line, and `conventions.md`
 §8 is written for a contributor, not a caller. Someone who runs
@@ -361,7 +395,41 @@ README, or a README section if it stays short. It must cover, in this order:
 alone, draw a box around the TE `n=3` mode at `760.69 + 7.95j`, run it, and say
 why the result is or is not trustworthy. Every code snippet in it executes.
 
-### 4.4 `examples/qnm_spectrum.py` + README figure — *blocker*
+### 4.4 `examples/qnm_spectrum.py` + README figure — ✅ done 2026-08-08
+
+> Seven boxes (four TE, three TM) over `Q = 8.5` to `181`, extracted in ~11 s
+> total and plotted over the analytic Mie poles — open marks analytic, filled
+> extracted, so the validation claim is visible in the figure. Log-log axes
+> make the iso-`Q` lines straight, as suggested. The search boxes are drawn
+> too, since box placement is the skill the guide teaches. Palette: data-viz
+> categorical slots 1 and 2, validated all-pairs (CVD ΔE 24.7, normal-vision
+> ΔE 33.6); polarisation is carried by marker shape as well as colour.
+> **Note for the next machine:** the skill's `validate_palette.js` needs a JS
+> runtime, which this one lacks; the checks were re-run through a Python port
+> verified to reproduce the palette doc's published 9.1 / 19.6 figures.
+>
+> **A second example was added on request:** `examples/qnm_wide_window.py`, one
+> contour spanning `Re λ ∈ [500, 1100]`, `Im λ ∈ [1, 50]` returning **all
+> eleven** TE modes inside it (six distinct, five of them degenerate partners)
+> in a single call at `n_quad_per_side = 32`, `n_probe = 20`. It is the more
+> compelling demonstration of what Beyn's method actually buys, since the cost
+> is `4·n_quad_per_side` assemblies regardless of the mode count.
+>
+> Three findings from building it, none of which contradict anything above:
+>
+> 1. **The wide box reproduces the seven narrow ones to ~1e-12 nm** on every
+>    mode but TE `n=0`, which it under-resolves by 0.118 nm; `refine()` recovers
+>    that to 1e-13 nm of the narrow-box refined value. Verified mode by mode.
+> 2. **A wide contour is the one regime where quadrature, not `n_pts`, is the
+>    bottleneck** — TE `n=0` error falls 6.86 → 0.93 → 0.12 nm at 16 → 24 → 32
+>    nodes per side while the other ten are converged at 16. Everywhere else in
+>    this record the opposite is true, and the guide says so; the wide box is
+>    the documented exception.
+> 3. **`edge_margin` near zero is not by itself a failure.** TE `n=4` reports
+>    `edge_margin = 0.014` yet `sigma_ratio = 3.3e-15` and agrees with its
+>    narrow-box value to 1e-12 nm. §4.3's guide overstated this on first
+>    writing and was corrected: `edge_margin` prompts a check, `sigma_ratio`
+>    delivers the verdict.
 
 The package's public face; also the fastest way to make 4.3 concrete.
 **Load the `dataviz` skill first** — CLAUDE.md requires it for plotting code, and
@@ -372,7 +440,7 @@ becomes a family of straight lines.
 **Check:** renders headless; README figure URLs no longer pinned to `/v0.2.0/`
 (Gotcha 5's fourth face — a new figure at the old pin 404s).
 
-### 4.5 `CHANGELOG.md` reconciliation — *blocker, small*
+### 4.5 `CHANGELOG.md` reconciliation — ✅ done 2026-08-01
 
 Fold the stale `## Unreleased / Performance` block into v0.3.0 and let the
 breaking-change section be what semantic-release turns into v0.4.0. The
@@ -381,9 +449,11 @@ migration table.
 **Check:** no `## Unreleased` block describing shipped work; the migration table
 survives into the released changelog.
 
-### 4.6 Not blockers — the v0.5.x line
+### 4.6 Not blockers — the post-merge line
 
-Deliberately after the merge, in this order. Each is an improvement to a working
+**With §§4.1–4.5 closed, this is the whole of what is left, and none of it gates
+the merge.** Since the QNM feature now ships in v0.4.0, these land on v0.4.x and
+after. Deliberately after the merge, in this order. Each is an improvement to a working
 feature, not a repair of a broken one.
 
 - **Thread the contour loop — the highest value per line in the repo.**
