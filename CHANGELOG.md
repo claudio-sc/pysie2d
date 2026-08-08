@@ -2,22 +2,13 @@
 
 <!-- version list -->
 
-## v0.3.0 (2026-07-25)
+## BREAKING CHANGES in v0.4.0 — wavelength and background-index conventions
 
-### Bug Fixes
-
-- Dispatch faster for non-qnm simulations
-  ([`898344e`](https://github.com/claudio-sc/pysie2d/commit/898344e29497eca85356ff30a521fc60c0f91adf))
-
-### Features
-
-- Claude memory
-  ([`14828eb`](https://github.com/claudio-sc/pysie2d/commit/14828eb7fa32efecf48e64e8c04b7fa5f1acaf07))
-
-
-## Unreleased
-
-### BREAKING CHANGES — wavelength and background-index conventions
+Detail for the v0.4.0 entry above, where semantic-release's default template
+lists the conventions change as an ordinary `Features` bullet: it derives the
+version bump from the `feat!` marker but does not render a breaking-change
+section into `CHANGELOG.md`. This section is that section — keep it directly
+below the generated v0.4.0 block.
 
 The package documented **vacuum** wavelengths but implemented `k = 2π/λ`, the
 *medium* reading. The two coincide only at `n_clad = 1`, where the entire test
@@ -75,6 +66,19 @@ Migration:
 - `relative_ldos` is documented as relative to the homogeneous background, not
   to vacuum. The distinction was vacuous at `n_clad = 1` and is now
   load-bearing.
+
+
+## v0.3.0 (2026-07-25)
+
+### Bug Fixes
+
+- Dispatch faster for non-qnm simulations
+  ([`898344e`](https://github.com/claudio-sc/pysie2d/commit/898344e29497eca85356ff30a521fc60c0f91adf))
+
+### Features
+
+- Claude memory
+  ([`14828eb`](https://github.com/claudio-sc/pysie2d/commit/14828eb7fa32efecf48e64e8c04b7fa5f1acaf07))
 
 ### Performance
 
