@@ -21,16 +21,24 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.ref_name }}
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
+      # RELEASE_TOKEN, not GITHUB_TOKEN: GitHub suppresses workflow triggers for
+      # events created by GITHUB_TOKEN, so the tag pushed here never started
+      # release.yml and PyPI silently stopped at 0.2.1 while v0.2.2, v0.3.0 and
+      # v0.4.0 were tagged. Pushing under any other identity fires the tag event
+      # normally. The token is a fine-grained PAT scoped to this repo with
+      # Contents: read and write -- no Workflows permission, because no release
+      # commit touches .github/.
       - name: Semantic version release
         id: release
         uses: python-semantic-release/python-semantic-release@v10.6.1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.RELEASE_TOKEN }}
           git_committer_name: "github-actions"
           git_committer_email: "actions@users.noreply.github.com"
 
