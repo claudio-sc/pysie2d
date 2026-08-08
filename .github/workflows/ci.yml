@@ -19,3 +19,14 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run ruff check .
       - run: uv run pytest
+      # The examples generate the README figures and import the public API
+      # directly, but nothing in pytest touches them — a rename in the façade
+      # would rot the figures silently until someone regenerated them by hand.
+      # All five together run in well under a minute.
+      - name: Run the figure examples
+        run: |
+          for script in examples/*.py; do
+            echo "::group::$script"
+            uv run python "$script"
+            echo "::endgroup::"
+          done
