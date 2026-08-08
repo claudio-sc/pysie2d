@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.4.1 (2026-08-08)
+
+### Bug Fixes
+
+- Push release tags with a token that triggers workflows
+  ([`2de8ca9`](https://github.com/claudio-sc/pysie2d/commit/2de8ca91351c1402a8c77ac4da52f1eea1768d50))
+
+
 ## v0.4.0 (2026-08-08)
 
 ### Bug Fixes
