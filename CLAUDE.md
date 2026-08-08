@@ -12,6 +12,14 @@ the same change.
 Python 3.12+, uv, numpy + scipy only. **Adding a runtime dependency is a scope
 decision** — raise it, don't just add it.
 
+**Touching `[project].dependencies` means running `uv lock` in the same commit.**
+Both workflows install with `uv sync --locked`, which fails on a lockfile that
+disagrees with `pyproject.toml` rather than quietly installing the stale
+resolution. `uv.lock` also pins the package's *own* version; semantic-release
+stamps that at release time (`build_command = "uv lock --offline"`, with
+`uv.lock` in `assets`), so never bump that line by hand — it used to drift a
+release behind and get corrected after the fact.
+
 ## Non-negotiables
 
 1. **Complex wavenumbers work everywhere.** Every assembly and evaluation path
