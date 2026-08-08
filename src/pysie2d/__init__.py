@@ -37,7 +37,7 @@ from .qnm import DEGENERATE_COND, QNMResult, QNMSolver
 from .solver import BIESolver, ScatterResult, size_parameter
 from .sources import line_dipole_rhs, plane_wave_rhs
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "BIESolver",

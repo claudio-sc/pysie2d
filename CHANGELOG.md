@@ -2,6 +2,80 @@
 
 <!-- version list -->
 
+## v0.4.0 (2026-08-08)
+
+### Bug Fixes
+
+- Ongoing Beyn integration
+  ([`b9e4817`](https://github.com/claudio-sc/pysie2d/commit/b9e4817b816a65da0aeb37183752e7deab0b99c7))
+
+- Preps for Beyn refinement
+  ([`8291b9b`](https://github.com/claudio-sc/pysie2d/commit/8291b9b2380583e6a5d2502cfb507d60e7c3bb3c))
+
+- Regenerate stale purcell map figure
+  ([`e33c7dd`](https://github.com/claudio-sc/pysie2d/commit/e33c7ddb47baf8d32b113ff40ed2eaa52a19567d))
+
+- Revert the uv.lock stamping that aborted the release
+  ([`803e8fe`](https://github.com/claudio-sc/pysie2d/commit/803e8fe5497cc4450eb76463a285b2dd1c5b2067))
+
+- Set public params for convergence diagnostics
+  ([`fda1ba7`](https://github.com/claudio-sc/pysie2d/commit/fda1ba746cd3a58338d631d11c6a3f19177857a3))
+
+- Update claude mem
+  ([`956e90a`](https://github.com/claudio-sc/pysie2d/commit/956e90a2a195e442a96d75d453d1f339a686b49f))
+
+### Build System
+
+- Stamp uv.lock in the release commit
+  ([`9073928`](https://github.com/claudio-sc/pysie2d/commit/90739281d487bebd07996aaba685522894001f1c))
+
+### Documentation
+
+- Add a QNM section and figures to the readme
+  ([`33888a9`](https://github.com/claudio-sc/pysie2d/commit/33888a920d4720c4fbbf16b05004a2334a2f3e83))
+
+- Add a user guide for quasi-normal modes
+  ([`160c7bc`](https://github.com/claudio-sc/pysie2d/commit/160c7bc6d8b46baff207ec7217e9049ec067356b))
+
+- Add performance doc and update status
+  ([`fc9aaa6`](https://github.com/claudio-sc/pysie2d/commit/fc9aaa68a31792063d5e3d8ff33dc39cf02c5f7c))
+
+- Add QNM spectrum and wide-window examples
+  ([`1398814`](https://github.com/claudio-sc/pysie2d/commit/139881431da497e72cd368775dda5fccf8aa6f53))
+
+- Add the Beyn port design record
+  ([`000a9ca`](https://github.com/claudio-sc/pysie2d/commit/000a9ca6139c0d60e12732d1e035fa2611ccd2f8))
+
+- Close the Beyn merge gate in the status record
+  ([`75d6c2e`](https://github.com/claudio-sc/pysie2d/commit/75d6c2e952c3fb92445a813976f7d836e3187b0b))
+
+- Correct roadmap to v0.4.0 and unpin readme figures
+  ([`369d7ff`](https://github.com/claudio-sc/pysie2d/commit/369d7fff4cea444909dbd85dce54e7fbcea1fc10))
+
+- Measure the large-nn memory and time walls
+  ([`cf906b6`](https://github.com/claudio-sc/pysie2d/commit/cf906b6961545abb1d2953956140e6c178acfc03))
+
+- Minor mods to claude md and clarifications in readme
+  ([`1951dd5`](https://github.com/claudio-sc/pysie2d/commit/1951dd554392f4c40df3c2f23d3ad7f832ef4e7e))
+
+- Move shipped perf notes to v0.3.0 and label the breaking block
+  ([`ffcd46a`](https://github.com/claudio-sc/pysie2d/commit/ffcd46ad2e12316393dde42a1805e054520c1f7e))
+
+- Record the lockfile rule in CLAUDE.md
+  ([`af25078`](https://github.com/claudio-sc/pysie2d/commit/af25078bad9f1be0880d61481c46b6d52a324217))
+
+- Update status and claude mem
+  ([`684ecd0`](https://github.com/claudio-sc/pysie2d/commit/684ecd0717fbfeb2bcb79665868b87c137e3aae7))
+
+### Features
+
+- Expose vacuum wavelengths and cladding size parameter uniformly
+  ([`43f7c53`](https://github.com/claudio-sc/pysie2d/commit/43f7c536149b7ef4606a0b8f040b260687cae9e9))
+
+- Polish mode vectors alongside their wavelengths in refine()
+  ([`c7fd28d`](https://github.com/claudio-sc/pysie2d/commit/c7fd28d04c49adddd69fb5d3a3ed4d1744bd3c2d))
+
+
 ## BREAKING CHANGES in v0.4.0 — wavelength and background-index conventions
 
 Detail for the v0.4.0 entry above, where semantic-release's default template
