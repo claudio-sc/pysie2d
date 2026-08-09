@@ -38,7 +38,7 @@ fails as physics at the same moment.
 import numpy as np
 import pytest
 
-from pysie2d import BIESolver, Geometry, Material
+from pysie2d import BIESolver, Geometry, Material, QNMSolver
 
 N_CORE = 3.0  # the QNM fixture contrast; isolated modes up to Q ≈ 2289
 RAD = 200.0
@@ -136,3 +136,130 @@ def test_matrix_covariance_survives_a_generic_ratio(s, m, arc_length, atol, pol)
     m2 = assemble(s * RAD, s * LAM, m, arc_length, pol)
     rel = np.abs(m2 - m1).max() / np.abs(m1).max()
     assert rel < atol
+
+
+# ---------------------------------------------------------------------------
+# The mode-level consequence: dλ/drad = λ/rad and dQ/drad = 0.
+#
+# Nothing in the Beyn machinery weakens the matrix identity. With the search box
+# scaled with the radius, the contour nodes scale by s and the weights by s, so
+# A0 → s·A0 and A1 → s²·A1; every decision the extractor makes is taken on a
+# *ratio* — sv_ratio = s/s[0], max_gap, cancellation = ‖A0‖/(Σ|w|·‖x‖),
+# edge_margin — and is therefore invariant, while the recovered eigenvalues
+# scale by exactly s. The probe matrix depends on (n_dim, n_probe, seed) alone,
+# so the gauge is the same too. The mode-level claim is exactly as strong as the
+# matrix-level one.
+#
+# The one scale-dependent knob in the QNM path is `QNMResult.refine`'s `tol`,
+# which is a step size in absolute nm: `step` scales with s while `tol` does
+# not, so a step landing between tol and s·tol would stop the iteration at
+# different points at the two radii. It does not bite on either anchor below
+# *(measured: refined wavelengths bit-identical at s = 2 for tol from 1e-9 to
+# 1e-2, because the first Newton step already falls decades below any of
+# them)*, and these tests deliberately assert on the **unrefined** modes(),
+# where the covariance is a theorem rather than a measurement.
+# ---------------------------------------------------------------------------
+
+# Anchors and boxes from test_qnm.py, in vacuum nm. Simple and degenerate are
+# both tested because the second is where the claim could plausibly weaken:
+# rank detection in a two-dimensional null space.
+BOX_TE_SIMPLE = (520.0 + 15.0j, 545.0 + 40.0j)
+BOX_TE_DEGENERATE = (745.0 + 2.0j, 775.0 + 15.0j)
+BOXES = [("simple", BOX_TE_SIMPLE), ("degenerate", BOX_TE_DEGENERATE)]
+
+N_SIDE = 6  # as in test_qnm.py: identical modes to 1e-8 nm against the default
+
+# Round-off floor on |λ(s·rad)/s − λ(rad)| / |λ|, at an inexact ratio.
+# **Measured, and not derivable**: the map from the matrix floor above to a
+# floor on λ is the eigenvalue condition number, a property of the operator
+# rather than of the arithmetic. *(measured: worst 7.8e-16 over
+# s ∈ {1.7, 0.37} × both anchors.)* The bound below is ~6× that, and the same
+# argument as for the matrix applies — a missing power of s is a 40 % error at
+# s = 1.7, not a 1e-15 one.
+RTOL_LAM = 5.0e-15
+
+
+def qnm_modes(rad, box, s):
+    """Modes of a circle of radius ``rad`` in the box scaled by ``s``.
+
+    Every knob is passed explicitly: a change to a default must not be able to
+    turn this into a different test.
+    """
+    solver = QNMSolver(
+        Geometry.gielis(rad=rad, n_pts=N_PTS, m=0, arc_length=True),
+        Material(n_core=N_CORE, n_clad=1.0, pol=2),
+    )
+    return solver.modes(s * box[0], s * box[1], n_quad_per_side=N_SIDE)
+
+
+@pytest.fixture(scope="module")
+def unscaled():
+    """The reference spectra at rad = 200 nm, ~1.5 s per box."""
+    return {name: qnm_modes(RAD, box, 1.0) for name, box in BOXES}
+
+
+@pytest.mark.parametrize("s", EXACT_RATIOS)
+@pytest.mark.parametrize("name, box", BOXES)
+def test_qnm_is_bit_identical_under_binary_scaling(unscaled, s, name, box):
+    """λ(s·rad) = s·λ(rad) and Q(s·rad) = Q(rad), to the last bit.
+
+    This is the sharpest statement available: not "dλ/drad agrees with λ/rad to
+    some tolerance" but the finite identity it integrates to, at zero
+    tolerance. The finite form is strictly stronger — it implies the derivative
+    by differentiating at s = 1, while a finite-difference derivative test
+    would carry an O(h) truncation and an O(ε/h) cancellation floor around
+    1e-8, seven orders worse.
+
+    ``size_parameters`` is the same claim in the analytic anchor's coordinate
+    and is the most direct expression of it: the discrete pole sits at a fixed
+    x, whatever the radius.
+    """
+    ref = unscaled[name]
+    got = qnm_modes(s * RAD, box, s)
+
+    # A mode within an ulp of a contour edge would make the in-contour filter a
+    # knife edge and the comparison meaningless for a trivial reason.
+    assert np.all(ref.edge_margin > 0.05)
+    assert ref.n_modes == got.n_modes
+    assert np.array_equal(ref.multiplicity, got.multiplicity)
+
+    assert np.array_equal(got.wavelengths / s, ref.wavelengths)
+    assert np.array_equal(got.size_parameters, ref.size_parameters)
+    assert np.array_equal(got.quality_factors, ref.quality_factors)
+    # Free, and it says the SVD's phase convention is scale-stable — which any
+    # downstream gauge-dependent quantity (an adjoint sensitivity, say) needs.
+    assert np.array_equal(got.vectors, ref.vectors)
+
+
+@pytest.mark.parametrize("s", INEXACT_RATIOS)
+@pytest.mark.parametrize("name, box", BOXES)
+def test_qnm_scale_covariance_at_a_generic_ratio(unscaled, s, name, box):
+    """The same identity where only round-off, not exact arithmetic, protects it.
+
+    The Q tolerance is *derived* from the λ one rather than measured. With
+    λ' = λ(1+δ), |δ| ≤ ε and ρ = Re λ / Im λ,
+
+        |ΔQ|/Q ≤ |Δa|/a + |Δb|/b ≤ ε·√(1+ρ²)·(1+ρ)/ρ  →  (1 + 2Q)·ε
+
+    so the amplification factor is exactly 1 + 2Q — 99 on the degenerate anchor
+    at Q ≈ 49, which is why dQ/drad = 0 is the more demanding half of the pair
+    and must not be given a flat tolerance.
+
+    On the degenerate pair this doubles as a semisimplicity screen. A first-
+    order (semisimple) response to a matrix perturbation of size η gives
+    δλ = O(η); at an exceptional point, where the ±n partners have coalesced
+    and uᴴ(∂M/∂λ)v → 0, it would be O(√η) — √(5e-14) ≈ 2e-7 here. The measured
+    8e-16 sits eight orders below that floor, so the pair is semisimple, not
+    defective. ``cond_jacobian`` cannot make that distinction: it reports both
+    cases as singular.
+    """
+    ref = unscaled[name]
+    got = qnm_modes(s * RAD, box, s)
+
+    assert ref.n_modes == got.n_modes
+    rel_lam = np.abs(got.wavelengths / s - ref.wavelengths) / np.abs(ref.wavelengths)
+    assert np.all(rel_lam < RTOL_LAM)
+
+    rtol_q = (1.0 + 2.0 * ref.quality_factors) * RTOL_LAM
+    rel_q = np.abs(got.quality_factors - ref.quality_factors) / ref.quality_factors
+    assert np.all(rel_q < rtol_q)
