@@ -1,4 +1,9 @@
-"""Scale covariance: M depends on (rad, λ) only through the size parameter.
+"""Scale covariance: M depends on (rad, λ) only through the ratio ``k_bg·rad``.
+
+That combination is the size parameter of §2.4 **when the boundary is a
+circle**; on a Gielis star it is only a dimensionless ratio, since a
+non-circular shape has no single physical radius and ``size_parameter`` refuses
+to return one.
 
 Every length and every wavenumber in :func:`pysie2d.kernels.assemble_matrix`
 appears in one of exactly four combinations, each of total degree zero under
@@ -35,17 +40,25 @@ The day dispersion is added these tests fail, and they should — ``dQ/drad = 0`
 fails as physics at the same moment.
 
 The algebra holds for any boundary, but the *conditioning* at a scale ratio
-with no exact binary representation needs the boundary to be C¹ — see
-:func:`test_a_cusped_boundary_loses_the_covariance_at_a_generic_ratio`.
+with no exact binary representation can fail on a boundary that is not C¹ —
+see :func:`test_a_cusped_boundary_can_lose_the_covariance_at_a_generic_ratio`.
+
+What these tests detect, stated so nobody over-reads them: expressions that are
+not dimensionally homogeneous, and absolute lengths in nm that are *in range* at
+``rad = 200`` under the ratios used here. A hard-coded length below the ~6 nm
+point spacing at ``n_pts = 200`` never binds and stays invisible.
 """
 
 import numpy as np
 import pytest
 
+from conftest import QNM_N_CORE, RAD
 from pysie2d import BIESolver, Geometry, Material, QNMSolver
 
-N_CORE = 3.0  # the QNM fixture contrast; isolated modes up to Q ≈ 2289
-RAD = 200.0
+# Taken from the shared fixture rather than restated: the mode counts asserted
+# below are properties of this contrast and this radius, and a local copy would
+# let them drift apart silently.
+N_CORE = QNM_N_CORE
 N_PTS = 200
 
 # An off-anchor wavelength: the matrix identity holds at every λ, and using a
@@ -149,24 +162,34 @@ def test_matrix_is_bit_identical_under_binary_scaling(s, shape, arc_length, _ato
     assert np.array_equal(m1, m2)
 
 
-def test_a_cusped_boundary_loses_the_covariance_at_a_generic_ratio():
+def test_a_cusped_boundary_can_lose_the_covariance_at_a_generic_ratio():
     """The conditioning limit, pinned rather than left as a surprise.
 
-    On the non-C¹ star the tangent flips across a kink, so the ulp-level node
-    displacement that an inexact ratio introduces moves a node *across* the
-    kink and changes ``df, dg`` — and hence the cross product ``cij`` — by a
-    finite amount. The matrix then differs by ``O(1)``: *(measured 0.26
-    relative at s = 1.7, against 1.5e-13 for the smooth star.)*
+    At exponent 1 the boundary has kinks, where ``dr/dθ`` takes opposite values
+    on the two sides and ``_rderiv`` returns whichever side its node fell on.
+    A node sitting numerically *on* a kink therefore takes a finite jump in
+    ``df, dg`` — and hence in the cross product ``cij`` — from the ulp-level
+    node displacement an inexact ratio introduces. The matrix then differs by
+    O(1).
 
-    This is a statement about the discretisation of a corner, not about the
-    covariance — the same shape is bit-identical at s = 2 above. It is recorded
-    because the roughness programme feeds this solver arbitrary boundaries, and
-    a rough boundary that is not C¹ inherits exactly this conditioning.
+    **This is a knife edge, not a property of inexact ratios.** It happens at
+    s = 1.7, where ``dg[100]`` flips from +299.999999999999 to −299.999999999997;
+    it does not happen at the other ratio this file uses. *(measured on the
+    cusped star: 0.264 at s = 1.7 and 0.264 at s = 0.61, against 3.2e-13 at
+    s = 0.37 and 1.7e-13 at s = 3.0 — and 1.5e-13 for the smooth star at every
+    one of them. Stable in resolution: 0.305 / 0.264 / 0.248 at n_pts =
+    100 / 200 / 400.)* The bimodality is why the threshold below is not a close
+    call.
+
+    This is a statement about discretising a corner, not about the covariance —
+    the same shape is bit-identical at s = 2 above. It is recorded because the
+    roughness programme will feed this solver arbitrary boundaries, and one
+    that is not C¹ can inherit exactly this.
     """
     m1 = assemble(RAD, LAM, CUSPED_STAR, True, 2)
     m2 = assemble(1.7 * RAD, 1.7 * LAM, CUSPED_STAR, True, 2)
     rel = np.abs(m2 - m1).max() / np.abs(m1).max()
-    assert rel > 1.0e-3  # nowhere near the 5e-13 the smooth shapes hold to
+    assert rel > 1.0e-3  # measured 0.264; the smooth shapes hold to 5e-13
 
 
 @pytest.mark.parametrize("s", INEXACT_RATIOS)
@@ -261,9 +284,11 @@ def test_qnm_is_bit_identical_under_binary_scaling(unscaled, s, name, box, n_mod
     would carry an O(h) truncation and an O(ε/h) cancellation floor around
     1e-8, seven orders worse.
 
-    ``size_parameters`` is the same claim in the analytic anchor's coordinate
-    and is the most direct expression of it: the discrete pole sits at a fixed
-    x, whatever the radius.
+    Only two of the assertions can independently fail. ``size_parameters`` and
+    ``quality_factors`` are built from operands that scale exactly, so at a
+    power-of-two ratio bit-equality of λ propagates into both: they are the
+    claim restated in the reader's coordinate, not extra detection.
+    ``vectors`` is the one that adds information — the SVD's phase gauge.
     """
     ref = unscaled[name]
     got = qnm_modes(s * RAD, box, s)
@@ -290,19 +315,22 @@ def test_qnm_scale_covariance_at_a_generic_ratio(unscaled, s, name, box, n_modes
     The Q tolerance is *derived* from the λ one rather than measured. With
     λ' = λ(1+δ), |δ| ≤ ε and ρ = Re λ / Im λ,
 
-        |ΔQ|/Q ≤ |Δa|/a + |Δb|/b ≤ ε·√(1+ρ²)·(1+ρ)/ρ  →  (1 + 2Q)·ε
+        |ΔQ|/Q ≤ |Δa|/a + |Δb|/b ≤ ε·√(1+ρ²)·(1+ρ)/ρ,   ρ = 2Q
 
-    so the amplification factor is exactly 1 + 2Q — 99 on the degenerate anchor
-    at Q ≈ 49, which is why dQ/drad = 0 is the more demanding half of the pair
+    so the amplification factor tends to 1 + 2Q and equals it to within 1 % at
+    these Q (99.01 against 99.0 at Q = 48.93) — a discrepancy in the direction
+    that can only make the test fire spuriously, never hide a regression. It is
+    99× here, which is why dQ/drad = 0 is the more demanding half of the pair
     and must not be given a flat tolerance.
 
-    On the degenerate pair this doubles as a semisimplicity screen. A first-
-    order (semisimple) response to a matrix perturbation of size η gives
-    δλ = O(η); at an exceptional point, where the ±n partners have coalesced
-    and uᴴ(∂M/∂λ)v → 0, it would be O(√η) — √(5e-14) ≈ 2e-7 here. The measured
-    8e-16 sits eight orders below that floor, so the pair is semisimple, not
-    defective. ``cond_jacobian`` cannot make that distinction: it reports both
-    cases as singular.
+    A note, not an assertion: a semisimple pair responds to a matrix
+    perturbation of size η as δλ = O(η), while at an exceptional point — the
+    ±n partners coalesced, uᴴ(∂M/∂λ)v → 0 — it would be O(√η), i.e. ~4e-7
+    against the 1.7e-13 matrix floor measured above. The observed 7.8e-16 is
+    nine orders below that, which is consistent with a semisimple pair and not
+    with a defective one. ``cond_jacobian`` cannot make that distinction, since
+    it reports both cases as singular — but this is an argument from a
+    round-off floor, not an anchor, and it is not what the assertions test.
     """
     ref = unscaled[name]
     got = qnm_modes(s * RAD, box, s)

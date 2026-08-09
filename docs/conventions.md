@@ -202,11 +202,14 @@ coordinate. Note that a rectangle in `x` is **not** a rectangle in `λ`:
 `λ = 2π·n_clad·rad/x` is a Möbius map and does not carry corners to corners. A
 completeness argument must be made in the coordinates the box is drawn in.
 
-## 9. Scale covariance (v0.4.1)
+## 9. Scale covariance (v0.4.2)
 
-**`M` depends on `rad` and `λ` only through the size parameter.** Every length
-and every wavenumber in `assemble_matrix` appears in one of exactly four
-combinations, each of total degree zero under `rad → s·rad`, `λ → s·λ`:
+**`M` depends on `rad` and `λ` only through the dimensionless ratio
+`k_bg·rad`** — the size parameter of §2.4 when the boundary is a circle, and on
+any other Gielis shape only a ratio, since §2.4's `x` needs a single physical
+radius that a star does not have. Every length and every wavenumber in
+`assemble_matrix` appears in one of exactly four combinations, each of total
+degree zero under `rad → s·rad`, `λ → s·λ`:
 
     k·r                 all off-diagonal Hankel arguments
     k·delt/(2e)·gamma   both singular diagonals
@@ -233,10 +236,12 @@ null-space basis and **a dilation can never split a degeneracy**.
 
 Three things this does *not* say. It is not accuracy: the discrete pole sits at
 a fixed `x_disc(n_pts) ≠ x_Mie`, so covariance is exact while the wavelength is
-still wrong in the first decimal. It is not a convention check: signs, `pol`
-codes and the `H^{(1)}` choice are all scale-free and invisible to it. And it
-holds only for a **non-dispersive** material — `ri` and `kd` are degree 0 only
-because `Material` holds constant indices, and the day dispersion is added
+still wrong in the first decimal. It is largely not a convention check: signs
+and the `H^{(1)}` choice are scale-free and wholly invisible to it, and a `pol`
+swap is caught only indirectly, by moving the poles out of the search boxes and
+tripping the mode counts. And it holds only for a **non-dispersive** material —
+`ri` and `kd` are degree 0 only because `Material` holds constant indices, and
+the day dispersion is added
 `dQ/drad = 0` stops being true as physics at the same moment it stops being
 true here.
 
@@ -245,15 +250,20 @@ two, where binary floating point makes bit-identity a theorem and the assertion
 carries no tolerance at all, and a generic ratio, which is the only variant
 that can fail from conditioning.
 
-**The algebra holds for any boundary; the conditioning needs a C¹ one.** At a
-ratio with no exact binary representation the θ-nodes move by an ulp, and on a
-boundary with a corner — the superformula at exponent 1, say — that moves a
-node *across* the kink, so the tangent and the cross product `cij` change by a
-finite amount and the matrix differs by O(1) *(measured 0.26 relative at
-s = 1.7, against 1.5e-13 on a smooth star; the same cusped shape is still
-bit-identical at s = 2)*. This is a statement about discretising a corner, not
-about covariance, and it is the reason a rough boundary handed to this solver
-should be C¹.
+**The algebra holds for any boundary; the conditioning can fail on one that is
+not C¹.** At a ratio with no exact binary representation the θ-nodes move by an
+ulp. On a boundary with a corner — the superformula at exponent 1, say — a node
+that sits numerically *on* the kink then jumps to the other one-sided tangent,
+and `df, dg` and the cross product `cij` change by a finite amount, so the
+matrix differs by O(1).
+
+This is a knife edge and not a property of inexact ratios: *(measured on that
+shape at `n_pts = 200`: 0.264 relative at s = 1.7 and at s = 0.61, but 3.2e-13
+at s = 0.37 and 1.7e-13 at s = 3.0 — against 1.5e-13 for a smooth star at all
+four, and bit-identity for the cusped shape itself at s = 2)*. It is a
+statement about discretising a corner rather than about covariance, and it is
+the reason a rough boundary handed to this solver is better C¹: not that it
+will lose the covariance, but that it may.
 
 **One exception, in `QNMResult.refine` / `newton_refine`.** `tol` is a Newton
 step size in *absolute* nm, so it is the one scale-dependent quantity in the

@@ -54,6 +54,12 @@ after a release rather than editing that version line by hand.
    asserted, because holomorphy is the premise of the contour argument.
    `Q = Re λ / (2 Im λ)`. Poles do **not** come in conjugate pairs; the reality
    condition is `λ → −λ̄`.
+
+   **Scale covariance** (conventions §9): `M` sees only `k_bg·rad`, so
+   `M(s·rad, s·λ) = M(rad, λ)` entrywise and `λ(s·rad) = s·λ(rad)`,
+   `dQ/drad = 0`, exactly. It rests on the material being non-dispersive and on
+   nothing in the geometry pipeline carrying an absolute length — `n_fine` in
+   the arc-length inversion is the one to watch.
 3. **New physics needs an independent validation anchor.** A closed form, an
    analytic limit, or a second method — not agreement between two paths in this
    repo, which only proves they share assumptions. The package's stated scope is
