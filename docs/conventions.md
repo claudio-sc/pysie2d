@@ -202,6 +202,57 @@ coordinate. Note that a rectangle in `x` is **not** a rectangle in `λ`:
 `λ = 2π·n_clad·rad/x` is a Möbius map and does not carry corners to corners. A
 completeness argument must be made in the coordinates the box is drawn in.
 
+## 9. Scale covariance (v0.4.1)
+
+**`M` depends on `rad` and `λ` only through the size parameter.** Every length
+and every wavenumber in `assemble_matrix` appears in one of exactly four
+combinations, each of total degree zero under `rad → s·rad`, `λ → s·λ`:
+
+    k·r                 all off-diagonal Hankel arguments
+    k·delt/(2e)·gamma   both singular diagonals
+    k²·cij              c1 and c3 against the boundary cross products
+    deriv/gamma²        the M1 and M3 diagonals
+
+`delt` and the θ-nodes are degree 0. That is true on the arc-length path too,
+and for a better reason than "the inversion is accurate": the chord-length arc
+estimate in `_uniform_arc_theta` is inexact *as an arc length* but exactly
+homogeneous of degree 1 in `rad`, and `np.interp` is homogeneous of degree 0 in
+its query and table jointly. Covariance needs the homogeneity, not the
+accuracy. `n_fine` depends on `nn` alone, and must keep doing so — choosing it
+from an absolute chord length in nm would break this silently.
+
+Hence, entrywise and at any `n_pts`:
+
+    M(s·rad, s·λ) = M(rad, λ),      ∂M/∂rad = −(λ/rad)·∂M/∂λ
+
+and therefore `λ(s·rad) = s·λ(rad)`, `dλ/drad = λ/rad`, `dQ/drad = 0`. The
+adjoint form `dλ/dp = −uᴴ(∂M/∂p)v / uᴴ(∂M/∂λ)v` returns `λ/rad` for **any**
+`u, v`, so the result is gauge-free; on the semisimple `±n` pair the 2×2
+secular problem is a multiple of the identity, so both partners share it in any
+null-space basis and **a dilation can never split a degeneracy**.
+
+Three things this does *not* say. It is not accuracy: the discrete pole sits at
+a fixed `x_disc(n_pts) ≠ x_Mie`, so covariance is exact while the wavelength is
+still wrong in the first decimal. It is not a convention check: signs, `pol`
+codes and the `H^{(1)}` choice are all scale-free and invisible to it. And it
+holds only for a **non-dispersive** material — `ri` and `kd` are degree 0 only
+because `Material` holds constant indices, and the day dispersion is added
+`dQ/drad = 0` stops being true as physics at the same moment it stops being
+true here.
+
+`tests/test_scale_covariance.py` is the guard, at two scale ratios: a power of
+two, where binary floating point makes bit-identity a theorem and the assertion
+carries no tolerance at all, and a generic ratio, which is the only variant
+that can fail from conditioning.
+
+**One exception, in `QNMResult.refine` / `newton_refine`.** `tol` is a Newton
+step size in *absolute* nm, so it is the one scale-dependent quantity in the
+QNM path: `step` scales with the radius and `tol` does not. It does not bite on
+the tested anchors *(measured: refined wavelengths bit-identical at `s = 2` for
+`tol` from 1e-9 to 1e-2, the first step already falling decades below any of
+them)*, but the exact statement above is made on the unrefined `modes()` output
+and a caller who needs it should say so.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,
