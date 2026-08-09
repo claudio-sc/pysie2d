@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v0.4.2 (2026-08-09)
+
+### Bug Fixes
+
+- Narrow the cusp claim and the size-parameter wording
+  ([`a43ee6e`](https://github.com/claudio-sc/pysie2d/commit/a43ee6e92a9e582a930b78dd058102e423094fbc))
+
+- Test a genuinely non-circular shape, and pin the c1 limit
+  ([`7ca21d6`](https://github.com/claudio-sc/pysie2d/commit/7ca21d6c3fc3725a8eebf891e6d9316034ac79e5))
+
+### Documentation
+
+- Record scale covariance as a convention
+  ([`6479956`](https://github.com/claudio-sc/pysie2d/commit/647995642d73313a3e56a2a4c83095ccafac0f59))
+
+
 ## v0.4.1 (2026-08-08)
 
 ### Bug Fixes
