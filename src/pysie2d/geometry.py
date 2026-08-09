@@ -212,6 +212,10 @@ def _uniform_arc_theta(
         contour_length: Total perimeter of the curve.
     """
     if n_fine is None:
+        # A function of nn alone, and it must stay one: the whole assembly is
+        # scale covariant (docs/conventions.md §9) only because the theta nodes
+        # this returns are rad-independent. Choosing n_fine from an absolute
+        # chord length in nm would break that silently.
         n_fine = max(10 * nn, 4096)
 
     # Dense uniform-theta forward pass

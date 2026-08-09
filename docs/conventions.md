@@ -202,6 +202,80 @@ coordinate. Note that a rectangle in `x` is **not** a rectangle in `λ`:
 `λ = 2π·n_clad·rad/x` is a Möbius map and does not carry corners to corners. A
 completeness argument must be made in the coordinates the box is drawn in.
 
+## 9. Scale covariance (v0.4.2)
+
+**`M` depends on `rad` and `λ` only through the dimensionless ratio
+`k_bg·rad`** — the size parameter of §2.4 when the boundary is a circle, and on
+any other Gielis shape only a ratio, since §2.4's `x` needs a single physical
+radius that a star does not have. Every length and every wavenumber in
+`assemble_matrix` appears in one of exactly four combinations, each of total
+degree zero under `rad → s·rad`, `λ → s·λ`:
+
+    k·r                 all off-diagonal Hankel arguments
+    k·delt/(2e)·gamma   both singular diagonals
+    k²·cij              c1 and c3 against the boundary cross products
+    deriv/gamma²        the M1 and M3 diagonals
+
+`delt` and the θ-nodes are degree 0. That is true on the arc-length path too,
+and for a better reason than "the inversion is accurate": the chord-length arc
+estimate in `_uniform_arc_theta` is inexact *as an arc length* but exactly
+homogeneous of degree 1 in `rad`, and `np.interp` is homogeneous of degree 0 in
+its query and table jointly. Covariance needs the homogeneity, not the
+accuracy. `n_fine` depends on `nn` alone, and must keep doing so — choosing it
+from an absolute chord length in nm would break this silently.
+
+Hence, entrywise and at any `n_pts`:
+
+    M(s·rad, s·λ) = M(rad, λ),      ∂M/∂rad = −(λ/rad)·∂M/∂λ
+
+and therefore `λ(s·rad) = s·λ(rad)`, `dλ/drad = λ/rad`, `dQ/drad = 0`. The
+adjoint form `dλ/dp = −uᴴ(∂M/∂p)v / uᴴ(∂M/∂λ)v` returns `λ/rad` for **any**
+`u, v`, so the result is gauge-free; on the semisimple `±n` pair the 2×2
+secular problem is a multiple of the identity, so both partners share it in any
+null-space basis and **a dilation can never split a degeneracy**.
+
+Three things this does *not* say. It is not accuracy: the discrete pole sits at
+a fixed `x_disc(n_pts) ≠ x_Mie`, so covariance is exact while the wavelength is
+still wrong in the first decimal. It is largely not a convention check: signs
+and the `H^{(1)}` choice are scale-free and wholly invisible to it, and a `pol`
+swap is caught only indirectly, by moving the poles out of the search boxes and
+tripping the mode counts. And it holds only for a **non-dispersive** material —
+`ri` and `kd` are degree 0 only because `Material` holds constant indices, and
+the day dispersion is added
+`dQ/drad = 0` stops being true as physics at the same moment it stops being
+true here.
+
+`tests/test_scale_covariance.py` is the guard, at two scale ratios: a power of
+two, where binary floating point makes bit-identity a theorem and the assertion
+carries no tolerance at all, and a generic ratio, which is the only variant
+that can fail from conditioning.
+
+**The algebra holds for any boundary; the conditioning can fail on one that is
+not C¹.** At a ratio with no exact binary representation the θ-nodes move by an
+ulp. On a boundary with a corner — the superformula at exponent 1, say — a node
+that sits numerically *on* the kink then jumps to the other one-sided tangent,
+and `df, dg` and the cross product `cij` change by a finite amount, so the
+matrix differs by O(1).
+
+This is a knife edge and not a property of inexact ratios: *(measured on that
+shape at `n_pts = 200`: 0.264 relative at s = 1.7 and at s = 0.61, but 3.2e-13
+at s = 0.37 and 1.7e-13 at s = 3.0 — against 1.5e-13 for a smooth star at all
+four, and bit-identity for the cusped shape itself at s = 2)*. It is a
+statement about discretising a corner rather than about covariance, and it is
+the reason a rough boundary handed to this solver is better C¹: not that it
+will lose the covariance, but that it may.
+
+**One exception, in `QNMResult.refine` / `newton_refine`.** `tol` is a Newton
+step size in *absolute* nm, so it is the one scale-dependent quantity in the
+QNM path: `step` scales with the radius and `tol` does not, and a step landing
+between `tol` and `s·tol` stops the iteration at different points at the two
+radii. It does bite, narrowly *(measured on the simple TE anchor at `s = 2`:
+refined wavelengths bit-identical for `tol` = 1e-9, 1e-7, 1e-6, 1e-4, 1e-3,
+1e-2, and differing by 7.1e-15 relative at `tol` = 1e-5, both radii reporting
+`converged`)* — narrowly because a quadratically convergent step passes through
+the marginal band only for a thin set of `tol`. The exact statement above is
+therefore made on the unrefined `modes()` output.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

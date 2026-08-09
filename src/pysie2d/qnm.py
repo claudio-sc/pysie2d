@@ -187,6 +187,11 @@ class QNMResult:
 
         Args:
             tol: Convergence threshold on the Newton step size, in nm.
+                **Absolute**, which makes it the only scale-dependent
+                quantity in the QNM path: everything else obeys the exact
+                covariance of ``docs/conventions.md`` §9, so a caller relying
+                on ``λ(s·rad) = s·λ(rad)`` should read that section or work
+                from the unrefined :meth:`QNMSolver.modes` output.
             max_iter: Iteration cap per mode.
 
         Returns:
