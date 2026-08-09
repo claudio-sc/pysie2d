@@ -245,13 +245,26 @@ two, where binary floating point makes bit-identity a theorem and the assertion
 carries no tolerance at all, and a generic ratio, which is the only variant
 that can fail from conditioning.
 
+**The algebra holds for any boundary; the conditioning needs a C¹ one.** At a
+ratio with no exact binary representation the θ-nodes move by an ulp, and on a
+boundary with a corner — the superformula at exponent 1, say — that moves a
+node *across* the kink, so the tangent and the cross product `cij` change by a
+finite amount and the matrix differs by O(1) *(measured 0.26 relative at
+s = 1.7, against 1.5e-13 on a smooth star; the same cusped shape is still
+bit-identical at s = 2)*. This is a statement about discretising a corner, not
+about covariance, and it is the reason a rough boundary handed to this solver
+should be C¹.
+
 **One exception, in `QNMResult.refine` / `newton_refine`.** `tol` is a Newton
 step size in *absolute* nm, so it is the one scale-dependent quantity in the
-QNM path: `step` scales with the radius and `tol` does not. It does not bite on
-the tested anchors *(measured: refined wavelengths bit-identical at `s = 2` for
-`tol` from 1e-9 to 1e-2, the first step already falling decades below any of
-them)*, but the exact statement above is made on the unrefined `modes()` output
-and a caller who needs it should say so.
+QNM path: `step` scales with the radius and `tol` does not, and a step landing
+between `tol` and `s·tol` stops the iteration at different points at the two
+radii. It does bite, narrowly *(measured on the simple TE anchor at `s = 2`:
+refined wavelengths bit-identical for `tol` = 1e-9, 1e-7, 1e-6, 1e-4, 1e-3,
+1e-2, and differing by 7.1e-15 relative at `tol` = 1e-5, both radii reporting
+`converged`)* — narrowly because a quadratically convergent step passes through
+the marginal band only for a thin set of `tol`. The exact statement above is
+therefore made on the unrefined `modes()` output.
 
 ## Formulation and validation references
 

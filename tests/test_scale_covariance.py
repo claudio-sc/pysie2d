@@ -33,6 +33,10 @@ The load-bearing hypothesis is **non-dispersion**: ``ri`` and ``kd`` are
 degree 0 only because :class:`pysie2d.material.Material` holds constant indices.
 The day dispersion is added these tests fail, and they should — ``dQ/drad = 0``
 fails as physics at the same moment.
+
+The algebra holds for any boundary, but the *conditioning* at a scale ratio
+with no exact binary representation needs the boundary to be C¹ — see
+:func:`test_a_cusped_boundary_loses_the_covariance_at_a_generic_ratio`.
 """
 
 import numpy as np
@@ -65,42 +69,62 @@ INEXACT_RATIOS = (1.7, 0.37)
 
 # Round-off floor on the relative max entry difference at an inexact ratio.
 # *(measured over s ∈ {1.7, 0.37, 3.0, 0.61} × n_pts ∈ {100, 200, 400} × both
-# polarisations: worst 4.3e-15 on the uniform-θ path, worst 1.1e-13 on the
-# arc-length path.)* The arc-length excess is the fine-grid inversion: one ulp
-# of error in `s_uniform` maps into δθ through dθ/ds, so it falls as the fine
-# grid densifies (n_fine = 10·nn) — 1.1e-13 at n_pts = 100 down to 3.5e-14 at
-# n_pts = 400 — and the bound below is the coarsest case, not the tested one.
+# polarisations: worst 4.3e-15 on the uniform-θ path, worst 1.7e-13 on the
+# arc-length path.)* The arc-length excess is the fine-grid inversion — one ulp
+# of difference between `linspace(0, s·L, nn)` and `s·linspace(0, L, nn)` maps
+# into δθ through dθ/ds — and it does not have a clean n_pts law: `n_fine` is
+# `max(10·nn, 4096)`, hence 4096 throughout that sweep, so the floor varies
+# with the shape rather than with the resolution.
 #
 # The headroom over the measurement is ~3×, for a different BLAS or libm
 # rounding, and it is not room to absorb a real failure: a missing power of s
-# at s = 1.7 is a 40 % discrepancy, thirteen orders above this floor. There is
-# no regime in which widening these would rescue anything.
+# at s = 1.7 is a 40 % discrepancy, twelve orders above this floor, and the
+# measured sensitivity is a relative error of 5e-13 in λ. There is no regime in
+# which widening these would rescue anything.
 ATOL_UNIFORM_THETA = 2.0e-14
-ATOL_ARC_LENGTH = 3.0e-13
+ATOL_ARC_LENGTH = 5.0e-13
 
-# (m, arc_length, tolerance). The circle is the anchor shape; m = 6 is there
-# because the arc-length inversion only does real work on a shape whose
-# uniform-θ spacing is non-uniform, and it is the path a rough boundary will
-# take.
-SHAPES = [
-    (0, False, ATOL_UNIFORM_THETA),
-    (0, True, ATOL_ARC_LENGTH),
-    (6, True, ATOL_ARC_LENGTH),
+CIRCLE = {"m": 0}
+# The examples' star. Note that Geometry.gielis defaults to n1 = n2 = n3 = 2,
+# which gives r = rad at *any* m — a circle. A non-circular shape has to name
+# its exponents, and this file needs one: the arc-length inversion only does
+# real work where the uniform-θ spacing is non-uniform, and that is the path a
+# rough boundary will take.
+STAR = {"m": 6, "n1": 6.0, "n2": 12.0, "n3": 12.0}
+# Superformula exponent 1 puts |cos|-kinks on the boundary, so the tangent is
+# discontinuous and the shape is not C¹. See the two tests for what that costs.
+CUSPED_STAR = {"m": 6, "n1": 1.0, "n2": 1.0, "n3": 1.0}
+
+# (id, shape kwargs, arc_length, tolerance).
+CONDITIONED_SHAPES = [
+    ("circle-uniform-theta", CIRCLE, False, ATOL_UNIFORM_THETA),
+    ("circle-arc-length", CIRCLE, True, ATOL_ARC_LENGTH),
+    ("star-arc-length", STAR, True, ATOL_ARC_LENGTH),
+]
+# The exact-ratio test carries the cusped star too: the algebra is exact
+# whatever the boundary regularity, and only the conditioning is not.
+EXACT_SHAPES = CONDITIONED_SHAPES + [
+    ("cusped-star-arc-length", CUSPED_STAR, True, None)
 ]
 
 
-def assemble(rad, lam, m, arc_length, pol):
+def _params(rows):
+    """pytest.param triples with readable ids, dropping the id column."""
+    return [pytest.param(kw, arc, atol, id=name) for name, kw, arc, atol in rows]
+
+
+def assemble(rad, lam, shape, arc_length, pol):
     """M(λ) for a Gielis boundary of scale radius ``rad``, centred on origin."""
     return BIESolver(
-        Geometry.gielis(rad=rad, n_pts=N_PTS, m=m, arc_length=arc_length),
+        Geometry.gielis(rad=rad, n_pts=N_PTS, arc_length=arc_length, **shape),
         Material(n_core=N_CORE, n_clad=1.0, pol=pol),
     ).assemble(lam)
 
 
 @pytest.mark.parametrize("s", EXACT_RATIOS)
-@pytest.mark.parametrize("m, arc_length, _atol", SHAPES)
+@pytest.mark.parametrize("shape, arc_length, _atol", _params(EXACT_SHAPES))
 @pytest.mark.parametrize("pol", [1, 2])
-def test_matrix_is_bit_identical_under_binary_scaling(s, m, arc_length, _atol, pol):
+def test_matrix_is_bit_identical_under_binary_scaling(s, shape, arc_length, _atol, pol):
     """M(s·rad, s·λ) == M(rad, λ) to the last bit, for s a power of two.
 
     Also pins the two premises separately, so a failure says which one broke:
@@ -108,32 +132,55 @@ def test_matrix_is_bit_identical_under_binary_scaling(s, m, arc_length, _atol, p
     homogeneous of degree 1. ``n_fine`` in the arc-length inversion depends on
     ``nn`` alone; the natural-looking "improvement" of choosing it from an
     absolute chord length in nm would break the first assertion here.
+
+    The cusped star passes exactly like the rest: boundary regularity has
+    nothing to do with the algebra.
     """
-    g1 = Geometry.gielis(rad=RAD, n_pts=N_PTS, m=m, arc_length=arc_length)
-    g2 = Geometry.gielis(rad=s * RAD, n_pts=N_PTS, m=m, arc_length=arc_length)
+    g1 = Geometry.gielis(rad=RAD, n_pts=N_PTS, arc_length=arc_length, **shape)
+    g2 = Geometry.gielis(rad=s * RAD, n_pts=N_PTS, arc_length=arc_length, **shape)
 
     assert np.array_equal(np.atleast_1d(g1.delt), np.atleast_1d(g2.delt))
     assert np.array_equal(s * g1.f, g2.f)
     assert np.array_equal(s * g1.dg, g2.dg)
     assert np.array_equal(s * g1.ddf, g2.ddf)
 
-    m1 = assemble(RAD, LAM, m, arc_length, pol)
-    m2 = assemble(s * RAD, s * LAM, m, arc_length, pol)
+    m1 = assemble(RAD, LAM, shape, arc_length, pol)
+    m2 = assemble(s * RAD, s * LAM, shape, arc_length, pol)
     assert np.array_equal(m1, m2)
 
 
+def test_a_cusped_boundary_loses_the_covariance_at_a_generic_ratio():
+    """The conditioning limit, pinned rather than left as a surprise.
+
+    On the non-C¹ star the tangent flips across a kink, so the ulp-level node
+    displacement that an inexact ratio introduces moves a node *across* the
+    kink and changes ``df, dg`` — and hence the cross product ``cij`` — by a
+    finite amount. The matrix then differs by ``O(1)``: *(measured 0.26
+    relative at s = 1.7, against 1.5e-13 for the smooth star.)*
+
+    This is a statement about the discretisation of a corner, not about the
+    covariance — the same shape is bit-identical at s = 2 above. It is recorded
+    because the roughness programme feeds this solver arbitrary boundaries, and
+    a rough boundary that is not C¹ inherits exactly this conditioning.
+    """
+    m1 = assemble(RAD, LAM, CUSPED_STAR, True, 2)
+    m2 = assemble(1.7 * RAD, 1.7 * LAM, CUSPED_STAR, True, 2)
+    rel = np.abs(m2 - m1).max() / np.abs(m1).max()
+    assert rel > 1.0e-3  # nowhere near the 5e-13 the smooth shapes hold to
+
+
 @pytest.mark.parametrize("s", INEXACT_RATIOS)
-@pytest.mark.parametrize("m, arc_length, atol", SHAPES)
+@pytest.mark.parametrize("shape, arc_length, atol", _params(CONDITIONED_SHAPES))
 @pytest.mark.parametrize("pol", [1, 2])
-def test_matrix_covariance_survives_a_generic_ratio(s, m, arc_length, atol, pol):
+def test_matrix_covariance_survives_a_generic_ratio(s, shape, arc_length, atol, pol):
     """The identity is well conditioned, not merely exact on binary ratios.
 
     This is the variant that can fail from cancellation rather than from
     algebra, and it is what calibrates the floor every downstream scale
     argument inherits.
     """
-    m1 = assemble(RAD, LAM, m, arc_length, pol)
-    m2 = assemble(s * RAD, s * LAM, m, arc_length, pol)
+    m1 = assemble(RAD, LAM, shape, arc_length, pol)
+    m2 = assemble(s * RAD, s * LAM, shape, arc_length, pol)
     rel = np.abs(m2 - m1).max() / np.abs(m1).max()
     assert rel < atol
 
@@ -152,20 +199,24 @@ def test_matrix_covariance_survives_a_generic_ratio(s, m, arc_length, atol, pol)
 #
 # The one scale-dependent knob in the QNM path is `QNMResult.refine`'s `tol`,
 # which is a step size in absolute nm: `step` scales with s while `tol` does
-# not, so a step landing between tol and s·tol would stop the iteration at
-# different points at the two radii. It does not bite on either anchor below
-# *(measured: refined wavelengths bit-identical at s = 2 for tol from 1e-9 to
-# 1e-2, because the first Newton step already falls decades below any of
-# them)*, and these tests deliberately assert on the **unrefined** modes(),
+# not, so a step landing between tol and s·tol stops the iteration at different
+# points at the two radii. It does bite *(measured on the simple anchor at
+# s = 2: refined wavelengths bit-identical for tol = 1e-9, 1e-7, 1e-6, 1e-4,
+# 1e-3, 1e-2 — and differing by 7.1e-15 relative at tol = 1e-5, with both radii
+# reporting converged)*. That is a real scale dependence, narrow because a
+# quadratically convergent step passes through the marginal band only for a
+# thin set of tol. These tests therefore assert on the **unrefined** modes(),
 # where the covariance is a theorem rather than a measurement.
 # ---------------------------------------------------------------------------
 
-# Anchors and boxes from test_qnm.py, in vacuum nm. Simple and degenerate are
-# both tested because the second is where the claim could plausibly weaken:
-# rank detection in a two-dimensional null space.
+# Boxes from test_qnm.py, in vacuum nm, with the mode count each must return —
+# every assertion below is over arrays, so a box that found nothing would pass
+# them all vacuously. Simple and degenerate are both tested because the second
+# is where the claim could plausibly weaken: rank detection in a
+# two-dimensional null space.
 BOX_TE_SIMPLE = (520.0 + 15.0j, 545.0 + 40.0j)
 BOX_TE_DEGENERATE = (745.0 + 2.0j, 775.0 + 15.0j)
-BOXES = [("simple", BOX_TE_SIMPLE), ("degenerate", BOX_TE_DEGENERATE)]
+BOXES = [("simple", BOX_TE_SIMPLE, 1), ("degenerate", BOX_TE_DEGENERATE, 2)]
 
 N_SIDE = 6  # as in test_qnm.py: identical modes to 1e-8 nm against the default
 
@@ -195,12 +246,12 @@ def qnm_modes(rad, box, s):
 @pytest.fixture(scope="module")
 def unscaled():
     """The reference spectra at rad = 200 nm, ~1.5 s per box."""
-    return {name: qnm_modes(RAD, box, 1.0) for name, box in BOXES}
+    return {name: qnm_modes(RAD, box, 1.0) for name, box, _ in BOXES}
 
 
 @pytest.mark.parametrize("s", EXACT_RATIOS)
-@pytest.mark.parametrize("name, box", BOXES)
-def test_qnm_is_bit_identical_under_binary_scaling(unscaled, s, name, box):
+@pytest.mark.parametrize("name, box, n_modes", BOXES)
+def test_qnm_is_bit_identical_under_binary_scaling(unscaled, s, name, box, n_modes):
     """λ(s·rad) = s·λ(rad) and Q(s·rad) = Q(rad), to the last bit.
 
     This is the sharpest statement available: not "dλ/drad agrees with λ/rad to
@@ -220,7 +271,7 @@ def test_qnm_is_bit_identical_under_binary_scaling(unscaled, s, name, box):
     # A mode within an ulp of a contour edge would make the in-contour filter a
     # knife edge and the comparison meaningless for a trivial reason.
     assert np.all(ref.edge_margin > 0.05)
-    assert ref.n_modes == got.n_modes
+    assert ref.n_modes == n_modes and got.n_modes == n_modes
     assert np.array_equal(ref.multiplicity, got.multiplicity)
 
     assert np.array_equal(got.wavelengths / s, ref.wavelengths)
@@ -232,8 +283,8 @@ def test_qnm_is_bit_identical_under_binary_scaling(unscaled, s, name, box):
 
 
 @pytest.mark.parametrize("s", INEXACT_RATIOS)
-@pytest.mark.parametrize("name, box", BOXES)
-def test_qnm_scale_covariance_at_a_generic_ratio(unscaled, s, name, box):
+@pytest.mark.parametrize("name, box, n_modes", BOXES)
+def test_qnm_scale_covariance_at_a_generic_ratio(unscaled, s, name, box, n_modes):
     """The same identity where only round-off, not exact arithmetic, protects it.
 
     The Q tolerance is *derived* from the λ one rather than measured. With
@@ -256,7 +307,7 @@ def test_qnm_scale_covariance_at_a_generic_ratio(unscaled, s, name, box):
     ref = unscaled[name]
     got = qnm_modes(s * RAD, box, s)
 
-    assert ref.n_modes == got.n_modes
+    assert ref.n_modes == n_modes and got.n_modes == n_modes
     rel_lam = np.abs(got.wavelengths / s - ref.wavelengths) / np.abs(ref.wavelengths)
     assert np.all(rel_lam < RTOL_LAM)
 
