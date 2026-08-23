@@ -69,3 +69,45 @@ measurement:
 
 Either way the compute-budget consequence is recorded: the earlier hope that
 `n_pts = 200` would serve does not survive contact with a 1 % requirement on J.
+
+## Route 2 measured: ΔJ between nearby designs does **not** converge faster
+
+Script: `docs/design/studies/gate10_jacobian_differences.py`, same design point
+and same ladder, with a second design at `b = 1.22` (`δb = 0.02` — it moves λ by
+~1 nm, a hundred times the `R = 50` pole error, so `ΔJ` is not itself a
+cancellation artefact, while still being the scale at which two catalogue
+designs get compared). Both designs are laddered at the **same** `n_pts`: sizing
+each from its own `R` target would let the two differ by a point or two, and
+that difference is of the order of the error under test, so the sizing rule
+rather than the physics would decide the answer.
+
+Pass criterion fixed before the run: route 2 is viable if `ΔJ` converges at an
+order above 1, **or** its residual at `R = 50` lands at least 10× below `J`'s
+own 1.5e-2.
+
+| component | `p(J)` | res(`J`) | `p(ΔJ)` | res(`ΔJ`) |
+|---|---|---|---|---|
+| `dλ/db` | 0.98 | 1.531e-2 | 0.94 | 4.611e-2 |
+| `dλ/da` | 0.99 | 2.172e-3 | 0.94 | 4.611e-2 |
+| `dλ/drad` | 1.02 | 3.376e-4 | 0.97 | 1.425e-2 |
+| `dλ/dn_core` | 0.99 | 5.461e-3 | 0.94 | 6.352e-1 |
+
+**Neither half is met, and the miss is not marginal.** The order is 0.94–0.97 —
+first order, like `J` and like λ — and every residual is *worse* than `J`'s own,
+by 3× on `dλ/db` and by 116× on `dλ/dn_core`. Differencing subtracts two
+quantities whose errors are the same size and only partly common-mode, so the
+difference keeps the error while losing the signal: exactly the behaviour of a
+cancellation that acts on the constant and not on the order, which is what the
+first script already found. §9's smoothness argument does not buy a second
+cancellation any more than it bought the first.
+
+`dλ/da` and `dλ/db` return the same relative residual to four digits because
+their `ΔJ` sequences are proportional: `ΔJ(a)/ΔJ(b) = −1.209 ≈ −b/a` at both
+rungs. That is D15 showing through — at `n2 = n3` the combination
+`a ∂_a + b ∂_b` is a pure dilation, so a perturbation in `b` moves the two
+components along that one direction. It is a corroboration of Gate 2 through an
+unrelated quantity, not a coincidence and not a bug.
+
+**Route 2 is therefore closed off.** Gate 10 has one route left, and it is
+Richardson extrapolation of `J` from two rungs (route 1), whose premise — the
+order — is measured at 1.00 ± 2 % here for a third time.

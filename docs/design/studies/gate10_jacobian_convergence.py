@@ -64,9 +64,14 @@ def n_pts_for(target_r, material, wavelength):
     return n
 
 
-def jacobian(n_pts, material):
-    """dλ/dp at the design point for p in (b, a, rad, n_core), plus λ and R."""
-    geom = geometry(n_pts)
+def jacobian(n_pts, material, **design):
+    """dλ/dp at the design point for p in (b, a, rad, n_core), plus λ and R.
+
+    ``design`` overrides Gielis parameters, so a nearby design can be laddered
+    on exactly this code path (route 2, ``gate10_jacobian_differences.py``).
+    """
+    at_design = {**ELLIPSE, **design}
+    geom = geometry(n_pts, **design)
     res = QNMSolver(geom, material).modes(z_lo=BOX[0], z_hi=BOX[1], n_quad_per_side=6)
     if res.n_modes != 1:
         raise RuntimeError(f"n_pts={n_pts}: box holds {res.n_modes} modes, expected 1")
@@ -76,16 +81,18 @@ def jacobian(n_pts, material):
 
     def shape(name):
         def at(delta):
-            moved = geometry(n_pts, theta=theta, **{name: ELLIPSE[name] + delta})
+            moved = geometry(
+                n_pts, theta=theta, **{**design, name: at_design[name] + delta}
+            )
             return moved, material
 
         return res.sensitivity(at)[0]
 
     def scale(delta):
-        return geometry(n_pts, theta=theta, rad=RAD + delta), material
+        return geometry(n_pts, theta=theta, rad=RAD + delta, **design), material
 
     def core(delta):
-        return geometry(n_pts, theta=theta), Material(
+        return geometry(n_pts, theta=theta, **design), Material(
             n_core=N_CORE + delta, n_clad=1.0, pol=2
         )
 
