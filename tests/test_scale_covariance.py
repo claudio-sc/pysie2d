@@ -342,3 +342,75 @@ def test_qnm_scale_covariance_at_a_generic_ratio(unscaled, s, name, box, n_modes
     rtol_q = (1.0 + 2.0 * ref.quality_factors) * RTOL_LAM
     rel_q = np.abs(got.quality_factors - ref.quality_factors) / ref.quality_factors
     assert np.all(rel_q < rtol_q)
+
+
+def test_frozen_theta_reproduces_the_geometry_it_came_from():
+    """Handing a Geometry's own theta back must be a no-op, bit-for-bit.
+
+    The freeze of ``docs/conventions.md`` §10 is only trustworthy if it changes
+    nothing at the base point: every shape derivative evaluates M at ``p0 ± h``
+    on a node set taken from ``p0``, and if that path differed from the ordinary
+    one even in the last digit, the difference would enter every Jacobian entry
+    as a constant offset. ``np.array_equal`` rather than a tolerance for exactly
+    that reason — there is no approximation here to allow for, the same angles
+    go into the same closed-form evaluation.
+    """
+    base = Geometry.gielis(RAD, 200, m=4, b=1.20, arc_length=True)
+    frozen = Geometry.gielis(RAD, 200, m=4, b=1.20, arc_length=True, theta=base.theta)
+
+    for name in ("f", "g", "df", "dg", "ddf", "ddg", "delt", "theta"):
+        assert np.array_equal(getattr(frozen, name), getattr(base, name)), name
+
+
+def test_frozen_theta_preserves_exact_scale_covariance():
+    """A frozen node set must not smuggle an absolute length into the geometry.
+
+    Conventions §9 holds because the theta nodes are ``rad``-independent. A
+    node set frozen at one radius and reused at another is the obvious way to
+    break that, so it is checked rather than assumed. Binary ratios only, per
+    the file's own split: ``r(theta)`` is linear in ``rad`` in closed form, so
+    a power-of-two rescaling is exact to the last bit while a generic one is
+    not — see ``test_matrix_covariance_survives_a_generic_ratio``.
+    """
+    shape = {"m": 4, "b": 1.20}
+    base = Geometry.gielis(RAD, N_PTS, arc_length=True, **shape)
+
+    for s in EXACT_RATIOS:
+        small = Geometry.gielis(RAD, N_PTS, theta=base.theta, **shape)
+        large = Geometry.gielis(s * RAD, N_PTS, theta=base.theta, **shape)
+
+        # The two premises separately, so a failure says which one broke: the
+        # frozen nodes carry no length, and the coordinates they generate are
+        # still homogeneous of degree 1 in rad.
+        assert np.array_equal(large.theta, small.theta)
+        assert np.array_equal(large.delt, small.delt)
+        assert np.array_equal(large.f, s * small.f)
+        assert np.array_equal(large.g, s * small.g)
+
+        # And the claim §9 actually makes, which is about M and not about f.
+        mat = Material(n_core=QNM_N_CORE, pol=2)
+        m_small = BIESolver(small, mat).assemble(LAM)
+        m_large = BIESolver(large, mat).assemble(s * LAM)
+        assert np.array_equal(m_small, m_large)
+
+
+def test_reordered_theta_is_rejected_rather_than_silently_integrated():
+    """A mangled node set must raise, not produce a plausible boundary.
+
+    ``delt`` is a bare ``np.diff``, so a reordered set yields negative
+    quadrature weights and a boundary integral that counts part of the curve
+    backwards — a wrong number with nothing raised, which is the failure mode
+    this package treats as worse than a crash.
+    """
+    base = Geometry.gielis(RAD, 200, m=4, b=1.20, arc_length=True)
+
+    shuffled = base.theta.copy()
+    shuffled[[10, 11]] = shuffled[[11, 10]]
+    with pytest.raises(ValueError, match="strictly increasing"):
+        Geometry.gielis(RAD, 200, m=4, b=1.20, theta=shuffled)
+
+    with pytest.raises(ValueError, match="2\\*pi"):
+        Geometry.gielis(RAD, 200, m=4, b=1.20, theta=base.theta * 2.0)
+
+    with pytest.raises(ValueError, match="only meaningful for arc_length"):
+        Geometry.gielis(RAD, 200, m=4, arc_length=False, theta=base.theta)
