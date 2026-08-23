@@ -276,6 +276,60 @@ refined wavelengths bit-identical for `tol` = 1e-9, 1e-7, 1e-6, 1e-4, 1e-3,
 the marginal band only for a thin set of `tol`. The exact statement above is
 therefore made on the unrefined `modes()` output.
 
+## 10. Shape derivatives use a frozen node set (v0.5)
+
+**A finite difference in a shape parameter holds the boundary node set fixed.**
+`Geometry` stores `theta`, and `Geometry.gielis(..., theta=...)` builds a shape
+on angles supplied from elsewhere instead of re-inverting arc length. Every
+`∂M/∂p` takes `M(p₀±h)` on the θ of `p₀`, and so do `∂M/∂λ` and the left and
+right null vectors that enter the adjoint quotient — all four on one node set,
+or the quotient mixes two discretisations.
+
+**Why it is not merely convenient.** Node placement is a **parametrisation
+gauge**. The BIE discretises a boundary integral, and λ — the thing the adjoint
+differentiates — does not depend on how the boundary was sampled. Re-inverting
+arc length between the two evaluations differentiates the gauge along with the
+physics, and the gauge is not differentiable: the inversion goes through
+`np.interp`, which is continuous but only *piecewise* linear in the shape
+parameter, so a node whose bracketing cell differs between `p₀−h` and `p₀+h`
+contributes an O(1) error to the quotient.
+
+The resulting term is O(h), not O(h²); it is not monotone in `h`; and it **grows
+with `n_pts`**, because a finer boundary has more cells to cross. That last
+property is why it cannot be refined away and had to be removed structurally.
+*(measured, `docs/design/studies/shape-derivative-smoothness.md`: unfrozen, the
+`h`-ladder on `∂M/∂b` falls 8.29e-5 → 3.24e-5 → 5.60e-9 — a stall then a cliff,
+with the fraction of matrix entries carrying the deviation going 0.49 → 0.05 →
+0.00, a decaying count rather than a decaying magnitude. Frozen, the same ladder
+is 1.01e-5 → 1.01e-7 → 1.67e-9: exactly ×100 per decade in every parameter until
+the cancellation floor.)*
+
+Uniformity in arc length still drifts by O(h) across the difference. That is
+accepted and is the point of `h` being small — the alternative is to
+re-equidistribute, which is the error being removed. Over the larger parameter
+steps of a continuation path the nodes **are** re-equidistributed per step, and
+the resulting jitter is measured under Gate 7 rather than assumed away.
+
+**Step size.** `h = 1e-5` in the parameter's own units, with the cancellation
+floor at ~1e-8 and truncation at ~1e-7 a decade above, i.e. about a decade of
+margin on each side. The margin, not the best value at one design point, is the
+reason for the choice: the truncation coefficient scales with the parameter's
+geometric leverage, which moves across the shape catalogue. **No second
+derivatives** — the source of the O(h) term above is a kinked first derivative,
+and freezing the nodes removes it from the difference quotient without making
+the underlying inversion C².
+
+**Two traps this pins.** A prescribed θ is validated for strict ordering and a
+sub-2π span, because `delt` is a bare `np.diff`: a reordered set gives negative
+quadrature weights and a boundary integral that counts part of the curve
+backwards, with nothing raised. And `theta` is a **required** field rather than
+an optional one, because an optional θ means a silent fallback to re-inversion
+— which is exactly the failure being removed.
+
+Frozen nodes preserve §9 exactly: a supplied θ carries no length, so
+`M(s·rad, s·λ) = M(rad, λ)` entrywise still holds, and it is asserted on the
+frozen path in `tests/test_scale_covariance.py`.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

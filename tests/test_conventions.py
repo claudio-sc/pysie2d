@@ -10,7 +10,7 @@ the other for three releases.
 import numpy as np
 import pytest
 
-from conftest import N_CLAD, N_CORE, POL_TAG, RAD, size_parameter
+from conftest import N_CLAD, N_CORE, POL_TAG, QNM_N_CORE, RAD, size_parameter
 from pysie2d import (
     BIESolver,
     Geometry,
@@ -259,3 +259,47 @@ def test_size_parameter_rejects_non_circular_geometry():
     assert not star.is_circle
     with pytest.raises(ValueError, match="circular"):
         public_size_parameter(star, Material(n_core=N_CORE), 600.0)
+
+
+def test_frozen_nodes_restore_second_order_convergence():
+    """§10: freezing the node set is what makes ∂M/∂p second-order in h.
+
+    The check is the *rate*, not a value. A central difference must fall by 100
+    per decade of h; the unfrozen path does not, because re-inverting arc length
+    between the two evaluations adds an O(h) term from ``np.interp`` cell
+    crossings. Both halves are asserted, and the second is what stops this
+    passing by accident — a test that only checked the frozen path would still
+    pass if the freeze silently stopped being applied.
+
+    The ratio is asserted above 50 rather than at 100 because the plateau
+    carries the next term of the expansion too (O(h⁴), relatively 1e-2 here), so
+    a factor-of-two band around the ideal is the honest statement. The unfrozen
+    ratio is measured at 2.6, twenty times below the bound, so the two cases are
+    not a close call. Steps 1e-3 and 1e-4 sit inside the D12 window and a decade
+    clear of the 1e-8 cancellation floor at either end.
+    """
+    shape = {"m": 4, "b": 1.20}
+    lam = 700.0 + 8.0j  # complex λ: the QNM path, not a real fast path
+    n_pts = 120  # the rate is n_pts-independent; 120 keeps the test quick
+
+    def deriv(h, theta):
+        mats = []
+        for sign in (+1.0, -1.0):
+            geo = Geometry.gielis(
+                RAD, n_pts, **{**shape, "b": shape["b"] + sign * h}, theta=theta
+            )
+            mats.append(
+                BIESolver(geo, Material(n_core=QNM_N_CORE, pol=2)).assemble(lam)
+            )
+        return (mats[0] - mats[1]) / (2.0 * h)
+
+    frozen = Geometry.gielis(RAD, n_pts, **shape).theta
+    for theta, name in ((frozen, "frozen"), (None, "unfrozen")):
+        ref = deriv(1.0e-6, theta)
+        coarse = np.linalg.norm(deriv(1.0e-3, theta) - ref)
+        fine = np.linalg.norm(deriv(1.0e-4, theta) - ref)
+        rate = coarse / fine
+        if name == "frozen":
+            assert rate > 50.0, f"frozen path is not second order: {rate:.1f}"
+        else:
+            assert rate < 10.0, f"unfrozen path unexpectedly clean: {rate:.1f}"
