@@ -111,3 +111,51 @@ unrelated quantity, not a coincidence and not a bug.
 **Route 2 is therefore closed off.** Gate 10 has one route left, and it is
 Richardson extrapolation of `J` from two rungs (route 1), whose premise — the
 order — is measured at 1.00 ± 2 % here for a third time.
+
+## Route 1 measured: two-rung Richardson reaches 1 % at 0.46 assemblies
+
+Script: `docs/design/studies/gate10_richardson.py`. The estimator is
+
+    J* = J_f + (J_f − J_c) / ((n_f / n_c) − 1)
+
+with the exponent **pinned at `p = 1`, not fitted**. Fitting needs a third rung,
+costs 1.7× more, and buys a fitted exponent whose conditioning is poor when the
+two differences are close — while the exponent itself is now measured at
+1.00 ± 2 % by three independent ladders.
+
+Scoring against the finest rung a candidate was built from would be circular, so
+the ladder carries two rungs above the working band, `R = 75` and `R = 100`
+(`n_pts` 567 and 755), which no scored candidate uses. Every candidate is scored
+against the `R = 75/100` Richardson limit. The raw ladder underneath is clean
+first order — `dλ/db` = 53.3036, 52.3359, 51.9360, 51.7314, 51.6290 at
+`n_pts` = 115, 228, 378, 567, 755, successive differences −0.968, −0.400,
+−0.205, −0.102, halving exactly as `1/n` requires.
+
+Relative error against that limit; cost in units of one `R = 50` assembly
+(assembly is O(`n_pts`²), so a rung costs `(n/n₅₀)²`):
+
+| estimator | cost | `dλ/db` | `dλ/da` | `dλ/drad` | `dλ/dn_core` |
+|---|---|---|---|---|---|
+| raw rung `R = 15` | 0.09 | 4.910e-2 | 7.009e-3 | 1.140e-3 | 1.777e-2 |
+| raw rung `R = 30` | 0.36 | 2.494e-2 | 3.554e-3 | 5.709e-4 | 8.989e-3 |
+| raw rung `R = 50` | 1.00 | 1.507e-2 | 2.147e-3 | 3.435e-4 | 5.429e-3 |
+| **Richardson 15+30** | **0.46** | **6.381e-4** | 7.242e-5 | 1.370e-5 | 2.360e-4 |
+| Richardson 15+50 | 1.09 | 3.708e-4 | 4.217e-5 | 7.722e-6 | 1.366e-4 |
+| Richardson 30+50 | 1.36 | 1.694e-4 | 1.939e-5 | 3.223e-6 | 6.178e-5 |
+
+**Richardson from `R = 15 + 30` meets the 1 % bar with 15× margin, at 0.46× the
+cost of a single `R = 50` rung** — which does not meet it at all, missing by
+1.5 %. Extrapolation buys about two decades of accuracy for less than half the
+price of the rung it replaces, because the cost is dominated by the finer of the
+two rungs and `R = 30` is 2.8× cheaper than `R = 50`. `R = 30 + 50` is available
+for another 4× of margin at 3× the cost, and is the fallback if a catalogue
+region turns out to be less well behaved than this design point.
+
+**A trap worth naming.** The first run of this script had the Richardson
+denominator inverted, `(n_c/n_f) − 1` for `(n_f/n_c) − 1`, and the tell was not
+a crash but a *non-monotone score column*: raw `R = 30` scored 50× better than
+raw `R = 50` against the reference. A reference built by the same broken
+estimator moves the target rather than raising an error. Any score table like
+this one must be read down the raw-rung rows first — they have to improve
+monotonically with `R`, and if they do not, the reference is wrong, not the
+rungs.
