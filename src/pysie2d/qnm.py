@@ -638,3 +638,42 @@ def _degenerate_groups(lams: np.ndarray) -> list[list[int]]:
         else:
             groups.append([i])
     return groups
+
+
+def richardson_limit(
+    coarse: complex | np.ndarray,
+    fine: complex | np.ndarray,
+    n_coarse: int,
+    n_fine: int,
+) -> complex | np.ndarray:
+    """Extrapolate a first-order-in-``n_pts`` quantity to infinite resolution.
+
+    Both λ and ``dλ/dp`` converge at **first order** in ``n_pts`` — measured at
+    ``p = 1.00 ± 2 %`` on every Jacobian component (Gate 10,
+    ``docs/design/studies/jacobian-convergence.md``). So for ``q(n) = q* + C/n``
+    two rungs determine ``q*``, and a Jacobian assembled at ``R = 15`` and
+    ``R = 30`` lands two decades closer to the limit than a single rung at
+    ``R = 50`` costing more than twice as much.
+
+    The exponent is **pinned at 1, not fitted**: fitting needs a third rung and
+    returns an exponent that is badly conditioned when the two differences are
+    close, to refine a number three independent ladders already agree on.
+
+    Args:
+        coarse: The quantity at the coarser resolution.
+        fine: The same quantity at the finer resolution.
+        n_coarse: Boundary points of the coarse rung.
+        n_fine: Boundary points of the fine rung; must exceed ``n_coarse``.
+
+    Returns:
+        The extrapolated limit, same shape as the inputs.
+
+    Raises:
+        ValueError: If ``n_fine`` does not exceed ``n_coarse``. The formula is
+            antisymmetric in the two rungs, so swapping them does not merely
+            degrade the estimate — it extrapolates the wrong way, and the
+            failure is silent: every residual still looks plausible.
+    """
+    if n_fine <= n_coarse:
+        raise ValueError(f"n_fine must exceed n_coarse, got {n_fine} <= {n_coarse}")
+    return fine + (fine - coarse) / (n_fine / n_coarse - 1.0)

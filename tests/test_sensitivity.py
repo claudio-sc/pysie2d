@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from conftest import QNM_N_CORE, RAD
-from pysie2d import Geometry, Material, QNMSolver
+from pysie2d import Geometry, Material, QNMSolver, richardson_limit
 
 N_PTS = 200
 N_SIDE = 6
@@ -340,3 +340,81 @@ def test_gate3_adjoint_matches_re_extracted_poles(te_simple):
     assert errors[-1] < 1.0e-7
     for coarse, fine in zip(errors[:-1], errors[1:], strict=True):
         assert 80.0 < coarse / fine < 120.0
+
+
+# Gate 10 design point: the Gate-2/3 ellipse (m=4, n1=n2=n3=2 is an exact
+# ellipse, D14) and its single mode, so the R ladder runs through the real
+# Gielis shape-derivative path rather than the circle's dilation identity.
+GATE10_ELLIPSE = {"m": 4, "n1": 2.0, "n2": 2.0, "n3": 2.0, "a": 1.0, "b": 1.2}
+GATE10_BOX = (543.0 + 18.0j, 560.0 + 32.0j)
+GATE10_N_PTS = (115, 228, 378)  # R = 15.25, 30.26, 50.17 at this shape
+
+
+def _dlam_db(n_pts):
+    """dλ/db at the Gate-10 design point, at one resolution."""
+    mat = Material(n_core=3.0, n_clad=1.0, pol=2)
+    geom = Geometry.gielis(rad=RAD, n_pts=n_pts, **GATE10_ELLIPSE)
+    res = QNMSolver(geom, mat).modes(
+        z_lo=GATE10_BOX[0], z_hi=GATE10_BOX[1], n_quad_per_side=N_SIDE
+    )
+    assert res.n_modes == 1, f"n_pts={n_pts}: box holds {res.n_modes} modes"
+    res = res.refine()
+    theta = res.geometry.theta
+
+    def at(delta):
+        moved = Geometry.gielis(
+            rad=RAD,
+            n_pts=n_pts,
+            theta=theta,
+            **{**GATE10_ELLIPSE, "b": GATE10_ELLIPSE["b"] + delta},
+        )
+        return moved, mat
+
+    return res.sensitivity(at)[0]
+
+
+def test_gate10_jacobian_is_first_order_and_richardson_is_consistent():
+    """Gate 10: J converges at first order, and two extrapolants agree.
+
+    The gate is met by extrapolation, not by resolution (conventions §12), and
+    that rests on two things this test pins.
+
+    **The premise**: ``dλ/db`` converges at first order in ``n_pts``. Measured
+    on the R = 15/30/50 ladder, the observed order is 1.00; the bound [0.90,
+    1.10] is the 2 % spread across the four J components and three independent
+    ladders recorded in ``jacobian-convergence.md``, widened to 10 % so that a
+    genuinely different order — 2, or 0.5 — fails while ordinary design-point
+    variation does not.
+
+    **The estimator's orientation**: Richardson from (15, 30) and from (30, 50)
+    must agree far more tightly than either raw rung sits from the limit. The
+    raw rungs are 2.5 % and 1.5 % out, so agreement to 2e-3 is an order of
+    magnitude past anything the rungs themselves supply. This is what catches
+    an inverted denominator, which does not raise and does not look wrong in
+    isolation: it extrapolates away from the limit, and the two extrapolants
+    then disagree at the percent level rather than at 5e-4 (measured).
+    """
+    n_c, n_m, n_f = GATE10_N_PTS
+    j_c, j_m, j_f = (_dlam_db(n) for n in GATE10_N_PTS)
+
+    # Order from three unequally spaced rungs: (n_c^-p − n_m^-p)/(n_m^-p − n_f^-p)
+    # is monotone in p, so bisect rather than fit a badly conditioned exponent.
+    ratio = abs(j_c - j_m) / abs(j_m - j_f)
+    lo, hi = 0.1, 6.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        f_lo, f_mid = (
+            (n_c**-p - n_m**-p) / (n_m**-p - n_f**-p) - ratio for p in (lo, mid)
+        )
+        lo, hi = (lo, mid) if f_lo * f_mid <= 0.0 else (mid, hi)
+    assert 0.90 <= 0.5 * (lo + hi) <= 1.10
+
+    coarse_pair = richardson_limit(j_c, j_m, n_c, n_m)
+    fine_pair = richardson_limit(j_m, j_f, n_m, n_f)
+    assert abs(coarse_pair - fine_pair) / abs(fine_pair) < 2e-3
+
+    # And both must beat the finest raw rung, or extrapolation is buying
+    # nothing: J(R=50) is 1.5 % from the limit, the extrapolants under 1e-3.
+    assert abs(j_f - fine_pair) / abs(fine_pair) > 10.0 * abs(
+        coarse_pair - fine_pair
+    ) / abs(fine_pair)

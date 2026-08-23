@@ -389,6 +389,44 @@ re-extracted Beyn poles, second order in the step *(3.816e-4 → 3.809e-6 →
 3.816e-8, ratios 100.2 and 99.8)*. All four in
 `tests/test_sensitivity.py`.
 
+## 12. Jacobian accuracy is bought by extrapolation, not by resolution (v0.5)
+
+`J = dλ/dp` converges at **first order in `n_pts`**, exactly like λ itself:
+observed order 0.98–1.02 on every component, on three independent ladders
+(`docs/design/studies/jacobian-convergence.md`). §9's argument that the fixed
+`x_disc(n_pts) ≠ x_Mie` error is smooth in the shape parameter and cancels in
+the ratio `∂λ/∂p` is **true of the constant and false of the order** — `dλ/drad`
+is three decades better resolved than `dλ/db` at the same `R`, and neither
+converges faster than `1/n_pts`. Do not read §9 as promising more than that.
+
+Two consequences, both measured rather than argued:
+
+**Differencing does not help.** `ΔJ` between two designs `δb = 0.02` apart
+converges at order 0.94 and lands *further* from its limit than `J` does — 3×
+further on `dλ/db`, 116× on `dλ/dn_core`. Subtracting two quantities whose
+errors are the same size and only partly common-mode keeps the error and loses
+the signal.
+
+**Two-rung Richardson does.** `richardson_limit(coarse, fine, n_coarse, n_fine)`
+implements `q* = q_f + (q_f − q_c)/(n_f/n_c − 1)`, exponent **pinned at 1, not
+fitted**. From `R = 15 + 30` it puts every J component inside **6.4e-4** of the
+limit at **0.46×** the cost of one `R = 50` rung — which is itself 1.5 % out and
+misses the gate's 1 % bar. `R = 30 + 50` is the fallback, 4× more margin at 3×
+the cost.
+
+`n_fine` must exceed `n_coarse` and the function raises otherwise, because the
+formula is antisymmetric in its two rungs: swapping them extrapolates the wrong
+way, silently, with every residual still plausible. That inversion is what
+`test_gate10_jacobian_is_first_order_and_richardson_is_consistent` exists to
+catch — it pins the first-order premise and requires two extrapolants built
+from different rung pairs to agree to 2e-3, an order of magnitude tighter than
+the raw rungs they came from.
+
+**Rungs are placed in `R = wavelength_over_ds`, never in raw `n_pts`** (D17):
+200 points read as `R = 37.1` on a circle and 17.5 on an aspect-3 ellipse, so a
+ladder in `n_pts` measures different resolutions at different points of a
+catalogue.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

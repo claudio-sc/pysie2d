@@ -23,6 +23,8 @@ Public API:
         in the parameter's own units (§§10, 11).
     size_parameter: derived Mie size parameter x = 2π·n_clad·rad/λ_vac.
     wavelength_over_ds: boundary points per interior wavelength (§10).
+    richardson_limit: first-order extrapolation of λ or dλ/dp in ``n_pts``
+        (§12).
 
 All public wavelengths are **vacuum** wavelengths in nm; the low-level
 primitives (``assemble_matrix``, ``assemble_matrix_reference``,
@@ -36,7 +38,13 @@ from .geometry import Geometry
 from .green import relative_ldos, relative_ldos_map, self_green
 from .kernels import assemble_matrix, assemble_matrix_reference
 from .material import Material
-from .qnm import DEGENERATE_COND, SHAPE_STEP, QNMResult, QNMSolver
+from .qnm import (
+    DEGENERATE_COND,
+    SHAPE_STEP,
+    QNMResult,
+    QNMSolver,
+    richardson_limit,
+)
 from .solver import (
     BIESolver,
     ScatterResult,
@@ -55,6 +63,7 @@ __all__ = [
     "QNMResult",
     "QNMSolver",
     "SHAPE_STEP",
+    "richardson_limit",
     "ScatterResult",
     "assemble_matrix",
     "assemble_matrix_reference",
