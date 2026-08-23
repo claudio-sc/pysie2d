@@ -64,16 +64,66 @@ DESIGN_POINT = {
 MATERIAL_KEYS = ("n_core", "n_clad")
 
 
-def _matrix_at(point: dict, n_pts: int) -> np.ndarray:
-    """M(λ) at a full design point, geometry and material together."""
+def _matrix_at(point: dict, n_pts: int, theta: np.ndarray | None = None) -> np.ndarray:
+    """M(λ) at a full design point, geometry and material together.
+
+    Args:
+        point: The design point, geometry and material keys together.
+        n_pts: Boundary resolution; ignored when ``theta`` is given.
+        theta: Frozen node set (D16). ``None`` re-inverts arc length on this
+            shape, which is the *unfrozen* path the stall was measured on.
+    """
     shape = {k: v for k, v in point.items() if k not in MATERIAL_KEYS}
-    geo = Geometry.gielis(RAD, n_pts, arc_length=True, **shape)
+    geo = Geometry.gielis(RAD, n_pts, arc_length=True, theta=theta, **shape)
     mat = Material(n_core=point["n_core"], n_clad=point["n_clad"], pol=2)
     return BIESolver(geo, mat).assemble(LAM)
 
 
+def _frozen_theta(point: dict, n_pts: int) -> np.ndarray:
+    """The node set of the *unperturbed* design point — what D16 holds fixed."""
+    shape = {k: v for k, v in point.items() if k not in MATERIAL_KEYS}
+    return Geometry.gielis(RAD, n_pts, arc_length=True, **shape).theta
+
+
 def _matrix(b: float, n_pts: int) -> np.ndarray:
     return _matrix_at({**DESIGN_POINT, "b": b}, n_pts)
+
+
+def parameter_sweep_frozen(n_pts: int) -> None:
+    """The ladder under D16, at design points the catalogue would actually hold.
+
+    Two exclusions, both of them decisions rather than convenience. Odd ``m``
+    away from ``a = b`` violates D5's closure condition and the arc-length
+    inversion returns *coincident* nodes there, which the prescribed-θ
+    validator rejects and which silently gives NaN second derivatives on the
+    unfrozen path. And ``n1`` at ``a = b = 1, n2 = n3 = 2`` is an exact null
+    direction — the bracket is ``|cos|² + |sin|² ≡ 1``, so the shape is a
+    circle for every ``n1`` and ``∂M/∂n1`` vanishes identically; a relative
+    deviation there divides noise by zero.
+    """
+    cases = [
+        ("b", 1.20, 4, {}),
+        ("b", 0.85, 4, {}),
+        ("b", 1.50, 4, {}),
+        ("b", 1.25, 6, {}),
+        ("a", 1.00, 4, {"b": 1.20}),
+        ("n1", 1.60, 4, {"b": 1.20}),
+        ("n1", 2.00, 3, {"n2": 3.0, "n3": 3.0}),
+        ("n2", 3.00, 4, {"b": 1.20}),
+        ("n3", 3.00, 4, {"b": 1.20}),
+        ("n_core", 3.00, 4, {"b": 1.20}),
+    ]
+    for name, p_0, m_sym, extra in cases:
+        point = {**DESIGN_POINT, "m": m_sym, **extra, name: p_0}
+        theta = _frozen_theta(point, n_pts)
+        _ladder(
+            lambda p, n, _k=name, _pt=point, _th=theta: _matrix_at(
+                {**_pt, _k: p}, n, _th
+            ),
+            n_pts,
+            f"FROZEN dM/d{name}, m = {m_sym}",
+            p_0=float(p_0),
+        )
 
 
 def _node_angles(b: float, n_pts: int) -> np.ndarray:
@@ -135,3 +185,4 @@ if __name__ == "__main__":
         derivative_ladder(n)
     node_placement_ladder(200)
     parameter_sweep(200)
+    parameter_sweep_frozen(200)

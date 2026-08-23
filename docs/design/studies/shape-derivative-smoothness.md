@@ -101,3 +101,57 @@ parameter anywhere in the table at that step is `n1` at 4.8e-8. That is a
 proposal, not a decision — D12 is locked and re-taking it is not this study's
 call. What the study establishes is that the number currently in it is measured
 to be the wrong one.
+
+## With the node set frozen (D16): the O(h) term is gone
+
+Same script, same design point, `parameter_sweep_frozen`, at commit `247492d`.
+The only change is that `M(p₀±h)` is built on the θ nodes of `p₀` instead of
+re-inverting arc length on each perturbed shape.
+
+| `h` | `b`=1.20 | `b`=0.85 | `b`=1.50 | `b`=1.25, m=6 | `a`=1.00 | `n1`=1.60 | `n2`=3.00 |
+|---|---|---|---|---|---|---|---|
+| 1e-2 | 1.01e-3 | 1.13e-3 | 9.50e-4 | 8.11e-4 | 1.14e-3 | 9.51e-5 | 1.4e-5 |
+| 1e-3 | 1.01e-5 | 1.13e-5 | 9.50e-6 | 8.11e-6 | 1.14e-5 | 9.51e-7 | 1.4e-7 |
+| 1e-4 | 1.01e-7 | 1.13e-7 | 9.50e-8 | 8.10e-8 | 1.14e-7 | 1.15e-8 | 1.1e-8 |
+| 1e-5 | 1.67e-9 | 1.76e-9 | 1.66e-9 | 1.49e-9 | 1.63e-9 | 6.40e-9 | 1.1e-8 |
+| 1e-7 | 1.31e-8 | 1.53e-8 | 1.30e-8 | 1.30e-8 | 1.18e-8 | 6.47e-8 | 9.7e-8 |
+
+**Exactly ×100 per decade**, over three decades, in every parameter, until the
+cancellation floor takes over. Compare the unfrozen column for `b`=1.20 in the
+first table: 8.29e-5 → 3.24e-5 (a factor of 2.6) against 1.01e-5 → 1.01e-7 here.
+The stall is not reduced, it is absent — and the entry fraction carrying the
+deviation now behaves like a truncation term should, spread over most of the
+matrix at large `h` (0.85) and falling below the counting floor entirely by
+`h = 1e-4`, rather than surviving as a shrinking minority of kinked nodes.
+
+Two design points were excluded, both on grounds rather than convenience:
+
+- **Odd `m` away from `a = b`** violates D5's closure condition. The arc-length
+  inversion returns *coincident* nodes there — at `m = 3, b = 1.20` the minimum
+  θ spacing is exactly 0.0 — which makes `_der_real_3` divide by zero and
+  return **NaN second derivatives with nothing raised**. The prescribed-θ
+  validator added in `247492d` rejects such a set; the unfrozen path accepts it.
+  This is pre-existing and outside the catalogue's legal region, but it is a
+  silent-NaN path and is recorded rather than fixed here.
+- **`n1` at `a = b = 1, n2 = n3 = 2`** is an exact null direction: the bracket
+  is `|cos|² + |sin|² ≡ 1`, so `r ≡ rad` for every `n1` and the shape is a
+  circle. `∂M/∂n1` vanishes identically and a relative deviation divides noise
+  by zero. Worth knowing as a null direction in its own right.
+
+## Consequence for D12
+
+With D16 in force the tradeoff is the classical one — truncation above,
+cancellation below — and there is a genuine plateau:
+
+- `h = 1e-5` is the best single step: worst parameter anywhere in the table is
+  `n2` at 1.1e-8, and `a`, `b` reach 1.7e-9. Roughly **8 digits**.
+- `h = 1e-4` is within a decade of it (worst 1.1e-7) and sits further from the
+  cancellation floor, so it has more margin below.
+- The originally locked `h = 3e-4` is *also* fine now — it would give ~1e-7 —
+  which is worth stating plainly: the freeze, not the step size, was the fix.
+
+`h = 1e-5` with the floor at `~1e-8` and truncation at `1e-7` a decade above
+leaves about a decade of margin on each side. That margin, rather than the best
+value at one design point, is the reason to prefer it: the truncation
+coefficient scales with the parameter's geometric leverage, which moves across
+the catalogue.
