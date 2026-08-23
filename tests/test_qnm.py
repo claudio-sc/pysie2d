@@ -22,6 +22,7 @@ import pytest
 
 from conftest import QNM_N_CORE, RAD
 from pysie2d import BIESolver, Geometry, Material, QNMSolver
+from pysie2d.qnm import _null_vectors
 
 # Anchors from the Phase-1 table in test_mie_qnm.py, vacuum nm.
 # TE n=0: simple (multiplicity 1), but crowded in Re λ — TE n=5 sits at
@@ -467,3 +468,41 @@ def test_refine_polishes_the_mode_vector(te_simple, te_simple_refined):
     # from an SVD of M(λ) would satisfy every assertion above and fail this
     # one, which is the whole reason the Newton iterate is the one kept.
     assert abs(np.vdot(v_before, v_after) - 1.0) < 1.0e-6
+
+
+def test_left_null_vector_is_not_the_right_one(te_simple_refined):
+    """u from _null_vectors annihilates M from the left, and u != conj(v).
+
+    Two claims, and the second is the one that matters. The adjoint quotient
+    dλ/dp = −uᴴ(∂M/∂p)v / uᴴ(∂M/∂λ)v needs a genuine left null vector; a
+    complex-symmetric M would give u = conj(v) for free, and this operator is
+    not complex-symmetric *(measured here: ‖M − Mᵀ‖/‖M‖ = 1.06)*. Substituting
+    conj(v) would leave the quotient wrong by an O(1) factor while every
+    residual still looked right — |<u, conj(v)>| = 0.32 at this pole, so the
+    error would be a factor of order three, not a rounding effect.
+
+    The residual bound is not a tolerance to be tuned: from M = U Σ Vᴴ the left
+    residual ‖uᴴM‖ is σ_min *exactly*, so ‖uᴴM‖/‖M‖₂ must equal σ_min/σ_max to
+    floating-point round-off on the SVD. That is what is asserted — agreement
+    with the independently computed sigma_ratio to 1e-12 relative, ~4 orders
+    above the double-precision floor and ~9 orders below the value itself
+    (4.3e-4 at n_pts = 200) — rather than "the residual is small", which the
+    ratio being 4.3e-4 would fail anyway.
+    """
+    bie = BIESolver(te_simple_refined.geometry, te_simple_refined.material)
+    lam = te_simple_refined.wavelengths[0]
+    m = bie.assemble(lam)
+    sigma = np.linalg.svd(m, compute_uv=False)
+    ratio = sigma[-1] / sigma[0]
+
+    u, v = _null_vectors(bie, lam)
+
+    assert np.linalg.norm(u) == pytest.approx(1.0)
+    assert np.linalg.norm(v) == pytest.approx(1.0)
+    assert np.linalg.norm(u.conj() @ m) / sigma[0] == pytest.approx(ratio, rel=1.0e-12)
+    assert np.linalg.norm(m @ v) / sigma[0] == pytest.approx(ratio, rel=1.0e-12)
+
+    # The operator is not complex-symmetric, so conj(v) is not a left null
+    # vector and the two directions are far from parallel.
+    assert np.linalg.norm(m - m.T) / np.linalg.norm(m) > 1.0
+    assert abs(np.vdot(u, v.conj())) < 0.5

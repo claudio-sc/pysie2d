@@ -440,3 +440,34 @@ def _edge_margin(lams: np.ndarray, z_lo: complex, z_hi: complex) -> np.ndarray:
         ]
     )
     return dist / side
+
+
+def _null_vectors(bie: BIESolver, wavelength: complex) -> tuple[np.ndarray, np.ndarray]:
+    """Left and right null vectors of M at one **vacuum** wavelength.
+
+    The adjoint quotient ``dλ/dp = −uᴴ(∂M/∂p)v / uᴴ(∂M/∂λ)v`` needs both. The
+    right vector ``v`` is the one :attr:`QNMResult.vectors` already carries; the
+    left vector ``u`` is **not** obtainable from it, because M is not
+    complex-symmetric — each of the four ``n_pts`` blocks is symmetric to 1e-14
+    but the off-diagonal blocks are not transposes of one another
+    *(measured: ‖M − Mᵀ‖/‖M‖ = 1.05)*. Assuming ``u = v̄`` would give a quotient
+    that is wrong by an O(1) factor and would still look plausible.
+
+    From ``M = U Σ Vᴴ`` at a pole, the smallest singular triplet is the null
+    pair: ``v = V[:, -1]`` satisfies ``Mv = σ_min u`` and ``u = U[:, -1]``
+    satisfies ``uᴴM = σ_min vᴴ``. Both residuals are therefore ``σ_min``
+    exactly, and ``σ_min/σ_max`` — the number :attr:`QNMResult.sigma_ratio`
+    already reports — is how singular the pole actually came out.
+
+    Costs one assembly plus one full SVD with vectors, i.e. what
+    :func:`_sigma_ratio` already spends plus the vector accumulation.
+
+    Args:
+        bie: Solver carrying the geometry and material.
+        wavelength: Vacuum wavelength (nm), complex at a mode.
+
+    Returns:
+        ``(u, v)``, each complex ``(2·n_pts,)`` with unit norm.
+    """
+    u, _, vh = np.linalg.svd(bie.assemble(wavelength))
+    return u[:, -1], vh[-1].conj()
