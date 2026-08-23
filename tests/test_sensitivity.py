@@ -283,3 +283,60 @@ def test_gate2_boundary_control_ab_dilation_is_only_pure_at_n2_eq_n3():
             assert (r1 / r0).mean() == pytest.approx(
                 t ** (ELLIPSE["n2"] / ELLIPSE["n1"])
             )
+
+
+def test_gate3_adjoint_matches_re_extracted_poles(te_simple):
+    """Gate 3: adjoint dλ/db against central differences of re-extracted poles.
+
+    The independent anchor for the whole API. Everything in ``sensitivity()``
+    — the left null vector, the analytic ∂M/∂λ, the frozen-node ∂M/∂p — is
+    bypassed on the reference side: λ(b ± Δ) is obtained by running Beyn's
+    contour method again on the perturbed geometry and polishing it, which
+    shares no code path with the quotient beyond the assembly itself.
+
+    Linearity in the step is the pass criterion, not a single Δ: a single step
+    size cannot distinguish a converging scheme from one that has stalled, and
+    the O(h) stall of the un-frozen node set (conventions §10) is exactly the
+    failure this must be able to see. A central difference of a smooth function
+    must fall ×100 per decade in Δ, and does *(measured on the ellipse's lower
+    mode: 3.816e-4 → 3.809e-6 → 3.816e-8, ratios 100.2 and 99.8; a further
+    decade gives only 65.4 as cancellation in the re-extracted poles takes
+    over, which is why the ladder stops at Δ = 1e-4)*.
+
+    The rate window [80, 120] is ±20 % on the ideal, and the absolute bound
+    1e-7 at the finest step is ~3× above what was measured. Neither can be
+    reached by a broken adjoint: a wrong left null vector misses by an O(1)
+    factor.
+
+    One mode, in a box tight enough that the perturbed pole cannot be confused
+    with a neighbour: dλ/db ≈ 52 nm per unit b, so Δ = 1e-2 moves the pole by
+    0.5 nm inside a 17 × 14 nm box.
+    """
+    mat = te_simple.material
+    geom = _ellipse()
+    theta = geom.theta
+    box = (543.0 + 18.0j, 560.0 + 32.0j)
+
+    def solve(b):
+        res = QNMSolver(_ellipse(theta=theta, b=b), mat).modes(
+            z_lo=box[0], z_hi=box[1], n_quad_per_side=N_SIDE
+        )
+        assert res.n_modes == 1
+        return res.refine()
+
+    base = solve(ELLIPSE["b"])
+    adjoint = base.sensitivity(
+        lambda d: (_ellipse(theta=theta, b=ELLIPSE["b"] + d), mat)
+    )[0]
+
+    errors = []
+    for delta in (1.0e-2, 1.0e-3, 1.0e-4):
+        fd = (
+            solve(ELLIPSE["b"] + delta).wavelengths[0]
+            - solve(ELLIPSE["b"] - delta).wavelengths[0]
+        ) / (2.0 * delta)
+        errors.append(abs(fd - adjoint) / abs(adjoint))
+
+    assert errors[-1] < 1.0e-7
+    for coarse, fine in zip(errors[:-1], errors[1:], strict=True):
+        assert 80.0 < coarse / fine < 120.0
