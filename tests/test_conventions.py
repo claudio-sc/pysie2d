@@ -18,6 +18,7 @@ from pysie2d import (
     relative_ldos,
     relative_ldos_map,
     self_green,
+    wavelength_over_ds,
 )
 from pysie2d import size_parameter as public_size_parameter
 from pysie2d.reference import mie
@@ -303,3 +304,83 @@ def test_frozen_nodes_restore_second_order_convergence():
             assert rate > 50.0, f"frozen path is not second order: {rate:.1f}"
         else:
             assert rate < 10.0, f"unfrozen path unexpectedly clean: {rate:.1f}"
+
+
+def test_wavelength_over_ds_counts_the_interior_wavelength(circle):
+    """§10: R is referred to n_core, not to vacuum or to the cladding.
+
+    The BIE carries an interior and an exterior kernel and the interior one
+    oscillates faster by n_core, so it sets the resolution requirement. Getting
+    this wrong overstates the resolution by exactly n_core — a factor of 3 on
+    the QNM fixture — which is the difference between a study at 37 points per
+    wavelength and one at 12. Checked against the closed form on the circle,
+    where Δs = 2π·rad/n_pts exactly, so the assertion carries no discretisation
+    error of its own and the tolerance is pure float round-off.
+    """
+    geo = circle(200)
+    mat = Material(n_core=QNM_N_CORE, pol=2)
+    lam = 700.0
+
+    ds = 2.0 * np.pi * RAD / geo.n_pts
+    # Chord vs arc: the polygon inscribed in a circle is shorter than the arc by
+    # 1 − sinc(π/n_pts) ≈ 1.4e-4 relative at n_pts = 200, so R comes out
+    # slightly *higher* than the arc-length closed form. rtol covers exactly
+    # that and nothing else.
+    assert wavelength_over_ds(geo, mat, lam) == pytest.approx(
+        lam / QNM_N_CORE / ds, rel=2.0e-4
+    )
+
+    # And it is neither the vacuum nor the cladding reading: both omit n_core,
+    # so both are 3x larger here. 0.5 separates them with room to spare.
+    assert wavelength_over_ds(geo, mat, lam) < 0.5 * lam / ds
+
+
+def test_wavelength_over_ds_uses_the_real_part_and_the_worst_node(circle):
+    """§10: oscillation is set by Re λ, and the coarsest node decides.
+
+    Two conventions in one test because they are the two ways the scalar could
+    have been defined otherwise. The decay of a QNM is not oscillation, so a
+    large Im λ must not inflate R; and the risk being diagnosed is
+    under-resolution, so the largest gap governs rather than the mean.
+    """
+    geo = circle(200)
+    mat = Material(n_core=QNM_N_CORE, pol=2)
+
+    # Im λ of 200 nm against Re λ 700 would move |λ| by 4 %; it must move R by 0.
+    assert wavelength_over_ds(geo, mat, 700.0 + 200.0j) == wavelength_over_ds(
+        geo, mat, 700.0
+    )
+
+    # A frozen node set on a perturbed shape is the case where Δs stops being
+    # uniform. R must then track max(Δs), so it can only fall relative to the
+    # shape the nodes were equidistributed for.
+    base = Geometry.gielis(RAD, 200, m=4, b=1.20)
+    stretched = Geometry.gielis(RAD, 200, m=4, b=1.60, theta=base.theta)
+    equidistributed = Geometry.gielis(RAD, 200, m=4, b=1.60)
+
+    assert wavelength_over_ds(stretched, mat, 700.0) < wavelength_over_ds(
+        equidistributed, mat, 700.0
+    )
+
+
+def test_wavelength_over_ds_flags_an_elongated_shape_as_under_resolved():
+    """§10: R is what makes a fixed n_pts mean different things across shapes.
+
+    The point of the criterion. An aspect-3 ellipse has more than twice the
+    perimeter of the circle at the same rad, so the same n_pts resolves it half
+    as well — 17.5 against 37.1, i.e. inside the 10–15 "cheap" band rather than
+    the 30–50 "accurate" one. A global n_pts must therefore be sized against the
+    worst shape in the sampled region, which is a statement this test pins in
+    numbers rather than in prose.
+    """
+    mat = Material(n_core=QNM_N_CORE, pol=2)
+    circle_r = wavelength_over_ds(Geometry.gielis(RAD, 200, m=0), mat, 700.0)
+    ellipse_r = wavelength_over_ds(Geometry.gielis(RAD, 200, m=4, b=3.0), mat, 700.0)
+
+    assert circle_r == pytest.approx(37.1, abs=0.1)
+    assert ellipse_r == pytest.approx(17.5, abs=0.1)
+    assert ellipse_r < 0.5 * circle_r
+
+    # Restoring the ratio needs n_pts up by the perimeter ratio, not a tweak.
+    recovered = wavelength_over_ds(Geometry.gielis(RAD, 426, m=4, b=3.0), mat, 700.0)
+    assert recovered == pytest.approx(circle_r, rel=0.02)

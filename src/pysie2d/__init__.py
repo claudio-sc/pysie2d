@@ -20,6 +20,7 @@ Public API:
     DEGENERATE_COND: the ``cond_jacobian`` threshold above which a pole is
         taken to be degenerate and left unrefined.
     size_parameter: derived Mie size parameter x = 2π·n_clad·rad/λ_vac.
+    wavelength_over_ds: boundary points per interior wavelength (§10).
 
 All public wavelengths are **vacuum** wavelengths in nm; the low-level
 primitives (``assemble_matrix``, ``assemble_matrix_reference``,
@@ -34,7 +35,12 @@ from .green import relative_ldos, relative_ldos_map, self_green
 from .kernels import assemble_matrix, assemble_matrix_reference
 from .material import Material
 from .qnm import DEGENERATE_COND, QNMResult, QNMSolver
-from .solver import BIESolver, ScatterResult, size_parameter
+from .solver import (
+    BIESolver,
+    ScatterResult,
+    size_parameter,
+    wavelength_over_ds,
+)
 from .sources import line_dipole_rhs, plane_wave_rhs
 
 __version__ = "0.4.2"
@@ -57,4 +63,5 @@ __all__ = [
     "relative_ldos_map",
     "self_green",
     "size_parameter",
+    "wavelength_over_ds",
 ]
