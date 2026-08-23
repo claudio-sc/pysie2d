@@ -155,3 +155,21 @@ leaves about a decade of margin on each side. That margin, rather than the best
 value at one design point, is the reason to prefer it: the truncation
 coefficient scales with the parameter's geometric leverage, which moves across
 the catalogue.
+
+## Note: is refinement dangerous? (recorded, not investigated)
+
+Conventional use of this BIE formulation treats aggressive boundary refinement
+as numerically risky, on the grounds that shrinking `Δs` drives the off-diagonal
+Hankel arguments `k·r_ij` towards the log singularity that the diagonal terms
+handle analytically. **This is received intuition and not a measured property of
+this code.** It has not been demonstrated here, and nothing in the ladders above
+shows it: `R` up to 74 (`n_pts = 400` on the reference circle) behaves exactly
+as the coarser cases do.
+
+It is recorded because it would matter if true — it would put a *ceiling* on
+refinement, and every convergence argument in this project assumes there is
+none. The condition that would trigger a proper study: an accuracy or
+conditioning result that gets **worse** with increasing `R` at fixed shape, or a
+`cond(M)` that grows faster than the O(n_pts) the discretisation alone explains.
+Absent that, refinement is treated as safe and the binding constraint on `n_pts`
+is cost, not stability.
