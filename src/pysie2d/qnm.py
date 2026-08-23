@@ -295,9 +295,13 @@ class QNMResult:
         parametrisation gauge along with the physics and puts an O(h) term into
         the quotient that grows with ``n_pts``.
 
-        Simple poles only. A degenerate pole has a two-dimensional null space,
-        the quotient above picks an arbitrary vector out of it, and the answer
-        is meaningless rather than merely inaccurate — so it raises instead.
+        **Degenerate poles are dispatched, not refused.** A k-fold pole has a
+        k-dimensional null space and the scalar quotient would pick an
+        arbitrary vector out of it; the k derivatives are the eigenvalues of
+        the k×k secular matrix ``−(Uᴴ ∂_p M V)(Uᴴ ∂_λ M V)⁻¹`` instead, which
+        is the same identity projected onto that subspace and reduces to the
+        quotient at k = 1. Multiplicity is read from :attr:`multiplicity`'s own
+        criterion, eigenvalue spacing within ``DEGENERACY_RTOL``.
 
         Args:
             at: ``δ → (geometry, material)`` at parameter offset ``δ`` from the
@@ -310,32 +314,49 @@ class QNMResult:
 
         Returns:
             complex (K,) ``dλ/dp`` in nm per unit of ``p``, one per mode, in
-            the order of :attr:`wavelengths`.
+            the order of :attr:`wavelengths`. Within a degenerate group the
+            k values are sorted by ``(Re, Im)``: which partner gets which
+            derivative is not defined, since the null basis is fixed only up
+            to a k×k rotation.
 
         Raises:
-            ValueError: If any mode is degenerate, or if a perturbed geometry
-                does not carry the base node set.
+            ValueError: If a perturbed geometry does not carry the base node
+                set.
         """
-        if np.any(self.multiplicity > 1):
-            raise ValueError(
-                "sensitivity() is the simple-pole quotient; modes "
-                f"{np.flatnonzero(self.multiplicity > 1).tolist()} are "
-                "degenerate and need the secular branch"
-            )
-
         base = BIESolver(self.geometry, self.material)
         plus = self._perturbed_solver(at, +step)
         minus = self._perturbed_solver(at, -step)
 
         out = np.empty(self.n_modes, dtype=complex)
-        for k, lam in enumerate(self.wavelengths):
+        for group in _degenerate_groups(self.wavelengths):
+            lam = self.wavelengths[group[0]]
             # ∂M/∂p is a function of λ as much as of p, so the difference is
             # taken at *this* mode's wavelength; a single ∂M/∂p shared across
             # modes would be the derivative at the wrong point for all but one.
             dm_dp = (plus.assemble(lam) - minus.assemble(lam)) / (2.0 * step)
-            u, v = _null_vectors(base, lam)
             dm_dlam = base.assemble_derivative(lam)
-            out[k] = -(u.conj() @ dm_dp @ v) / (u.conj() @ dm_dlam @ v)
+            k = len(group)
+            u, v = _null_subspace(base, lam, k)
+            if k == 1:
+                out[group[0]] = -(u[:, 0].conj() @ dm_dp @ v[:, 0]) / (
+                    u[:, 0].conj() @ dm_dlam @ v[:, 0]
+                )
+                continue
+            # Degenerate branch: the scalar quotient would pick an arbitrary
+            # vector out of a k-dimensional null space. The k derivatives are
+            # instead the eigenvalues of the secular matrix
+            # −(Uᴴ ∂_p M V)(Uᴴ ∂_λ M V)⁻¹ — the same identity projected onto
+            # the null space, which reduces to the quotient at k = 1. Sorted
+            # so the mapping onto mode indices is deterministic; the pairing of
+            # a particular derivative to a particular partner is not meaningful
+            # anyway, since the null basis itself is only defined up to a k×k
+            # rotation.
+            secular = -(u.conj().T @ dm_dp @ v) @ np.linalg.inv(
+                u.conj().T @ dm_dlam @ v
+            )
+            vals = np.linalg.eigvals(secular)
+            order = np.lexsort((vals.imag, vals.real))
+            out[np.sort(group)] = vals[order]
         return out
 
     def _perturbed_solver(
@@ -571,5 +592,49 @@ def _null_vectors(bie: BIESolver, wavelength: complex) -> tuple[np.ndarray, np.n
     Returns:
         ``(u, v)``, each complex ``(2·n_pts,)`` with unit norm.
     """
+    u, v = _null_subspace(bie, wavelength, 1)
+    return u[:, 0], v[:, 0]
+
+
+def _null_subspace(
+    bie: BIESolver, wavelength: complex, k: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """The k-dimensional left and right null subspaces of M at one wavelength.
+
+    A k-fold pole has a k-dimensional null space, and the smallest k singular
+    triplets span it. Orthonormal by construction, which is what the secular
+    problem in :meth:`QNMResult.sensitivity` needs — it inverts
+    ``Uᴴ(∂M/∂λ)V``, and a non-orthonormal basis would fold the basis
+    conditioning into that inverse.
+
+    Args:
+        bie: Solver carrying the geometry and material.
+        wavelength: Vacuum wavelength (nm), complex at a mode.
+        k: Dimension of the null space, i.e. the pole multiplicity.
+
+    Returns:
+        ``(U, V)``, each complex ``(2·n_pts, k)`` with orthonormal columns,
+        ordered by increasing singular value.
+    """
     u, _, vh = np.linalg.svd(bie.assemble(wavelength))
-    return u[:, -1], vh[-1].conj()
+    return u[:, : -k - 1 : -1], vh[: -k - 1 : -1].conj().T
+
+
+def _degenerate_groups(lams: np.ndarray) -> list[list[int]]:
+    """Partition mode indices into degenerate groups.
+
+    Uses the same ``DEGENERACY_RTOL`` closeness that :func:`_multiplicity`
+    reports, so a group's size is exactly the multiplicity the result object
+    already advertises — two criteria for "same pole" would eventually
+    disagree, and the sensitivity branch taken would then contradict the
+    multiplicity printed next to it.
+    """
+    groups: list[list[int]] = []
+    for i, lam in enumerate(lams):
+        for group in groups:
+            if abs(lam - lams[group[0]]) <= DEGENERACY_RTOL * abs(lam):
+                group.append(i)
+                break
+        else:
+            groups.append([i])
+    return groups

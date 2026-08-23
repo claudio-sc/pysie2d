@@ -115,3 +115,59 @@ def test_sensitivity_rejects_a_re_inverted_node_set(te_simple):
 
     with pytest.raises(ValueError, match="base node set"):
         te_simple.sensitivity(at)
+
+
+# TE n=3 on the shared circle: doubly degenerate through exp(±3iθ) and
+# isolated (nearest TE neighbours 690.51 and 1035.09 nm), so the box placement
+# is forgiving and the multiplicity is what the test is about. Box from
+# test_qnm.py. Not refined: bordered Newton assumes a one-dimensional null
+# space and QNMResult.refine deliberately keeps the contour estimate here.
+BOX_TE_DEGENERATE = (745.0 + 2.0j, 775.0 + 15.0j)
+
+
+@pytest.fixture(scope="module")
+def te_degenerate():
+    """The doubly degenerate TE n=3 pair of the circle."""
+    geom = Geometry.gielis(rad=RAD, n_pts=N_PTS, m=0)
+    mat = Material(n_core=QNM_N_CORE, n_clad=1.0, pol=2)
+    return QNMSolver(geom, mat).modes(
+        z_lo=BOX_TE_DEGENERATE[0], z_hi=BOX_TE_DEGENERATE[1], n_quad_per_side=N_SIDE
+    )
+
+
+def test_gate1_degenerate_pair_does_not_split_under_dilation(te_degenerate):
+    """Gate 1, degenerate half: dilation moves the pair without splitting it.
+
+    A dilation cannot lift the ±n degeneracy of a circle — it maps the circle
+    to a circle — so the 2×2 secular matrix must be a multiple of the identity
+    and both eigenvalues must equal λ/rad. This is the test the whole degenerate
+    branch stands on: the scalar quotient applied to a two-dimensional null
+    space returns a plausible number for an arbitrary vector out of that space,
+    and only the identity structure of the secular matrix exposes it.
+
+    Assertions are on the *splitting* rather than on smallness alone, since a
+    symmetry-breaking perturbation would split at first order, i.e. by O(1)
+    relative — nine decades above the bound here.
+
+    Tolerance 1e-8: λ is exactly linear in rad (§9), so the difference quotient
+    has no truncation error and the floor is cancellation at ~ε/h = 1e-11 with
+    the null-subspace conditioning (σ_min/σ_max = 6.1e-4 at this pole) on top
+    *(measured: splitting 1.3e-10, off-diagonal/‖S‖ 2.7e-11, both eigenvalues
+    within 4.0e-10 of λ/rad)*. The bound sits two decades above what was
+    measured and cannot be reached by a broken branch.
+    """
+    assert tuple(te_degenerate.multiplicity) == (2, 2)
+
+    lam = te_degenerate.wavelengths[0]
+    theta = te_degenerate.geometry.theta
+    mat = te_degenerate.material
+
+    def at(delta):
+        return Geometry.gielis(rad=RAD + delta, n_pts=N_PTS, m=0, theta=theta), mat
+
+    got = te_degenerate.sensitivity(at)
+
+    assert got.shape == (2,)
+    assert abs(got[0] - got[1]) / abs(got[0]) < 1.0e-8
+    assert got[0] == pytest.approx(lam / RAD, rel=1.0e-8)
+    assert got[1] == pytest.approx(lam / RAD, rel=1.0e-8)
