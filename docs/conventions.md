@@ -322,9 +322,25 @@ the underlying inversion C².
 **Two traps this pins.** A prescribed θ is validated for strict ordering and a
 sub-2π span, because `delt` is a bare `np.diff`: a reordered set gives negative
 quadrature weights and a boundary integral that counts part of the curve
-backwards, with nothing raised. And `theta` is a **required** field rather than
-an optional one, because an optional θ means a silent fallback to re-inversion
-— which is exactly the failure being removed.
+backwards, with nothing raised. And `Geometry.gielis` never accepts an *implicit*
+node set: given `theta=None` it re-inverts arc length and records what it used,
+so a geometry it builds always carries the θ it was actually evaluated on. There
+is no path on which a shape derivative silently falls back to re-inversion.
+
+**`theta` is optional to store and mandatory to differentiate.** On
+`Geometry.__init__` it defaults to `None`: a boundary assembled from arrays that
+came from elsewhere has no node set to report, and the entire solver — assembly,
+fields, LDOS, mode extraction — never reads θ, so refusing to construct such a
+geometry would break scattering-only users for a reason unrelated to scattering.
+The requirement belongs at the point of use instead, and
+`QNMResult.sensitivity` raises on a `None` node set naming *which* of the two
+geometries lacks it. Both branches are needed: without the base-side check,
+`None == None` compares equal and two unrelated discretisations are accepted.
+*(This replaces the v0.5 development-time rule that `theta` was a required
+constructor field. That rule made v0.5 a breaking release for direct array
+construction and bought nothing the point-of-use check does not — the failure it
+was guarding against, a silent fallback to re-inversion, lives on the `gielis`
+path, which never had one.)*
 
 Frozen nodes preserve §9 exactly: a supplied θ carries no length, so
 `M(s·rad, s·λ) = M(rad, λ)` entrywise still holds, and it is asserted on the

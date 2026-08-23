@@ -372,6 +372,18 @@ class QNMResult:
         (``docs/conventions.md`` §10).
         """
         geom, mat = at(delta)
+        # A geometry built directly from arrays may carry no node set at all.
+        # Refuse it by name: `None` would otherwise reach the comparison below
+        # as an AttributeError, and a base result without one would silently
+        # compare None to None and accept two unrelated discretisations.
+        if geom.theta is None or self.geometry.theta is None:
+            missing = "perturbed" if geom.theta is None else "base"
+            raise ValueError(
+                f"the {missing} geometry carries no node set (theta is None), "
+                "so the shape derivative cannot be taken on a frozen one "
+                "(docs/conventions.md §10). Build both with Geometry.gielis, "
+                "which always records theta, or pass theta= to Geometry()"
+            )
         if geom.theta.shape != self.geometry.theta.shape or not np.array_equal(
             geom.theta, self.geometry.theta
         ):

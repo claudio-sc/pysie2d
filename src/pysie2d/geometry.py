@@ -517,13 +517,21 @@ class Geometry:
         ddf, ddg: (n_pts,) second derivatives.
         delt: Quadrature weight (scalar for uniform-theta; per-point for
             arc-length).
-        theta: (n_pts,) the sample angles the boundary was evaluated at.
-            Stored rather than recomputed because it is the **node set**, and
-            a shape derivative needs to hold it fixed across a finite
-            difference (``docs/conventions.md`` §10). Recovering it after the
-            fact from ``arctan2(g - z0, f - x0)`` is not equivalent: it is
+        theta: (n_pts,) the sample angles the boundary was evaluated at, or
+            ``None`` for a boundary whose arrays came from somewhere with no
+            node set to report. Stored rather than recomputed because it is the
+            **node set**, and a shape derivative needs to hold it fixed across a
+            finite difference (``docs/conventions.md`` §10). Recovering it after
+            the fact from ``arctan2(g - z0, f - x0)`` is not equivalent: it is
             ambiguous for a boundary that is not star-convex about the centre,
             and it loses the branch for one that winds past 2π.
+
+            ``Geometry.gielis`` always sets it, so every geometry the factory
+            builds can be differentiated. It is ``None`` **only** on a Geometry
+            constructed directly from external arrays without one, and the
+            frozen-node paths refuse such a geometry by name rather than
+            falling back to anything — see
+            :meth:`pysie2d.qnm.QNMResult.sensitivity`.
         rad: Gielis scale radius (nm).
         x0, z0: Particle centre coordinates (nm).
     """
@@ -538,7 +546,7 @@ class Geometry:
         ddg: np.ndarray,
         delt: float | np.ndarray,
         *,
-        theta: np.ndarray,
+        theta: np.ndarray | None = None,
         rad: float,
         x0: float = 0.0,
         z0: float = 0.0,

@@ -458,3 +458,43 @@ def test_sensitivity_left_vector_is_not_conj_of_the_right_one():
     nn = geom.n_pts
     block = m[:nn, :nn]
     assert np.linalg.norm(block - block.T) / np.linalg.norm(block) < 1.0e-13
+
+
+def test_geometry_without_a_node_set_is_allowed_but_cannot_be_differentiated():
+    """§10: `theta` is optional to store, and mandatory to differentiate.
+
+    The two halves are a pair. A `Geometry` assembled from arrays that came
+    from somewhere else has no node set to report, and refusing to construct it
+    would break a scattering-only user for a reason that has nothing to do with
+    scattering — the whole solver runs without ever reading `theta`. But a
+    shape derivative *is* the node set (§10), so the frozen-node path must
+    refuse such a geometry rather than fall back to anything.
+
+    The failure therefore belongs at the point of use, not at construction, and
+    it has to name which of the two geometries is missing: `at` supplies one
+    and the result carries the other, and "theta is None" alone does not say
+    which one the caller has to fix.
+    """
+    src = Geometry.gielis(rad=RAD, n_pts=120, m=4, b=1.2)
+    bare = Geometry(src.f, src.g, src.df, src.dg, src.ddf, src.ddg, src.delt, rad=RAD)
+    assert bare.theta is None
+
+    # The solver itself never reads theta, so a bare geometry scatters exactly
+    # like the geometry it was copied from — bit for bit, since the arrays are
+    # the same objects and no node set enters the assembly.
+    mat = Material(n_core=QNM_N_CORE, n_clad=1.0, pol=2)
+    lam = 530.83214 + 26.37850j
+    assert np.array_equal(
+        BIESolver(bare, mat).assemble(lam), BIESolver(src, mat).assemble(lam)
+    )
+
+    res = QNMSolver(src, mat).modes(520 + 5j, 620 + 45j)
+    with pytest.raises(ValueError, match="perturbed geometry carries no node set"):
+        res.sensitivity(lambda d: (bare, mat))
+
+    # And the mirror: a base result with no node set is refused too, naming the
+    # base rather than the perturbed one. Without this branch `None == None`
+    # would compare equal and two unrelated discretisations would be accepted.
+    bare_res = QNMSolver(bare, mat).modes(520 + 5j, 620 + 45j)
+    with pytest.raises(ValueError, match="base geometry carries no node set"):
+        bare_res.sensitivity(lambda d: (src, mat))

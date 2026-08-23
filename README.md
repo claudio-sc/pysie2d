@@ -242,7 +242,38 @@ would be an hour-long sweep takes seconds.
   [conventions](docs/conventions.md) §9. _(this release)_
 - **v0.5.0** _(next)_ — threaded contour integration in `contour_moments`, and
   an adjoint eigenvalue-sensitivity API (`dλ/dp` per mode) on top of the
-  identity already proved in conventions §9.
+  identity already proved in conventions §9. **No breaking changes**; every
+  v0.4.x call still means what it meant.
+
+### What v0.5 adds to `Geometry`
+
+`Geometry` now records the boundary node angles it was built on, as
+`Geometry.theta`, and `Geometry.gielis` accepts `theta=` to build a shape on
+angles supplied from elsewhere:
+
+```python
+base  = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.2)   # unchanged
+wider = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.3,
+                        theta=base.theta)                 # new: same node set
+```
+
+Both arguments are optional and both are additions — `Geometry.gielis` places
+nodes by uniform arc length when you omit `theta`, exactly as before, and
+`Geometry(...)` built directly from your own arrays works without one, leaving
+`theta` as `None`. Scattering, fields, LDOS and mode extraction never read it.
+
+It exists for shape derivatives. `QNMResult.sensitivity` evaluates `M(p₀−h)` and
+`M(p₀+h)` and must do so on the **same** node set; if the nodes are re-placed
+between the two, the difference quotient differentiates the arc-length
+parametrisation along with the physics. That error term is `O(h)` rather than
+`O(h²)`, it is not monotone in `h`, and it **grows** with `n_pts` — the one error
+in this package that refinement makes worse. Freezing the nodes takes the
+measured convergence rate on `∂M/∂b` from 2.7 to 100.1, against an ideal of 100.
+
+So `sensitivity` refuses a geometry with no node set, and names which one is
+missing, rather than falling back to re-inversion — a fallback would return a
+wrong answer that looks exactly like a right one. Conventions
+[§10](docs/conventions.md).
 
 ## License
 
