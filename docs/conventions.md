@@ -330,6 +330,65 @@ Frozen nodes preserve §9 exactly: a supplied θ carries no length, so
 `M(s·rad, s·λ) = M(rad, λ)` entrywise still holds, and it is asserted on the
 frozen path in `tests/test_scale_covariance.py`.
 
+## 11. Adjoint eigenvalue sensitivity (v0.5)
+
+`QNMResult.sensitivity(at, step=SHAPE_STEP)` returns `dλ/dp` for every mode in
+the result, one parameter at a time, from
+
+    dλ/dp = − uᴴ (∂M/∂p) v / [ uᴴ (∂M/∂λ) v ]
+
+No eigenvalue is re-extracted: that is the whole point of the adjoint, and it
+is what makes a Jacobian over seven parameters affordable.
+
+**`at` is a callable, not a perturbed geometry.** Its signature is
+`δ → (geometry, material)` at offset `δ` from the base point, `δ = 0` being the
+base point itself. Both halves are returned because `n_core` and `n_clad` are
+parameters of the same Jacobian as the shape ones, and one signature covering
+all of them is what keeps the caller from having two code paths that can drift
+apart. The **offset is in the parameter's own units**, so `step` and `dλ/dp`
+are both in those units and the caller owns any reparametrisation — a `log`
+gauge is a two-line lambda, and §9 says the answer must be gauge-free.
+
+**The frozen node set is enforced, not documented.** The geometry returned by
+`at` must carry `result.geometry.theta` **exactly**, and `sensitivity` raises
+otherwise. Exact equality is the right test because there is no threshold at
+which node motion becomes acceptable: the term it introduces is O(h) and grows
+with `n_pts` (§10). On a circle re-inversion moves nodes by only 1.5e-13 rad,
+which is precisely why a tolerance-based check would be the wrong instrument.
+
+**`u` is a genuine left null vector**, obtained from the same SVD as `v` — the
+smallest singular triplet of `M(λ)`, `U[:, -1]` and `V[:, -1]`. It is **not**
+`conj(v)`: M is not complex-symmetric here *(measured: `‖M − Mᵀ‖/‖M‖ = 1.06`,
+and `|⟨u, conj(v)⟩| = 0.32` at the TE n=0 pole of the reference circle)*, so
+substituting `conj(v)` gives a quotient wrong by an O(1) factor with every
+residual still looking right. Cost is one assembly plus one full SVD per mode,
+0.080 s at `n_pts = 200`.
+
+**Degenerate poles dispatch to a secular problem, they do not raise.** A k-fold
+pole has a k-dimensional null space, and the scalar quotient would pick an
+arbitrary vector out of it. The k derivatives are the eigenvalues of
+
+    − (Uᴴ ∂_p M V) (Uᴴ ∂_λ M V)⁻¹
+
+with `U`, `V` the smallest k singular triplets; this reduces to the quotient at
+k = 1. Multiplicity is read from the **same** `DEGENERACY_RTOL` criterion that
+`QNMResult.multiplicity` reports, so the branch taken can never contradict the
+multiplicity printed beside it. Within a degenerate group the returned values
+are sorted by `(Re, Im)`: which partner receives which derivative is not
+defined, because the null basis is fixed only up to a k×k rotation.
+
+**Anchors.** Gate 1 — `dλ/drad = λ/rad`, and in the linear gauge this is
+*machine-exact*, since §9 makes λ exactly linear in `rad`, leaving only the
+cancellation floor ~ε/h *(measured 5.1e-11)*. Gate 1 degenerate half — a
+dilation cannot lift the ±n degeneracy of a circle, so the 2×2 secular matrix
+is a multiple of the identity *(measured: off-diagonal/‖S‖ = 2.7e-11, splitting
+1.3e-10)*. Gate 2 — at `n2 = n3`, `(log a + log b)` and `log rad` move λ
+identically, so their difference is an exact null direction of `J` *(measured
+ratio − 1 = 5.1e-14)*. Gate 3 — against central differences of independently
+re-extracted Beyn poles, second order in the step *(3.816e-4 → 3.809e-6 →
+3.816e-8, ratios 100.2 and 99.8)*. All four in
+`tests/test_sensitivity.py`.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

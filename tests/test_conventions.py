@@ -12,15 +12,18 @@ import pytest
 
 from conftest import N_CLAD, N_CORE, POL_TAG, QNM_N_CORE, RAD, size_parameter
 from pysie2d import (
+    SHAPE_STEP,
     BIESolver,
     Geometry,
     Material,
+    QNMSolver,
     relative_ldos,
     relative_ldos_map,
     self_green,
     wavelength_over_ds,
 )
 from pysie2d import size_parameter as public_size_parameter
+from pysie2d.qnm import _degenerate_groups
 from pysie2d.reference import mie
 from pysie2d.reference.mie import self_green_cylinder
 
@@ -384,3 +387,74 @@ def test_wavelength_over_ds_flags_an_elongated_shape_as_under_resolved():
     # Restoring the ratio needs n_pts up by the perimeter ratio, not a tweak.
     recovered = wavelength_over_ds(Geometry.gielis(RAD, 426, m=4, b=3.0), mat, 700.0)
     assert recovered == pytest.approx(circle_r, rel=0.02)
+
+
+def test_sensitivity_step_is_in_the_parameters_own_units():
+    """§11: `step` and the returned dλ/dp are in the parameter's own units.
+
+    The convention is that the caller owns the parametrisation, so a
+    reparametrisation must show up as the plain chain-rule factor and nothing
+    else. Here rad is expressed in nm and in units of 10 nm: the derivative
+    must scale by exactly 10, with no hidden normalisation by rad, by λ, or by
+    the step. Scale covariance (§9) makes both sides exact, so the tolerance is
+    the cancellation floor of the difference quotient (~ε/h = 1e-11) with two
+    decades of margin, not a fitted number.
+    """
+    geom = Geometry.gielis(rad=RAD, n_pts=200, m=0)
+    mat = Material(n_core=QNM_N_CORE, n_clad=1.0, pol=2)
+    res = QNMSolver(geom, mat).modes(z_lo=520 + 15j, z_hi=545 + 40j, n_quad_per_side=6)
+    theta = res.geometry.theta
+
+    def per_nm(delta):
+        return Geometry.gielis(rad=RAD + delta, n_pts=200, m=0, theta=theta), mat
+
+    def per_ten_nm(delta):
+        return (
+            Geometry.gielis(rad=RAD + 10.0 * delta, n_pts=200, m=0, theta=theta),
+            mat,
+        )
+
+    d_nm = res.sensitivity(per_nm, step=SHAPE_STEP)[0]
+    d_ten = res.sensitivity(per_ten_nm, step=SHAPE_STEP)[0]
+    assert d_ten == pytest.approx(10.0 * d_nm, rel=1.0e-9)
+
+
+def test_sensitivity_degenerate_dispatch_agrees_with_multiplicity():
+    """§11: the secular branch is taken exactly where `multiplicity` says so.
+
+    Two criteria for "same pole" would eventually disagree, and the branch
+    taken would then contradict the multiplicity reported next to it. The
+    grouping is asserted against `multiplicity` itself rather than against a
+    hard-coded pair count, and the degenerate group must return as many
+    derivatives as it has members — a k-fold pole has k of them, not one.
+    """
+    geom = Geometry.gielis(rad=RAD, n_pts=200, m=0)
+    mat = Material(n_core=QNM_N_CORE, n_clad=1.0, pol=2)
+    res = QNMSolver(geom, mat).modes(z_lo=745 + 2j, z_hi=775 + 15j, n_quad_per_side=6)
+    theta = res.geometry.theta
+
+    groups = _degenerate_groups(res.wavelengths)
+    assert [len(g) for g in groups] == [int(res.multiplicity[g[0]]) for g in groups]
+
+    got = res.sensitivity(
+        lambda d: (Geometry.gielis(rad=RAD + d, n_pts=200, m=0, theta=theta), mat)
+    )
+    assert got.shape == res.wavelengths.shape
+
+
+def test_sensitivity_left_vector_is_not_conj_of_the_right_one():
+    """§11: M is not complex-symmetric, so u must come from the SVD's U.
+
+    If M *were* complex-symmetric this convention would be vacuous and
+    `conj(v)` would do. The measurement that says otherwise is asserted here so
+    the convention text cannot quietly stop being true: ‖M − Mᵀ‖/‖M‖ is O(1),
+    not O(1e-14), even though each of the four n_pts blocks is symmetric.
+    """
+    geom = Geometry.gielis(rad=RAD, n_pts=200, m=0)
+    mat = Material(n_core=QNM_N_CORE, n_clad=1.0, pol=2)
+    m = BIESolver(geom, mat).assemble(530.83214 + 26.37850j)
+
+    assert np.linalg.norm(m - m.T) / np.linalg.norm(m) > 1.0
+    nn = geom.n_pts
+    block = m[:nn, :nn]
+    assert np.linalg.norm(block - block.T) / np.linalg.norm(block) < 1.0e-13

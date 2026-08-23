@@ -19,6 +19,8 @@ Public API:
         ``refine`` for bordered-Newton polishing.
     DEGENERATE_COND: the ``cond_jacobian`` threshold above which a pole is
         taken to be degenerate and left unrefined.
+    SHAPE_STEP: default central-difference step for ``QNMResult.sensitivity``,
+        in the parameter's own units (§§10, 11).
     size_parameter: derived Mie size parameter x = 2π·n_clad·rad/λ_vac.
     wavelength_over_ds: boundary points per interior wavelength (§10).
 
@@ -34,7 +36,7 @@ from .geometry import Geometry
 from .green import relative_ldos, relative_ldos_map, self_green
 from .kernels import assemble_matrix, assemble_matrix_reference
 from .material import Material
-from .qnm import DEGENERATE_COND, QNMResult, QNMSolver
+from .qnm import DEGENERATE_COND, SHAPE_STEP, QNMResult, QNMSolver
 from .solver import (
     BIESolver,
     ScatterResult,
@@ -52,6 +54,7 @@ __all__ = [
     "Material",
     "QNMResult",
     "QNMSolver",
+    "SHAPE_STEP",
     "ScatterResult",
     "assemble_matrix",
     "assemble_matrix_reference",
