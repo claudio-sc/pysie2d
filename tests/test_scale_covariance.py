@@ -414,3 +414,30 @@ def test_reordered_theta_is_rejected_rather_than_silently_integrated():
 
     with pytest.raises(ValueError, match="only meaningful for arc_length"):
         Geometry.gielis(RAD, 200, m=4, arc_length=False, theta=base.theta)
+
+
+def test_coincident_arc_length_nodes_are_rejected_not_returned_as_nan():
+    """The arc-length inversion must refuse a node set it cannot separate.
+
+    At odd ``m`` away from ``a = b`` the D5 closure condition is violated and
+    the curve doubles back, so ``s_fine`` is not monotone and the ``np.interp``
+    inversion returns *coincident* θ — minimum spacing exactly 0.0 at
+    ``m = 3, b = 1.20, n_pts = 200``, four duplicated nodes. ``_der_real_3``
+    then divides by a zero spacing and ``ddf``/``ddg`` come back NaN with
+    nothing raised: a boundary object that looks constructed and poisons every
+    assembly downstream.
+
+    The prescribed-θ path already rejects exactly this (a non-strictly-
+    increasing set), so the two entry points to a node set disagreed. Zero
+    tolerance and no rtol here: the spacing is *identically* zero, and there is
+    no separation at which coincident nodes become acceptable.
+    """
+    with pytest.raises(ValueError, match="coincident"):
+        Geometry.gielis(RAD, 200, m=3, b=1.20, arc_length=True)
+
+    # The legal region is untouched: odd m at a = b satisfies D5 closure, and
+    # even m is unaffected whatever the aspect ratio.
+    for kwargs in ({"m": 3, "b": 1.0}, {"m": 4, "b": 1.20}):
+        geom = Geometry.gielis(RAD, 200, arc_length=True, **kwargs)
+        assert np.all(np.diff(geom.theta) > 0.0)
+        assert np.isfinite(geom.ddf).all() and np.isfinite(geom.ddg).all()

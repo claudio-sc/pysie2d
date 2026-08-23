@@ -257,6 +257,10 @@ def _uniform_arc_theta(
     Returns:
         theta_uniform: (nn,) theta values with uniform arc-length spacing.
         contour_length: Total perimeter of the curve.
+
+    Raises:
+        ValueError: If the inversion returns coincident nodes, which happens
+            where the curve is not monotone in arc length.
     """
     if n_fine is None:
         # A function of nn alone, and it must stay one: the whole assembly is
@@ -279,6 +283,21 @@ def _uniform_arc_theta(
     # Invert: interpolate theta as a function of arc length
     s_uniform = np.linspace(0, contour_length, nn, endpoint=False)
     theta_uniform = np.interp(s_uniform, s_fine, theta_fine)
+
+    # np.interp assumes s_fine is increasing. It is not when the curve doubles
+    # back — odd m away from a = b violates the D5 closure condition — and the
+    # inversion then returns *coincident* nodes rather than failing. Downstream
+    # _der_real_3 divides by the zero spacing and ddf/ddg come back NaN with
+    # nothing raised. Exact equality is the right test: the spacing is
+    # identically zero, and there is no separation at which two nodes on top of
+    # each other become acceptable. The prescribed-theta path already refuses
+    # the same thing (_validated_theta); this is the other entry point.
+    if not np.all(np.diff(theta_uniform) > 0.0):
+        raise ValueError(
+            f"arc-length inversion produced coincident nodes at m={m}, "
+            f"a={a}, b={b}: the curve is not monotone in arc length, so "
+            "theta cannot be recovered from it"
+        )
 
     return theta_uniform, contour_length
 
