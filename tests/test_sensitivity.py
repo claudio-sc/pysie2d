@@ -171,3 +171,115 @@ def test_gate1_degenerate_pair_does_not_split_under_dilation(te_degenerate):
     assert abs(got[0] - got[1]) / abs(got[0]) < 1.0e-8
     assert got[0] == pytest.approx(lam / RAD, rel=1.0e-8)
     assert got[1] == pytest.approx(lam / RAD, rel=1.0e-8)
+
+
+# Gate 2 lives on an ellipse rather than a circle: m=4, n1=n2=n3=2 makes the
+# Gielis boundary an exact ellipse with semi-axes b·rad along x and a·rad
+# along z (D14), so a≠b puts the derivative through the real Gielis shape path
+# — the same finite-difference code the catalogue depends on — instead of
+# through the ∂M/∂rad = −(λ/rad)·∂M/∂λ identity, which can pass while the shape
+# derivative is broken.
+ELLIPSE = {"m": 4, "n1": 2.0, "n2": 2.0, "n3": 2.0, "a": 1.0, "b": 1.2, "n_pts": N_PTS}
+BOX_ELLIPSE = (520.0 + 5.0j, 620.0 + 45.0j)
+
+
+def _ellipse(theta=None, **overrides):
+    """The Gate-2 ellipse, optionally on a frozen node set."""
+    kw = {**ELLIPSE, "rad": RAD}
+    kw.update(overrides)
+    if theta is not None:
+        kw["theta"] = theta
+    return Geometry.gielis(**kw)
+
+
+def test_gate2_ab_dilation_is_degenerate_with_rad(te_simple):
+    """Gate 2: at n2 = n3, (log a + log b) and log rad move λ identically.
+
+    D15: at n2 = n3 the map (a, b) → (ta, tb) scales the radius by exactly
+    t^(n2/n1) at every θ — a pure dilation, degenerate with rad. So the
+    Jacobian of λ over (log a + log b, log rad) has rank one, and
+
+        δ(log a + log b) − δ(log rad)
+
+    is an **exact null direction**. That is the statement asserted here, on two
+    modes at once, and it is the strongest form available: not "the derivative
+    is small" but "two independently computed derivatives agree", with the
+    common value λ itself pinned by scale covariance.
+
+    Tolerance 1e-9 on the ratio: both derivatives run through the same central
+    difference with no truncation error (λ is linear in each of these dilations)
+    so the floor is cancellation at ~ε/h = 1e-11 *(measured: ratio − 1 is
+    5.1e-14 and 3.2e-13 on the two modes)*. A shape derivative that were merely
+    approximately right would miss this by orders of magnitude.
+
+    ``te_simple`` is requested only so the module fixture ordering keeps the
+    expensive circle solve shared; this test builds its own ellipse.
+    """
+    mat = te_simple.material
+    geom = _ellipse()
+    theta = geom.theta
+    # Refined: the quotient is evaluated *at* λ, so the identity dλ/dlog rad = λ
+    # can only hold as tightly as λ itself sits on the pole. An unrefined
+    # contour estimate is off by ~3e-9 relative here, which is what the second
+    # assertion would otherwise be measuring.
+    res = QNMSolver(geom, mat).modes(
+        z_lo=BOX_ELLIPSE[0], z_hi=BOX_ELLIPSE[1], n_quad_per_side=N_SIDE
+    )
+    assert res.n_modes == 2
+    res = res.refine()
+    assert res.converged.all()
+
+    d_ab = res.sensitivity(
+        lambda d: (
+            _ellipse(
+                theta=theta,
+                a=ELLIPSE["a"] * np.exp(d),
+                b=ELLIPSE["b"] * np.exp(d),
+            ),
+            mat,
+        )
+    )
+    d_rad = res.sensitivity(lambda d: (_ellipse(theta=theta, rad=RAD * np.exp(d)), mat))
+
+    assert np.allclose(d_ab / d_rad, 1.0, rtol=1.0e-9, atol=1.0e-9)
+    # ...and the common value is λ, which is what makes this a null *direction*
+    # of a rank-one Jacobian rather than two derivatives that merely match.
+    # Looser than the ratio by a decade, and for a reason: the exponential
+    # gauge has curvature, so each derivative carries the O(h²) truncation term
+    # measured in test_gate1_dilation_is_gauge_free (3.46e-9 at h = 1e-5). It
+    # is common to both gauges and cancels in the ratio above, which is why
+    # that assertion can be four decades tighter than this one.
+    assert np.allclose(d_ab, res.wavelengths, rtol=1.0e-8)
+
+
+def test_gate2_boundary_control_ab_dilation_is_only_pure_at_n2_eq_n3():
+    """The D15 premise, measured on the boundary, with its n2 ≠ n3 control.
+
+    (a, b) → (ta, tb) is a *pure* dilation only at n2 = n3; away from it the
+    same map deforms the shape. Without this control the test above could pass
+    on a Jacobian that is rank-one for the wrong reason. No electromagnetics
+    here — it is the geometric premise on its own.
+
+    Exact equality to round-off is the bar at n2 = n3 (the radius ratio is
+    t^(n2/n1) = 1.3 at every node), so 1e-12 is ~4 decades above the measured
+    8.9e-16 spread; the n2 ≠ n3 control comes out at 0.39, i.e. 15 orders away.
+    """
+    t = 1.3
+    for n3, bound in ((2.0, 1.0e-12), (4.0, None)):
+        base = _ellipse(n3=n3)
+        r0 = np.hypot(base.f, base.g)
+        grown = _ellipse(
+            theta=base.theta,
+            n3=n3,
+            a=ELLIPSE["a"] * t,
+            b=ELLIPSE["b"] * t,
+        )
+        r1 = np.hypot(grown.f, grown.g)
+        spread = (r1 / r0).max() - (r1 / r0).min()
+        if bound is None:
+            assert spread > 0.1  # control: the map is not a dilation here
+        else:
+            assert spread < bound
+            assert (r1 / r0).mean() == pytest.approx(
+                t ** (ELLIPSE["n2"] / ELLIPSE["n1"])
+            )
