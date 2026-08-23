@@ -178,6 +178,33 @@ before using this** — it covers how to place a box, how to read the diagnostic
 what `refine()` does and does not buy you, and the limitations the feature ships
 with.
 
+### Mode sensitivity
+
+`QNMResult.sensitivity(at)` returns `dλ/dp` for every mode from the adjoint
+quotient `− uᴴ(∂M/∂p)v / uᴴ(∂M/∂λ)v`, re-extracting no eigenvalue. `at` is a
+callable `δ → (geometry, material)`, so a shape parameter and a refractive index
+go through one signature and one code path.
+
+```python
+res = QNMSolver(geom, mat).modes(745 + 2j, 775 + 15j).refine()
+theta = res.geometry.theta                     # the node set must be frozen
+
+def wider(delta):                              # dλ/db, b in its own units
+    return Geometry.gielis(rad=200, n_pts=200, theta=theta,
+                           m=4, b=1.2 + delta), mat
+
+print(res.sensitivity(wider))
+```
+
+The geometry `at` returns must carry `res.geometry.theta` **exactly** — a shape
+derivative holds the node set fixed, and differentiating the arc-length
+parametrisation along with the physics costs two orders of convergence. Degenerate
+poles dispatch to a secular problem rather than raising. `dλ/dp` converges at
+first order in `n_pts`, so `richardson_limit` extrapolates two rungs to the limit
+for less than the cost of one finer one. Conventions
+[§10](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md),
+§11 and §12 carry the details and the measured anchors.
+
 ## Performance
 
 The system is a dense `2nn × 2nn` complex matrix; at `nn = 300` (a `600 × 600`
