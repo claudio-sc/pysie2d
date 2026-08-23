@@ -60,6 +60,21 @@ resolution effect and is not explained here; the metric used for the reference
 is not recoverable from what was recorded. Both the ladder above and the
 node-angle isolation are reproducible from this script.
 
+**That reference measurement is now retired, not reconciled.** It predates this
+repository, no script produces it, and the metric behind its numbers cannot be
+recovered from what was written down — so there is nothing to reconcile against,
+and carrying it forward would leave two incompatible ladders on record with no
+way to choose between them. It is struck rather than argued with. Nothing rests
+on it any more: Gate 9's pass criterion was replaced under D16 (a shape
+derivative holds the node set fixed, `conventions.md` §10), and the criterion
+that closed the gate — second order in `h`, and demonstrably *not* second order
+without the freeze, rate 100.1 against 2.7 — is measured by
+`gate9_smoothness.py` in this repository and guarded by
+`test_frozen_nodes_restore_second_order_convergence`. The step size the retired
+window implied, `h = 3e-4`, is likewise superseded by `SHAPE_STEP = 1e-5` (§12,
+§10). Anyone meeting the old ~6-digit figure in an older document should read it
+as withdrawn.
+
 Second derivatives remain forbidden regardless: the source of the O(h) term is
 precisely a kinked first derivative.
 
