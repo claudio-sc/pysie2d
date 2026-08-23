@@ -95,15 +95,16 @@ live in [examples/CLAUDE.md](examples/CLAUDE.md).
 
 ## Review
 
-`/code-review` for the working diff, `/review` for a GitHub PR, and the
-`sci-code-reviewer` agent for the convention/validation/tolerance pass that
-generic review does not do. `/security-review` is not useful here — this is a
-numerics library with no untrusted input, network, or auth.
+`/code-review` for the working diff or a PR — it takes a PR number, branch or
+path as its target — and the `sci-code-reviewer` agent (defined in
+`.claude/agents/`) for the convention/validation/tolerance pass that generic
+review does not do. `/security-review` is not useful here — this is a numerics
+library with no untrusted input, network, or auth.
 
-`ponytail-review` and `/simplify` are fine on a diff but must not be pointed at
-the whole repo: `assemble_matrix_reference` and `reference/mie.py` are
-deliberate second implementations kept as validation anchors, and a
-minimalism pass will read them as duplication.
+`/simplify` is fine on a diff but must not be pointed at the whole repo:
+`assemble_matrix_reference` and `reference/mie.py` are deliberate second
+implementations kept as validation anchors, and a minimalism pass will read
+them as duplication.
 
 ## Performance shape
 
@@ -125,11 +126,20 @@ to reuse, and the win there is concurrency, not reuse. A single wavelength at
 
 ## Roadmap
 
-v0.1 core scattering → v0.2 line dipole, self-Green, LDOS/Purcell → v0.3
-performance (Cephes Hankel fast path, batched factorise-once
-`relative_ldos_map`) → **v0.4 vacuum wavelength conventions (breaking) + QNM
-extraction via Beyn's contour method, validated against analytic Mie
-resonances.** Longer term: slab-waveguide backgrounds, multiple particles.
+Shipped: v0.1 core scattering → v0.2 line dipole, self-Green, LDOS/Purcell →
+v0.3 performance (Cephes Hankel fast path, batched factorise-once
+`relative_ldos_map`) → v0.4 vacuum wavelength conventions (breaking) + QNM
+extraction via Beyn's contour method, validated against analytic Mie resonances
+→ v0.4.2 scale covariance (conventions §9).
+
+**Next, v0.5: two additions only.** Threading of the contour loop in
+`contour_moments` — see [performance](docs/design/performance.md) §3.1, which
+has the 5.02× measurement and the two traps — and an adjoint
+eigenvalue-sensitivity API exposing the `dλ/dp` identity that conventions §9
+already proves and tests at operator level. Both are scoped; neither adds
+physics.
+
+Longer term: slab-waveguide backgrounds, multiple particles.
 
 ## How to work here
 

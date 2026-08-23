@@ -1,7 +1,7 @@
 # Performance — where the time goes, and what to do about it
 
 Measured 2026-07-31 on Apple silicon, 8 cores, numpy 2.x on Accelerate,
-Python 3.12, at commit `684ecd0` (branch `beyn-port`). Every number below was
+Python 3.12, at commit `684ecd0`. Every number below was
 measured unless labelled *(estimate)*. This document is about the **package**,
 not about the Beyn port; `docs/design/beyn-port-status.md` links here rather
 than repeating it.

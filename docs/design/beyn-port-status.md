@@ -1,7 +1,13 @@
 # QNM / Beyn port — status and merge gate
 
-Status as of **2026-08-08, end of the documentation session**. Branch
-`beyn-port`, not merged. Written to be read on its own.
+Status as of **2026-08-08, end of the documentation session**. Written to be
+read on its own.
+
+**Historical record.** The port described here shipped in **v0.4.0**; the
+`beyn-port` branch is merged and deleted. Read this for the *why* — the
+corrections in §4, the gotchas in §3, the limitations in §5 — not for the state
+of the tree. Where it says "not started" or "what is left", check against the
+roadmap in `CLAUDE.md`, which is the live list.
 
 **The whole merge gate of §4 is now closed.** §§4.1, 4.2 and 4.5 shipped on
 2026-08-01; §§4.3 and 4.4 on 2026-08-08. Sections below are updated in place;
@@ -31,7 +37,8 @@ authority — the migration table, the injection-test evidence — it says so.
 `uv run pytest` → **115 passed in ~20-27 s**, against a **5-minute wall-clock
 budget** for the whole suite (raised 2026-07-31; see §2, Q5). `uv run ruff check
 .` and `ruff format --check .` clean, 28 files. All five `examples/` scripts
-render headless.
+render headless. *(Counts as of 2026-08-08 and left as written; at v0.4.2 the
+suite is 152 tests in ~39 s over 29 files.)*
 
 Committed on `beyn-port`, ahead of `main` by eleven commits. The three that
 carry the port:

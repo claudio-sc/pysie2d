@@ -210,7 +210,12 @@ would be an hour-long sweep takes seconds.
   functions and a batched, factorise-once `relative_ldos_map`.
 - **v0.4.0** — vacuum-wavelength and background-index conventions (breaking),
   and quasi-normal-mode extraction via Beyn's contour method, validated
-  against analytic Mie resonances. _(this release)_
+  against analytic Mie resonances.
+- **v0.4.2** — exact scale covariance of the discrete BIE system, recorded as
+  [conventions](docs/conventions.md) §9. _(this release)_
+- **v0.5.0** _(next)_ — threaded contour integration in `contour_moments`, and
+  an adjoint eigenvalue-sensitivity API (`dλ/dp` per mode) on top of the
+  identity already proved in conventions §9.
 
 ## License
 
