@@ -1,0 +1,49 @@
+class BIESolver
+BIESolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material) -> None
+BIESolver.assemble(self, wavelength: float | complex) -> numpy.ndarray
+BIESolver.assemble_derivative(self, wavelength: float | complex) -> numpy.ndarray
+BIESolver.scatter(self, wavelength: float, angle: float = 0.0, incident_rhs: collections.abc.Callable[[int, complex, numpy.ndarray, numpy.ndarray], numpy.ndarray] | None = None) -> pysie2d.solver.ScatterResult
+BIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float) -> pysie2d.solver.ScatterResult
+DEGENERATE_COND: float = 1000000000000.0
+class Geometry
+Geometry.__init__(self, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, delt: float | numpy.ndarray, *, theta: numpy.ndarray | None = None, rad: float, x0: float = 0.0, z0: float = 0.0) -> None
+Geometry.gielis(rad: float, n_pts: int = 200, *, m: int = 4, n1: float = 2.0, n2: float = 2.0, n3: float = 2.0, a: float = 1.0, b: float = 1.0, x0: float = 0.0, z0: float = 0.0, arc_length: bool = True, theta: numpy.ndarray | None = None) -> 'Geometry'
+Geometry.is_circle -> property
+Geometry.n_pts -> property
+class Material
+Material.__init__(self, n_core: float, n_clad: float = 1.0, pol: int = 2, epsi: float = 0.0) -> None
+Material.eps -> property
+Material.epsi_rel -> property
+Material.epsr -> property
+Material.nc -> property
+Material.wnum_bg(self, wavelength: float | complex) -> float | complex
+class QNMResult
+QNMResult.__init__(self, wavelengths: numpy.ndarray, vectors: numpy.ndarray, multiplicity: numpy.ndarray, sigma_ratio: numpy.ndarray, sv_ratio: numpy.ndarray, max_gap: float, rank: int, cancellation: float, edge_margin: numpy.ndarray, converged: numpy.ndarray, cond_jacobian: numpy.ndarray, z_lo: complex, z_hi: complex, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material) -> None
+QNMResult.n_modes -> property
+QNMResult.quality_factors -> property
+QNMResult.refine(self, *, tol: float = 1e-09, max_iter: int = 30) -> 'QNMResult'
+QNMResult.sensitivity(self, at: collections.abc.Callable[[float], tuple[pysie2d.geometry.Geometry, pysie2d.material.Material]], *, step: float = 1e-05) -> numpy.ndarray
+QNMResult.size_parameters -> property
+class QNMSolver
+QNMSolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material) -> None
+QNMSolver.modes(self, z_lo: complex, z_hi: complex, *, n_quad_per_side: int = 12, n_probe: int = 12, rank_tol: float = 1e-08, rng_seed: int = 0) -> pysie2d.qnm.QNMResult
+SHAPE_STEP: float = 1e-05
+class ScatterResult
+ScatterResult.__init__(self, ei: numpy.ndarray, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float, angle: float = 0.0) -> None
+ScatterResult.efficiencies(self, n_angles: int = 3000) -> dict[str, float]
+ScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
+ScatterResult.far_field(self, n_angles: int = 3000) -> tuple[numpy.ndarray, numpy.ndarray]
+ScatterResult.size_parameter -> property
+ScatterResult.wnum_bg -> property
+assemble_matrix(pol: int, nn: int, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, delt: float | numpy.ndarray, wnum_bg: complex, ri: complex, kd: complex) -> numpy.ndarray
+assemble_matrix_reference(pol: int, nn: int, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, delt: float | numpy.ndarray, wnum_bg: complex, ri: complex, kd: complex) -> numpy.ndarray
+eval_field(ei: numpy.ndarray, nn: int, f: numpy.ndarray, df: numpy.ndarray, g: numpy.ndarray, dg: numpy.ndarray, delt: float | numpy.ndarray, wnum_bg: complex, x_pts: numpy.ndarray, z_pts: numpy.ndarray, ri: complex | None = None) -> numpy.ndarray
+far_field(nn: int, nff: int, wnum_bg: complex, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, delt: float | numpy.ndarray, ei: numpy.ndarray) -> tuple[numpy.ndarray, numpy.ndarray]
+line_dipole_rhs(nn: int, wnum_bg: complex, f: numpy.ndarray, g: numpy.ndarray, x_s: float, z_s: float) -> numpy.ndarray
+plane_wave_rhs(nn: int, titad: float, wnum_bg: complex, f: numpy.ndarray, g: numpy.ndarray) -> numpy.ndarray
+relative_ldos(solver: pysie2d.solver.BIESolver, wavelength: float, x_s: float, z_s: float) -> float
+relative_ldos_map(solver: pysie2d.solver.BIESolver, wavelength: float, x_pts: numpy.ndarray, z_pts: numpy.ndarray) -> numpy.ndarray
+richardson_limit(coarse: complex | numpy.ndarray, fine: complex | numpy.ndarray, n_coarse: int, n_fine: int) -> complex | numpy.ndarray
+self_green(solver: pysie2d.solver.BIESolver, wavelength: float, x_s: float, z_s: float) -> complex
+size_parameter(geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float | complex) -> float | complex
+wavelength_over_ds(geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float | complex) -> float
