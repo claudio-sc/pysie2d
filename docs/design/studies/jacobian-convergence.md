@@ -159,3 +159,48 @@ estimator moves the target rather than raising an error. Any score table like
 this one must be read down the raw-rung rows first — they have to improve
 monotonically with `R`, and if they do not, the reference is wrong, not the
 rungs.
+
+## A17 — the §12 extrapolation at the elongated end of the family
+
+`a17_richardson_elongated.py`. Gate 10 closed on a measurement at one design
+point, the aspect-1.2 ellipse; the backlog recorded the extension to the rest of
+the shape family as an argument, not a check. This is the check, run at
+`b/a = 3` — the direction A13 measured as the whole cost story (aspect 3 costs
+4.51× the circle, while `n1` over its full declared range spans 1.10–1.31×).
+
+Design point `b = 3.0`, `a = 1.0`, everything else as the reference ellipse.
+Single pole at 549.871 + 18.299j, box `540 + 10j … 580 + 30j`. Same estimator,
+same scoring against an `R = 75/100` limit built from rungs no candidate uses,
+same pre-stated **1 % on every J component**.
+
+| estimator | cost (R=50 assemblies) | `dλ/db` | `dλ/da` | `dλ/drad` | `dλ/dn_core` |
+|---|---|---|---|---|---|
+| raw rung `R = 15` | 0.09 | 1.065e-2 | 1.732e-3 | 6.183e-4 | 6.353e-3 |
+| raw rung `R = 30` | 0.36 | 5.245e-3 | 8.528e-4 | 3.053e-4 | 3.157e-3 |
+| raw rung `R = 50` | 1.00 | 3.130e-3 | 5.090e-4 | 1.824e-4 | 1.890e-3 |
+| **Richardson `15 + 30`** | **0.45** | **2.256e-4** | 3.282e-5 | 9.096e-6 | 8.734e-5 |
+| Richardson `30 + 50` | 1.36 | 5.857e-5 | 8.617e-6 | 2.437e-6 | 2.192e-5 |
+
+**A17 passes, and by more margin than the design point the gate closed on**:
+worst component **2.256e-4** against the 6.381e-4 recorded at aspect 1.2. The
+raw rungs read down monotonically and halve — 1.065e-2 → 5.245e-3 → 3.130e-3 —
+which is the first-order premise holding at aspect 3 and, per the S05 trap, the
+first column to read before trusting any score in the table.
+
+Two things worth carrying forward.
+
+**Holding `R` fixed does what D17 said it would.** At aspect 3 the *raw*
+`R = 50` rung is 3.1e-3, five times better than the 1.5e-2 the same rung gives
+at aspect 1.2, and it meets the 1 % bar unaided. Elongation costs assemblies
+(A13) but does not cost accuracy at fixed `R`; stating the criterion in `R`
+rather than in `n_pts` is what makes that true.
+
+**The contour settings do not transfer, and this is the one to watch.** The
+reference study's `n_quad_per_side = 6` fails Beyn's cancellation check at
+**every** rung here — R = 15, 30, 50, 75 and 100 alike, so it is the contour
+that is under-resolved at this aspect and not the boundary. Raised to 12 with
+`n_probe = 20` for the whole ladder, so no comparison in the table is between
+settings. It **raised** rather than returning a wrong pole
+(`cancellation 2.57e-2 > 1e-4`, naming the saturated probe and what to do), which
+is why this was safe to meet at run time. A catalogue sweep over elongated
+shapes must expect to size the contour per design, not once.

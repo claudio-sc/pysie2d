@@ -47,7 +47,7 @@ def geometry(n_pts, theta=None, **overrides):
     return Geometry.gielis(**kw)
 
 
-def n_pts_for(target_r, material, wavelength):
+def n_pts_for(target_r, material, wavelength, **design):
     """Smallest even n_pts whose R reaches ``target_r``.
 
     R is very nearly proportional to n_pts (the boundary is fixed; only the
@@ -57,22 +57,30 @@ def n_pts_for(target_r, material, wavelength):
     states the requirement in R.
     """
     probe = 200
-    r_probe = wavelength_over_ds(geometry(probe), material, wavelength)
+    r_probe = wavelength_over_ds(geometry(probe, **design), material, wavelength)
     n = max(50, int(probe * target_r / r_probe))
-    while wavelength_over_ds(geometry(n), material, wavelength) < target_r:
+    while wavelength_over_ds(geometry(n, **design), material, wavelength) < target_r:
         n += 2
     return n
 
 
-def jacobian(n_pts, material, **design):
+def jacobian(n_pts, material, box=BOX, n_quad_per_side=6, n_probe=12, **design):
     """dλ/dp at the design point for p in (b, a, rad, n_core), plus λ and R.
 
     ``design`` overrides Gielis parameters, so a nearby design can be laddered
-    on exactly this code path (route 2, ``gate10_jacobian_differences.py``).
+    on exactly this code path (route 2, ``gate10_jacobian_differences.py``);
+    ``box`` moves with it, since a design far from the reference one — A17 runs
+    this at ``b = 3`` — does not keep its pole inside the reference box. So do
+    the contour settings: at aspect 3 the default ``n_quad_per_side=6`` fails
+    the Beyn cancellation check at *every* rung, coarse and fine alike, so it is
+    a property of the contour and not of the resolution. It raises rather than
+    returning a wrong pole.
     """
     at_design = {**ELLIPSE, **design}
     geom = geometry(n_pts, **design)
-    res = QNMSolver(geom, material).modes(z_lo=BOX[0], z_hi=BOX[1], n_quad_per_side=6)
+    res = QNMSolver(geom, material).modes(
+        z_lo=box[0], z_hi=box[1], n_quad_per_side=n_quad_per_side, n_probe=n_probe
+    )
     if res.n_modes != 1:
         raise RuntimeError(f"n_pts={n_pts}: box holds {res.n_modes} modes, expected 1")
     res = res.refine()
