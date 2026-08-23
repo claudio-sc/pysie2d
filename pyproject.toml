@@ -62,13 +62,21 @@ match = "main"
 prerelease = false
 
 [tool.semantic_release.changelog]
-changelog_file = "CHANGELOG.md"
 exclude_commit_patterns = [
     '''chore(?:\([^)]*?\))?: .+''',
     '''ci(?:\([^)]*?\))?: .+''',
     '''test(?:\([^)]*?\))?: .+''',
     '''Merged? .*''',
 ]
+
+# `changelog_file` lives here, not on the parent table. PSR 10.6.1 still honours
+# the old `changelog.changelog_file` but warns that compatibility breaks in v10,
+# and the release path is the worst place to discover a silent config drop: this
+# repo already shipped v0.2.2, v0.3.0 and v0.4.0 as tags while PyPI sat at 0.2.1.
+# Set explicitly even though "CHANGELOG.md" is the default, so a change of
+# default cannot silently retarget the release notes.
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "CHANGELOG.md"
 
 [tool.semantic_release.remote]
 type = "github"
