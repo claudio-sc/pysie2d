@@ -497,7 +497,12 @@ class Geometry:
 
         A circle is recovered with ``m=0`` (the superformula reduces to a
         constant radius): ``arg = 0`` makes ``co = 1`` and ``se = 0``, so
-        ``r = rad`` for every theta.
+        ``r = rad`` for every theta. It is *also* recovered at
+        ``n1 = n2 = n3 = 2`` with ``a = b = 1`` for **any** ``m``, which is why
+        :attr:`Geometry.is_circle` tests the coordinates rather than ``m``.
+        The same exponents at ``a != b`` give an exact ellipse, with semi-axis
+        ``b·rad`` along x and ``a·rad`` along z — the factor on the *cosine*
+        term sets the *z* semi-axis, not the x one.
 
         Args:
             rad: Scale radius (nm).
@@ -506,11 +511,16 @@ class Geometry:
             n1: Shape exponent.
             n2: Shape exponent.
             n3: Shape exponent.
-            a: Cosine scale factor.
-            b: Sine scale factor.
+            a: Cosine scale factor. **Ignored unless ``arc_length=True``.**
+            b: Sine scale factor. **Ignored unless ``arc_length=True``.**
             x0: Centre x-coordinate (nm).
             z0: Centre z-coordinate (nm).
-            arc_length: Use uniform arc-length sampling (default True).
+            arc_length: Use uniform arc-length sampling (default True). The
+                uniform-theta path (``False``) **forces ``a = b = 1``** and
+                raises nothing when passed anything else, so a derivative taken
+                with respect to ``a`` or ``b`` through that path is identically
+                zero rather than wrong-looking. Leave this True whenever ``a``
+                or ``b`` is not 1.
         """
         f, g, df, dg, ddf, ddg, delt = boundary_setup(
             n_pts, rad, a, b, m, n1, n2, n3, x0=x0, z0=z0, arc_length=arc_length
