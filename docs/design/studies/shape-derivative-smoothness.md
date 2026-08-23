@@ -62,3 +62,42 @@ node-angle isolation are reproducible from this script.
 
 Second derivatives remain forbidden regardless: the source of the O(h) term is
 precisely a kinked first derivative.
+
+## Per parameter: the two classes do not share a step size
+
+Same ladder, `n_pts = 200`, taken in every parameter D12 quantifies over
+(`m` excluded — it is categorical under D5 and never differentiated).
+Relative L2 deviation from `D(1e-6)`, with the entry fraction carrying it:
+
+| `h` | `a` | `b` | `n1` | `n2` | `n3` | `n_core` | `n_clad` |
+|---|---|---|---|---|---|---|---|
+| 1e-2 | 1.17e-3 | 1.09e-3 | 9.68e-5 | 3.59e-5 | 3.88e-5 | 2.20e-4 | 2.18e-4 |
+| 1e-3 | 9.55e-5 | 8.29e-5 | 3.21e-5 | 2.53e-7 | 1.98e-6 | 2.20e-6 | 2.18e-6 |
+| 1e-4 | 3.77e-5 | 3.24e-5 | 4.83e-8 | 3.51e-8 | 3.30e-8 | 2.21e-8 | 2.17e-8 |
+| 1e-5 | 5.15e-9 | 5.60e-9 | 4.84e-8 | 3.58e-8 | 3.30e-8 | 4.76e-10 | 1.06e-9 |
+| 1e-7 | 5.70e-8 | 6.18e-8 | 5.28e-7 | 4.11e-7 | 3.43e-7 | 3.38e-9 | 8.87e-9 |
+
+**`n_core` and `n_clad` are the control, and they are textbook `O(h²)`:**
+2.20e-4 → 2.20e-6 → 2.21e-8, exactly ×100 per decade over three decades, with
+the entry fraction going to zero and staying there. They never touch the
+arc-length inversion. That they behave perfectly on the same matrix, at the same
+λ, through the same assembly is what rules out the assembly, the Hankel
+evaluation and the complex arithmetic as the source of the geometric stall — the
+only thing left different is the node placement.
+
+**The stall tracks how strongly a parameter moves the nodes.** `a` and `b`
+rescale the boundary directly and stall at `h = 1e-4` (frac 0.05); `n1` stalls a
+decade earlier at 1e-3 (frac 0.052); `n2` and `n3` reach the floor by 1e-3
+already. The ordering is the ordering of geometric leverage at this design
+point, not a property of the parameter's name — so it will move with the design
+point and cannot be tabulated once.
+
+**Consequence for D12.** A single `h = 3e-4` for all seven parameters is not
+supportable: it lands in the kink-dominated region for `a`, `b` and `n1`
+(3–4e-5 relative, ~4 digits) while `n_core` and `n_clad` would deliver 2e-8 at
+the same step. The step that serves *both* classes is **`h = 1e-5`**: 5.2e-9 and
+5.6e-9 on `a` and `b`, 4.8e-10 and 1.1e-9 on the material pair, and the worst
+parameter anywhere in the table at that step is `n1` at 4.8e-8. That is a
+proposal, not a decision — D12 is locked and re-taking it is not this study's
+call. What the study establishes is that the number currently in it is measured
+to be the wrong one.

@@ -48,9 +48,32 @@ H_REF = 1.0e-6  # the most accurate D measured below; see the floor discussion
 CARRY_FLOOR = 1.0e-6
 
 
+# The design point every ladder is taken about. Geometric and material
+# parameters are listed together on purpose: D12 sets one step size for all of
+# them, and whether that is legitimate is exactly what parameter_sweep asks.
+DESIGN_POINT = {
+    "m": 4,
+    "a": 1.0,
+    "b": B0,
+    "n1": 2.0,
+    "n2": 2.0,
+    "n3": 2.0,
+    "n_core": 3.0,
+    "n_clad": 1.0,
+}
+MATERIAL_KEYS = ("n_core", "n_clad")
+
+
+def _matrix_at(point: dict, n_pts: int) -> np.ndarray:
+    """M(λ) at a full design point, geometry and material together."""
+    shape = {k: v for k, v in point.items() if k not in MATERIAL_KEYS}
+    geo = Geometry.gielis(RAD, n_pts, arc_length=True, **shape)
+    mat = Material(n_core=point["n_core"], n_clad=point["n_clad"], pol=2)
+    return BIESolver(geo, mat).assemble(LAM)
+
+
 def _matrix(b: float, n_pts: int) -> np.ndarray:
-    geo = Geometry.gielis(RAD, n_pts, m=4, b=b, arc_length=True)
-    return BIESolver(geo, Material(n_core=3.0, pol=2)).assemble(LAM)
+    return _matrix_at({**DESIGN_POINT, "b": b}, n_pts)
 
 
 def _node_angles(b: float, n_pts: int) -> np.ndarray:
@@ -62,14 +85,14 @@ def _central(fn, b: float, h: float, n_pts: int) -> np.ndarray:
     return (fn(b + h, n_pts) - fn(b - h, n_pts)) / (2.0 * h)
 
 
-def _ladder(fn, n_pts: int, label: str) -> None:
+def _ladder(fn, n_pts: int, label: str, p_0: float = B0) -> None:
     """Deviation of D(h) from D(H_REF), and how many entries carry it."""
-    print(f"\n--- {label}, n_pts = {n_pts}, m = 4, b0 = {B0}")
-    ref = _central(fn, B0, H_REF, n_pts)
+    print(f"\n--- {label}  [n_pts = {n_pts}, expansion point {p_0}]")
+    ref = _central(fn, p_0, H_REF, n_pts)
     scale = float(np.abs(ref).max())
     print(f"{'h':>10} {'rel. L2 dev':>13} {'max entry dev':>15} {'frac carrying':>15}")
     for h in STEPS:
-        dev = _central(fn, B0, h, n_pts) - ref
+        dev = _central(fn, p_0, h, n_pts) - ref
         frac = float((np.abs(dev) / scale > CARRY_FLOOR).mean())
         rel = float(np.linalg.norm(dev) / np.linalg.norm(ref))
         print(f"{h:10.0e} {rel:13.2e} {np.abs(dev).max() / scale:15.2e} {frac:15.3f}")
@@ -88,7 +111,27 @@ def node_placement_ladder(n_pts: int) -> None:
     _ladder(_node_angles, n_pts, "dtheta/db (arc-length node placement)")
 
 
+def parameter_sweep(n_pts: int) -> None:
+    """The same ladder in every parameter, which is what D12 quantifies over.
+
+    A step size is only defensible per *class* of parameter if the classes
+    behave alike. They do not: only the parameters that reach the arc-length
+    inversion pick up the `np.interp` term, so the material parameters make the
+    control — if they showed the same stall, the diagnosis above would be wrong.
+    """
+    for name, p_0 in DESIGN_POINT.items():
+        if name == "m":  # categorical (D5), never differentiated
+            continue
+        _ladder(
+            lambda p, n, _k=name: _matrix_at({**DESIGN_POINT, _k: p}, n),
+            n_pts,
+            f"dM/d{name}",
+            p_0=float(p_0),
+        )
+
+
 if __name__ == "__main__":
     for n in (120, 200, 400):
         derivative_ladder(n)
     node_placement_ladder(200)
+    parameter_sweep(200)
