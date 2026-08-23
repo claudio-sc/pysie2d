@@ -65,9 +65,11 @@ NODE_PEAK_OVER_MATRIX = 3.6
 # know their machine pass ``max_workers``.
 THREAD_MEMORY_BUDGET = 2.0e9
 
-# Threading saturates here *(measured, performance.md §5.1: 5.36× at 8 workers,
-# 5.33× at 10)* — `hankel1` releases the GIL, so the scaling is real, but it is
-# bounded by memory bandwidth rather than by cores.
+# A **memory** cap, not a scaling one. `hankel1` releases the GIL and the
+# scaling is real well past here *(measured on 10 cores, performance.md §3.1:
+# 5.73× at 8 workers and still gaining at 6.40× on 10)*, but each worker costs
+# another NODE_PEAK_OVER_MATRIX of memory and §5.1 puts the 8-thread ceiling at
+# nn ≈ 2500. Buying the last 11 % would move that ceiling down again.
 MAX_CONTOUR_WORKERS = 8
 
 
