@@ -34,17 +34,45 @@ jobs:
       # normally. The token is a fine-grained PAT scoped to this repo with
       # Contents: read and write -- no Workflows permission, because no release
       # commit touches .github/.
+      # Run the CLI on the runner rather than via the Docker action. GitPython
+      # 3.1.60 (2026-08-25) removed `Actor.name_email_regex`, which PSR 10.6.1
+      # uses while loading config, so every run aborts before it can compute a
+      # version -- upstream issues #1475-#1477 are open and no fixed PSR release
+      # exists. The action resolves its own dependencies inside its container,
+      # leaving no way to pin GitPython there; `uv tool run --with` does, and is
+      # the whole reason for the switch. Revert to the action once PSR ships a
+      # release that constrains GitPython.
+      # Both pins are exact on purpose: this path only runs on a push to main,
+      # so a resolver change here is discovered as a failed release.
       - name: Semantic version release
         id: release
-        uses: python-semantic-release/python-semantic-release@v10.6.1
-        with:
-          github_token: ${{ secrets.RELEASE_TOKEN }}
-          git_committer_name: "github-actions"
-          git_committer_email: "actions@users.noreply.github.com"
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          before=$(git for-each-ref --count=1 --sort=-v:refname --format='%(refname:short)' refs/tags)
+          uv tool run --with 'GitPython<3.1.60' \
+            --from 'python-semantic-release==10.6.1' \
+            semantic-release -v version
+          after=$(git for-each-ref --count=1 --sort=-v:refname --format='%(refname:short)' refs/tags)
+          # The tag is what actually shipped: `version` commits, tags and pushes
+          # in one step, so comparing tags before/after is the only signal that
+          # does not depend on parsing its stdout.
+          if [ "$before" != "$after" ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$after" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Publish GitHub release
-        uses: python-semantic-release/publish-action@v10.6.1
         if: steps.release.outputs.released == 'true'
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.release.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv tool run --with 'GitPython<3.1.60' \
+            --from 'python-semantic-release==10.6.1' \
+            semantic-release -v publish --tag "${{ steps.release.outputs.tag }}"
