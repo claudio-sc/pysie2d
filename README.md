@@ -90,7 +90,11 @@ uv run python examples/qnm_wide_window.py
 Full details and every sign/layout convention are in
 [docs/conventions.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md). The analytic reference is Bohren &
 Huffman, *Absorption and Scattering of Light by Small Particles*, ch. 8; the
-surface-integral formulation follows [Valencia et al's formulation](https://doi.org/10.1364/JOSAB.20.002150).
+boundary-integral approach follows Maradudin, Michel, McGurn & Méndez,
+*Enhanced backscattering of light from a random grating*, Ann. Phys. **203**
+(1990) 255–307, developed there for randomly rough surfaces; this
+implementation uses the closed-surface (particle) form given in
+[Valencia *et al.*](https://doi.org/10.1364/JOSAB.20.002150).
 
 ## Validation
 
