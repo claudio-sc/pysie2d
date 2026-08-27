@@ -1,7 +1,7 @@
 [project]
 name = "pysie2d"
 version = "0.4.2"
-description = "2-D boundary-integral (Müller BIE) solver for electromagnetic scattering from a cylinder in a homogeneous background."
+description = "2-D surface-integral solver for electromagnetic scattering from a cylinder in a homogeneous background."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
