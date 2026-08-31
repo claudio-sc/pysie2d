@@ -221,7 +221,7 @@ would be an hour-long sweep takes seconds.
   and quasi-normal-mode extraction via Beyn's contour method, validated
   against analytic Mie resonances.
 - **v0.4.2** — exact scale covariance of the discrete BIE system, recorded as
-  [conventions](docs/conventions.md) §9. _(latest release)_
+  [conventions](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md) §9. _(latest release)_
 
 Work in progress on `v0.5-sensitivity`: threaded contour integration in
 `contour_moments`, and an adjoint eigenvalue-sensitivity API (`dλ/dp` per
