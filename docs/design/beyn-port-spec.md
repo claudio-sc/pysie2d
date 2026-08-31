@@ -5,6 +5,11 @@ and `em-bie-theorist` proposals, with the strategy doc's errors corrected agains
 measurement. Every number below marked *(measured)* was computed against the real
 `BIESolver.assemble`, not recalled.
 
+**Historical.** This spec is frozen mid-port: the phase and suite counts below
+describe the tree as it stood before v0.4.0 shipped, and Phase 0 landed in
+v0.4.0 as the vacuum-wavelength convention change. Read it for intent, not for
+state; the live roadmap is in `CLAUDE.md`. See `docs/design/README.md`.
+
 Status: **round-2 answered (§13); Phases 1–3 landed and the go/no-go is GO.**
 Suite green at **73 passed, 36.1 s** (baseline was 39/22.5 s, so the QNM feature
 costs ~14 s — well inside the +60–90 s §13 Q5 accepted).
