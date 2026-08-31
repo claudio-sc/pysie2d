@@ -223,7 +223,14 @@ class ScatterResult:
 
         amp, _ = self.far_field(n_angles)
         i_sc = np.abs(amp) ** 2 / norfac
-        qsca = np.sum(i_sc) * delthe / (2.0 * self.geometry.rad)
+        # far_field's angles span [-pi, pi] inclusive, so index 0 and index
+        # n_angles-1 are the *same* physical direction. Summing all n_angles
+        # samples double-counts it — a periodic integrand's uniform-grid
+        # quadrature wants the n_angles-1 distinct points, each already
+        # carrying weight delthe = 2*pi/(n_angles-1). Dropping the duplicate
+        # (not halving both copies) is what makes qsca independent of where
+        # that one grid angle happens to fall relative to the forward peak.
+        qsca = np.sum(i_sc[:-1]) * delthe / (2.0 * self.geometry.rad)
         qext = amp[nforw].imag / (wnum_bg * 2.0 * self.geometry.rad)
         qabs = qext - qsca
         return {"qsca": float(qsca), "qext": float(qext), "qabs": float(qabs)}

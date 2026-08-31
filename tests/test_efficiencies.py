@@ -1,20 +1,25 @@
+import numpy as np
 import pytest
 
 from conftest import N_CLAD, N_CORE, POL_TAG, size_parameter
-from pysie2d import BIESolver, Material
+from pysie2d import BIESolver, Geometry, Material
 from pysie2d.reference import mie
 
-# Tolerances. The spec's target was rtol=1e-3 at nn=300, but the ported (and
-# verified byte-identical to the source) far-field/efficiencies quadrature does
-# not reach that: qsca is floored at ~1.8e-3 by the verbatim far-field angular
-# grid (its error is independent of nn), and qext (optical theorem, forward
-# amplitude) converges only at first order in nn, reaching ~3.3e-3 at nn=300.
-# Both are systematic across 500/600/800 nm (not a resonance) and delt handling
-# is correct (arc-length and uniform-theta agree). 5e-3 gives comfortable margin.
-RTOL_MIE = 5e-3
-# Lossless energy conservation |qext - qsca|/qext is limited by the same two
-# independent quadratures disagreeing at ~1.8e-3; 3e-3 gives margin.
-RTOL_ENERGY = 3e-3
+# Tolerances. The spec's target was rtol=1e-3 at nn=300. Before A20, qsca was
+# floored at ~1.8e-3 by a far-field angular grid that double-counted its own
+# endpoint (angles span [-pi, pi] inclusive, so index 0 and index n_angles-1
+# are the same physical direction); that floor is gone now that
+# `efficiencies` drops the duplicate. What is left is qext (optical theorem,
+# forward amplitude), which converges only at first order in nn and reaches
+# ~3.3e-3 at nn=300 — unaffected by A20, since it reads a single amp[nforw]
+# rather than summing the angular grid. Systematic across 500/600/800 nm (not
+# a resonance) and both polarisations. 4e-3 gives comfortable margin.
+RTOL_MIE = 4e-3
+# Lossless energy conservation |qext - qsca|/qext: with qsca's angular-grid
+# floor gone, both quadratures are limited only by their own nn convergence,
+# and the two errors partly cancel rather than adding — measured ~6.5e-4 at
+# nn=300 (was ~1.8e-3 pre-A20). 1e-3 gives margin without hiding a regression.
+RTOL_ENERGY = 1e-3
 
 
 @pytest.mark.parametrize("wavelength", [500.0, 600.0, 800.0])
@@ -70,3 +75,28 @@ def test_energy_conservation_lossless(circle, pol):
     eff = result.efficiencies()
 
     assert abs(eff["qext"] - eff["qsca"]) / eff["qext"] < RTOL_ENERGY
+
+
+@pytest.mark.parametrize("pol", [1, 2])
+def test_qsca_is_independent_of_incidence_angle_on_the_circle(pol):
+    """A20's discriminating check: qsca must not care where the grid closes.
+
+    A circle is isotropic, so qsca cannot depend on the incidence angle no
+    matter where the far-field angular grid's duplicated endpoint falls
+    relative to the forward peak. Before A20 it did — rotating incidence by
+    90 degrees moved qsca by 1.13e-3 at n_angles=3000 (the ~1.8e-3 floor this
+    file's tolerances used to carry). Bar 1e-10: what remains after dropping
+    the duplicate is round-off in a uniform-grid quadrature of a smooth
+    periodic integrand, which for the circle's few-mode far field is many
+    orders below the discretisation floor above — measured 3.4e-16.
+    """
+    geom = Geometry.gielis(rad=200.0, n_pts=300, m=0)
+    mat = Material(n_core=N_CORE, n_clad=N_CLAD, pol=pol)
+    qscas = [
+        BIESolver(geom, mat)
+        .scatter(wavelength=600.0, angle=angle)
+        .efficiencies()["qsca"]
+        for angle in (0.0, 37.0, 90.0, 123.456)
+    ]
+    qscas = np.array(qscas)
+    assert (qscas.max() - qscas.min()) / qscas.mean() < 1.0e-10

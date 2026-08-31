@@ -80,9 +80,9 @@ def test_vacuum_wavelength_scaling(circle, pol, epsi_base):
 def test_efficiencies_match_mie_in_cladding(circle, pol):
     # The analytic anchor at n_clad ≠ 1. Mie theory is stated in (x, m), both of
     # which are background-relative, so the same closed form must hold with no
-    # extra n_clad factor anywhere. RTOL is the unchanged RTOL_MIE = 5e-3 of
-    # test_efficiencies: the discretisation error is a property of the boundary
-    # quadrature and does not care what n_clad is.
+    # extra n_clad factor anywhere. RTOL is the unchanged RTOL_MIE = 4e-3 of
+    # test_efficiencies (tightened by A20): the discretisation error is a
+    # property of the boundary quadrature and does not care what n_clad is.
     geom = circle(300)
     mat = Material(n_core=SCALED["n_core"], n_clad=SCALED["n_clad"], pol=pol)
     result = BIESolver(geom, mat).scatter(wavelength=SCALED["wavelength"])
@@ -91,10 +91,10 @@ def test_efficiencies_match_mie_in_cladding(circle, pol):
     tag = POL_TAG[pol]
 
     assert result.efficiencies()["qsca"] == pytest.approx(
-        ref[f"Q_sca_{tag}"], rel=5.0e-3
+        ref[f"Q_sca_{tag}"], rel=4.0e-3
     )
     assert result.efficiencies()["qext"] == pytest.approx(
-        ref[f"Q_ext_{tag}"], rel=5.0e-3
+        ref[f"Q_ext_{tag}"], rel=4.0e-3
     )
 
 
@@ -103,7 +103,7 @@ def test_absorbing_particle_in_cladding(circle, pol):
     # The lossy analytic anchor at n_clad ≠ 1. epsi is absolute, so reaching the
     # relative permittivity 2.25 + 0.5j — the case test_efficiencies already
     # validates at n_clad = 1 — takes epsi = 0.5·n_clad². Landing on that same
-    # physical case is deliberate: it inherits the justified RTOL_MIE = 5e-3
+    # physical case is deliberate: it inherits the justified RTOL_MIE = 4e-3
     # rather than needing a fresh tolerance argument. Under the *relative*
     # reading of epsi this call would instead model 2.25 + 0.845j and miss the
     # reference by ~30 %, far outside the tolerance.
@@ -120,7 +120,7 @@ def test_absorbing_particle_in_cladding(circle, pol):
 
     assert result.efficiencies()["qabs"] > 0.0
     assert result.efficiencies()["qabs"] == pytest.approx(
-        ref[f"Q_abs_{tag}"], rel=5.0e-3
+        ref[f"Q_abs_{tag}"], rel=4.0e-3
     )
 
 
