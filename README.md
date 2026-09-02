@@ -1,5 +1,10 @@
 # pysie2d
 
+[![CI](https://github.com/claudio-sc/pysie2d/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-sc/pysie2d/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/pysie2d.svg)](https://pypi.org/project/pysie2d/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+
 A 2-D surface-integral-equation solver for time-harmonic
 electromagnetic scattering from a single smooth cylinder — circular or
 Gielis-superformula cross-section, embedded in a homogeneous background. Validated
@@ -85,7 +90,11 @@ uv run python examples/qnm_wide_window.py
 Full details and every sign/layout convention are in
 [docs/conventions.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md). The analytic reference is Bohren &
 Huffman, *Absorption and Scattering of Light by Small Particles*, ch. 8; the
-surface-integral formulation follows [Valencia et al's formulation](https://doi.org/10.1364/JOSAB.20.002150).
+boundary-integral approach follows Maradudin, Michel, McGurn & Méndez,
+*Enhanced backscattering of light from a random grating*, Ann. Phys. **203**
+(1990) 255–307, developed there for randomly rough surfaces; this
+implementation uses the closed-surface (particle) form given in
+[Valencia *et al.*](https://doi.org/10.1364/JOSAB.20.002150).
 
 ## Validation
 
@@ -239,11 +248,11 @@ would be an hour-long sweep takes seconds.
   and quasi-normal-mode extraction via Beyn's contour method, validated
   against analytic Mie resonances.
 - **v0.4.2** — exact scale covariance of the discrete BIE system, recorded as
-  [conventions](docs/conventions.md) §9. _(this release)_
-- **v0.5.0** _(next)_ — threaded contour integration in `contour_moments`, and
+  [conventions](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md) §9.
+- **v0.5.0** — threaded contour integration in `contour_moments`, and
   an adjoint eigenvalue-sensitivity API (`dλ/dp` per mode) on top of the
-  identity already proved in conventions §9. **No breaking changes**; every
-  v0.4.x call still means what it meant.
+  identity already proved in conventions §9. _(latest release)_ **No breaking
+  changes**; every v0.4.x call still means what it meant.
 
 ### What v0.5 adds to `Geometry`
 
@@ -273,7 +282,7 @@ measured convergence rate on `∂M/∂b` from 2.7 to 100.1, against an ideal of 
 So `sensitivity` refuses a geometry with no node set, and names which one is
 missing, rather than falling back to re-inversion — a fallback would return a
 wrong answer that looks exactly like a right one. Conventions
-[§10](docs/conventions.md).
+[§10](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md).
 
 ## License
 

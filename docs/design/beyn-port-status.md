@@ -34,11 +34,11 @@ authority — the migration table, the injection-test evidence — it says so.
 
 ## 1. Where the repo actually is
 
-`uv run pytest` → **115 passed in ~20-27 s**, against a **5-minute wall-clock
-budget** for the whole suite (raised 2026-07-31; see §2, Q5). `uv run ruff check
-.` and `ruff format --check .` clean, 28 files. All five `examples/` scripts
-render headless. *(Counts as of 2026-08-08 and left as written; at v0.4.2 the
-suite is 152 tests in ~39 s over 29 files.)*
+`uv run pytest` → **152 passed in ~39 s** over 29 files at v0.4.2, against a
+**5-minute wall-clock budget** for the whole suite (raised 2026-07-31; see §2,
+Q5). `uv run ruff check .` and `ruff format --check .` clean. All five
+`examples/` scripts render headless. *(At the time of writing, 2026-08-08, this
+read 115 passed in ~20-27 s over 28 files; the budget argument is unchanged.)*
 
 Committed on `beyn-port`, ahead of `main` by eleven commits. The three that
 carry the port:
