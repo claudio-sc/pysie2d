@@ -20,8 +20,10 @@ with known spectra — a bug here cannot hide behind a convention error in the
 BIE assembly, and vice versa.
 """
 
+import os
 import warnings
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
@@ -46,6 +48,48 @@ RANK_GAP_FLOOR = 1.0e3
 # below the weakest populated one.  A tighter threshold is not safer: at 1e-10 a
 # coarse contour over an empty box raises a spurious saturation error.
 EMPTY_CANCELLATION = 1.0e-4
+
+# Peak memory one contour node holds, as a multiple of the M(λ) it assembles.
+# *(measured, docs/design/performance.md §5.1: serial peak is 3.56× the matrix —
+# the pair arrays inside `kernels.assemble_matrix` plus `lu_factor`'s
+# non-overwriting copy — and each added worker costs the same again, 8 workers
+# reaching 28.2×.)*  Threading is a memory-for-time trade, so the worker count
+# is derived from a budget rather than fixed: at nn = 4000 a hard-coded 8 turns
+# a working run into a 29 GB OOM (performance.md §5.5 C).
+NODE_PEAK_OVER_MATRIX = 3.6
+
+# The budget that cap is taken against. Deliberately a fixed conservative
+# number and not a query of free memory: a worker count that changed with what
+# else the machine happened to be running would make the LU-failure count, and
+# hence the warning, irreproducible between two identical calls.  Callers who
+# know their machine pass ``max_workers``.
+THREAD_MEMORY_BUDGET = 2.0e9
+
+# A **memory** cap, not a scaling one. `hankel1` releases the GIL and the
+# scaling is real well past here *(measured on 10 cores, performance.md §3.1:
+# 5.73× at 8 workers and still gaining at 6.40× on 10)*, but each worker costs
+# another NODE_PEAK_OVER_MATRIX of memory and §5.1 puts the 8-thread ceiling at
+# nn ≈ 2500. Buying the last 11 % would move that ceiling down again.
+MAX_CONTOUR_WORKERS = 8
+
+
+def _worker_count(n_dim: int, n_quad: int, max_workers: int | None) -> int:
+    """Threads to run the contour on, capped by the memory budget.
+
+    Args:
+        n_dim: Dimension N of M(λ); the matrix is ``16·N²`` bytes complex128.
+        n_quad: Contour nodes — never spawn more workers than there is work.
+        max_workers: Caller's override, used as given (still floored at 1).
+
+    Returns:
+        The number of worker threads; 1 means run serially in this thread.
+    """
+    if max_workers is not None:
+        return max(1, min(int(max_workers), n_quad))
+
+    matrix_bytes = 16.0 * float(n_dim) ** 2
+    budget = int(THREAD_MEMORY_BUDGET / (NODE_PEAK_OVER_MATRIX * matrix_bytes))
+    return max(1, min(budget, MAX_CONTOUR_WORKERS, os.cpu_count() or 1, n_quad))
 
 
 @dataclass(frozen=True)
@@ -163,12 +207,22 @@ def contour_moments(
     pts: np.ndarray,
     wts: np.ndarray,
     v_probe: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
+    *,
+    max_workers: int | None = None,
+) -> tuple[np.ndarray, np.ndarray, float]:
     """Accumulate the moment matrices A₀ and A₁ along the contour.
 
     One LU factorisation per node serves both moments and all probe columns,
     which is the whole cost of the method: ``4·n_per_side`` assemblies and
     factorisations, independent of how many eigenvalues are inside.
+
+    The nodes are independent, and ``scipy.special.hankel1`` — 97.9 % of one
+    assembly at complex λ — **releases the GIL**, so they run on a thread pool:
+    5.36× at 8 workers *(measured, docs/design/performance.md §5.1)*. Threads,
+    not processes: the arrays are shared and nothing is pickled, and
+    `multiprocessing` measured strictly worse. This changes **no number** —
+    the same calls, accumulated in the same contour order — which is what makes
+    it the lowest-risk speedup available on this code.
 
     A node whose factorisation fails is skipped with a warning rather than
     aborting: it means the contour passed essentially through an eigenvalue,
@@ -180,6 +234,10 @@ def contour_moments(
         pts: complex (n_quad,) contour nodes.
         wts: complex (n_quad,) contour weights from ``rect_contour_quad``.
         v_probe: complex (N, p) probe matrix.
+        max_workers: Threads to run the nodes on. ``None`` derives the count
+            from ``THREAD_MEMORY_BUDGET``, because each worker holds another
+            ~3.6 matrices: a fixed 8 turns a working ``nn = 4000`` run into a
+            29 GB OOM. 1 runs serially in the calling thread.
 
     Returns:
         a0: complex (N, p) zeroth moment Σⱼ wⱼ M(λⱼ)⁻¹V.
@@ -190,21 +248,53 @@ def contour_moments(
             only thing that distinguishes an empty contour from one whose poles
             outnumber the probe columns — both give a flat singular spectrum.
     """
-    a0 = np.zeros(v_probe.shape, dtype=complex)
-    a1 = np.zeros(v_probe.shape, dtype=complex)
-    integrand_scale = 0.0
+    workers = _worker_count(v_probe.shape[0], int(pts.size), max_workers)
 
-    n_failed = 0
-    for lam, wt in zip(pts, wts, strict=True):
+    def _node(job: tuple[complex, complex]) -> tuple[np.ndarray | None, float]:
+        """Solve one node. Returns ``(None, 0.0)`` when the factorisation fails.
+
+        The failure is *returned*, not counted into an enclosing variable and
+        not warned about here: a shared counter mutated from several threads is
+        a race, and ``warnings.warn`` raised in a worker does not reliably reach
+        the caller's ``catch_warnings`` block. Both are re-joined in the parent.
+        """
+        lam, wt = job
         try:
             lu, piv = lu_factor(m_builder(lam))
             x_sol = lu_solve((lu, piv), v_probe)
         except (np.linalg.LinAlgError, ValueError):
-            n_failed += 1
-            continue
-        a0 += wt * x_sol
-        a1 += wt * lam * x_sol
-        integrand_scale += abs(wt) * float(np.linalg.norm(x_sol))
+            return None, 0.0
+        return x_sol, abs(wt) * float(np.linalg.norm(x_sol))
+
+    jobs = list(zip(pts, wts, strict=True))
+    if workers == 1:
+        results = map(_node, jobs)
+        pool = None
+    else:
+        pool = ThreadPoolExecutor(max_workers=workers)
+        # ``map`` yields in *submission* order, so the accumulation below runs
+        # over the nodes in contour order however the threads happen to finish.
+        # Floating-point addition is not associative, which is why this matters:
+        # summing in completion order would make A₀ depend on thread timing and
+        # the result irreproducible in its last digits. Bit-for-bit agreement
+        # with the serial path is a test in the suite.
+        results = pool.map(_node, jobs)
+
+    a0 = np.zeros(v_probe.shape, dtype=complex)
+    a1 = np.zeros(v_probe.shape, dtype=complex)
+    integrand_scale = 0.0
+    n_failed = 0
+    try:
+        for (lam, wt), (x_sol, scale) in zip(jobs, results, strict=True):
+            if x_sol is None:
+                n_failed += 1
+                continue
+            a0 += wt * x_sol
+            a1 += wt * lam * x_sol
+            integrand_scale += scale
+    finally:
+        if pool is not None:
+            pool.shutdown()
 
     if n_failed:
         warnings.warn(
@@ -371,6 +461,7 @@ def beyn_modes(
     n_probe: int = 12,
     rank_tol: float = 1.0e-8,
     rng_seed: int = 0,
+    max_workers: int | None = None,
 ) -> BeynModes:
     """All eigenvalues of M(λ) inside a rectangle, by Beyn's method.
 
@@ -384,6 +475,8 @@ def beyn_modes(
         n_probe: Probe columns; must exceed the eigenvalue count inside.
         rank_tol: Relative singular-value floor for rank detection.
         rng_seed: Probe-matrix seed. Results must not depend on it.
+        max_workers: Threads for the contour loop; see
+            :func:`contour_moments`. Results must not depend on it either.
 
     Returns:
         The eigenvalues inside the rectangle and their rank diagnostics.
@@ -394,7 +487,9 @@ def beyn_modes(
     pts, wts = rect_contour_quad(z_lo, z_hi, n_quad_per_side)
     n_dim = m_builder(pts[0]).shape[0]
     v_probe = probe_matrix(n_dim, n_probe, rng_seed)
-    a0, a1, cancellation = contour_moments(m_builder, pts, wts, v_probe)
+    a0, a1, cancellation = contour_moments(
+        m_builder, pts, wts, v_probe, max_workers=max_workers
+    )
     return beyn_poles(a0, a1, cancellation, z_lo, z_hi, rank_tol)
 
 

@@ -61,6 +61,57 @@ def size_parameter(
     return material.wnum_bg(wavelength) * geometry.rad
 
 
+def wavelength_over_ds(
+    geometry: Geometry,
+    material: Material,
+    wavelength: float | complex,
+) -> float:
+    """Boundary points per interior wavelength, at the worst-resolved node.
+
+        ``R = (Re λ_vac / n_core) / max(Δs)``
+
+    The discretisation criterion for this solver: how many boundary samples
+    describe one spatial oscillation of the field. Unlike
+    :func:`size_parameter` this is defined for **any** shape — it is a
+    resolution diagnostic and not a gauge, so there is no second entry point
+    for it to disagree with.
+
+    **The interior wavelength, not the vacuum one.** The BIE carries an
+    interior and an exterior kernel, and the interior one oscillates faster by
+    ``n_core``; it is the binding constraint. At ``n_core = 3`` that is a factor
+    of three, so reading ``R`` against λ_vac overstates the resolution
+    threefold.
+
+    **The real part of λ.** ``R`` describes oscillation, and for a QNM
+    wavelength the decay ``Im λ`` is not oscillation. On the shared fixture the
+    two readings differ by 0.007 %, so this is a statement of convention rather
+    than a numerical choice — but the QNM search boxes run to tens of nm in
+    ``Im λ``, where it stops being negligible.
+
+    **The worst node, not the mean.** Under uniform arc-length sampling every
+    ``Δs`` is equal and the distinction is empty. It stops being empty under
+    the frozen node sets of ``docs/conventions.md`` §10, where the spacing at a
+    perturbed shape is only approximately uniform, and the risk is
+    under-resolution — so the largest gap is the one that decides. Measured
+    from the actual chords between consecutive boundary points, which is what
+    ``perimeter/n_pts`` stops being once the spacing is not uniform.
+
+    Args:
+        geometry: The scatterer boundary, of any shape.
+        material: Supplies ``n_core``, the index setting the interior
+            wavelength.
+        wavelength: **Vacuum** wavelength (nm); the real part is used.
+
+    Returns:
+        Points per interior wavelength at the coarsest point of the boundary.
+        Higher is better resolved.
+    """
+    df = np.diff(geometry.f, append=geometry.f[0])
+    dg = np.diff(geometry.g, append=geometry.g[0])
+    ds_max = float(np.hypot(df, dg).max())
+    return float(np.real(wavelength)) / material.n_core / ds_max
+
+
 class ScatterResult:
     """Result of a single-wavelength BIE solve.
 
@@ -172,7 +223,14 @@ class ScatterResult:
 
         amp, _ = self.far_field(n_angles)
         i_sc = np.abs(amp) ** 2 / norfac
-        qsca = np.sum(i_sc) * delthe / (2.0 * self.geometry.rad)
+        # far_field's angles span [-pi, pi] inclusive, so index 0 and index
+        # n_angles-1 are the *same* physical direction. Summing all n_angles
+        # samples double-counts it — a periodic integrand's uniform-grid
+        # quadrature wants the n_angles-1 distinct points, each already
+        # carrying weight delthe = 2*pi/(n_angles-1). Dropping the duplicate
+        # (not halving both copies) is what makes qsca independent of where
+        # that one grid angle happens to fall relative to the forward peak.
+        qsca = np.sum(i_sc[:-1]) * delthe / (2.0 * self.geometry.rad)
         qext = amp[nforw].imag / (wnum_bg * 2.0 * self.geometry.rad)
         qabs = qext - qsca
         return {"qsca": float(qsca), "qext": float(qext), "qabs": float(qabs)}

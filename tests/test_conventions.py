@@ -10,16 +10,20 @@ the other for three releases.
 import numpy as np
 import pytest
 
-from conftest import N_CLAD, N_CORE, POL_TAG, RAD, size_parameter
+from conftest import N_CLAD, N_CORE, POL_TAG, QNM_N_CORE, RAD, size_parameter
 from pysie2d import (
+    SHAPE_STEP,
     BIESolver,
     Geometry,
     Material,
+    QNMSolver,
     relative_ldos,
     relative_ldos_map,
     self_green,
+    wavelength_over_ds,
 )
 from pysie2d import size_parameter as public_size_parameter
+from pysie2d.qnm import _degenerate_groups
 from pysie2d.reference import mie
 from pysie2d.reference.mie import self_green_cylinder
 
@@ -76,9 +80,9 @@ def test_vacuum_wavelength_scaling(circle, pol, epsi_base):
 def test_efficiencies_match_mie_in_cladding(circle, pol):
     # The analytic anchor at n_clad ≠ 1. Mie theory is stated in (x, m), both of
     # which are background-relative, so the same closed form must hold with no
-    # extra n_clad factor anywhere. RTOL is the unchanged RTOL_MIE = 5e-3 of
-    # test_efficiencies: the discretisation error is a property of the boundary
-    # quadrature and does not care what n_clad is.
+    # extra n_clad factor anywhere. RTOL is the unchanged RTOL_MIE = 4e-3 of
+    # test_efficiencies (tightened by A20): the discretisation error is a
+    # property of the boundary quadrature and does not care what n_clad is.
     geom = circle(300)
     mat = Material(n_core=SCALED["n_core"], n_clad=SCALED["n_clad"], pol=pol)
     result = BIESolver(geom, mat).scatter(wavelength=SCALED["wavelength"])
@@ -87,10 +91,10 @@ def test_efficiencies_match_mie_in_cladding(circle, pol):
     tag = POL_TAG[pol]
 
     assert result.efficiencies()["qsca"] == pytest.approx(
-        ref[f"Q_sca_{tag}"], rel=5.0e-3
+        ref[f"Q_sca_{tag}"], rel=4.0e-3
     )
     assert result.efficiencies()["qext"] == pytest.approx(
-        ref[f"Q_ext_{tag}"], rel=5.0e-3
+        ref[f"Q_ext_{tag}"], rel=4.0e-3
     )
 
 
@@ -99,7 +103,7 @@ def test_absorbing_particle_in_cladding(circle, pol):
     # The lossy analytic anchor at n_clad ≠ 1. epsi is absolute, so reaching the
     # relative permittivity 2.25 + 0.5j — the case test_efficiencies already
     # validates at n_clad = 1 — takes epsi = 0.5·n_clad². Landing on that same
-    # physical case is deliberate: it inherits the justified RTOL_MIE = 5e-3
+    # physical case is deliberate: it inherits the justified RTOL_MIE = 4e-3
     # rather than needing a fresh tolerance argument. Under the *relative*
     # reading of epsi this call would instead model 2.25 + 0.845j and miss the
     # reference by ~30 %, far outside the tolerance.
@@ -116,7 +120,7 @@ def test_absorbing_particle_in_cladding(circle, pol):
 
     assert result.efficiencies()["qabs"] > 0.0
     assert result.efficiencies()["qabs"] == pytest.approx(
-        ref[f"Q_abs_{tag}"], rel=5.0e-3
+        ref[f"Q_abs_{tag}"], rel=4.0e-3
     )
 
 
@@ -259,3 +263,238 @@ def test_size_parameter_rejects_non_circular_geometry():
     assert not star.is_circle
     with pytest.raises(ValueError, match="circular"):
         public_size_parameter(star, Material(n_core=N_CORE), 600.0)
+
+
+def test_frozen_nodes_restore_second_order_convergence():
+    """§10: freezing the node set is what makes ∂M/∂p second-order in h.
+
+    The check is the *rate*, not a value. A central difference must fall by 100
+    per decade of h; the unfrozen path does not, because re-inverting arc length
+    between the two evaluations adds an O(h) term from ``np.interp`` cell
+    crossings. Both halves are asserted, and the second is what stops this
+    passing by accident — a test that only checked the frozen path would still
+    pass if the freeze silently stopped being applied.
+
+    The ratio is asserted above 50 rather than at 100 because the plateau
+    carries the next term of the expansion too (O(h⁴), relatively 1e-2 here), so
+    a factor-of-two band around the ideal is the honest statement. The unfrozen
+    ratio is measured at 2.6, twenty times below the bound, so the two cases are
+    not a close call. Steps 1e-3 and 1e-4 sit inside the D12 window and a decade
+    clear of the 1e-8 cancellation floor at either end.
+    """
+    shape = {"m": 4, "b": 1.20}
+    lam = 700.0 + 8.0j  # complex λ: the QNM path, not a real fast path
+    n_pts = 120  # the rate is n_pts-independent; 120 keeps the test quick
+
+    def deriv(h, theta):
+        mats = []
+        for sign in (+1.0, -1.0):
+            geo = Geometry.gielis(
+                RAD, n_pts, **{**shape, "b": shape["b"] + sign * h}, theta=theta
+            )
+            mats.append(
+                BIESolver(geo, Material(n_core=QNM_N_CORE, pol=2)).assemble(lam)
+            )
+        return (mats[0] - mats[1]) / (2.0 * h)
+
+    frozen = Geometry.gielis(RAD, n_pts, **shape).theta
+    for theta, name in ((frozen, "frozen"), (None, "unfrozen")):
+        ref = deriv(1.0e-6, theta)
+        coarse = np.linalg.norm(deriv(1.0e-3, theta) - ref)
+        fine = np.linalg.norm(deriv(1.0e-4, theta) - ref)
+        rate = coarse / fine
+        if name == "frozen":
+            assert rate > 50.0, f"frozen path is not second order: {rate:.1f}"
+        else:
+            assert rate < 10.0, f"unfrozen path unexpectedly clean: {rate:.1f}"
+
+
+def test_wavelength_over_ds_counts_the_interior_wavelength(circle):
+    """§10: R is referred to n_core, not to vacuum or to the cladding.
+
+    The BIE carries an interior and an exterior kernel and the interior one
+    oscillates faster by n_core, so it sets the resolution requirement. Getting
+    this wrong overstates the resolution by exactly n_core — a factor of 3 on
+    the QNM fixture — which is the difference between a study at 37 points per
+    wavelength and one at 12. Checked against the closed form on the circle,
+    where Δs = 2π·rad/n_pts exactly, so the assertion carries no discretisation
+    error of its own and the tolerance is pure float round-off.
+    """
+    geo = circle(200)
+    mat = Material(n_core=QNM_N_CORE, pol=2)
+    lam = 700.0
+
+    ds = 2.0 * np.pi * RAD / geo.n_pts
+    # Chord vs arc: the polygon inscribed in a circle is shorter than the arc by
+    # 1 − sinc(π/n_pts) ≈ 1.4e-4 relative at n_pts = 200, so R comes out
+    # slightly *higher* than the arc-length closed form. rtol covers exactly
+    # that and nothing else.
+    assert wavelength_over_ds(geo, mat, lam) == pytest.approx(
+        lam / QNM_N_CORE / ds, rel=2.0e-4
+    )
+
+    # And it is neither the vacuum nor the cladding reading: both omit n_core,
+    # so both are 3x larger here. 0.5 separates them with room to spare.
+    assert wavelength_over_ds(geo, mat, lam) < 0.5 * lam / ds
+
+
+def test_wavelength_over_ds_uses_the_real_part_and_the_worst_node(circle):
+    """§10: oscillation is set by Re λ, and the coarsest node decides.
+
+    Two conventions in one test because they are the two ways the scalar could
+    have been defined otherwise. The decay of a QNM is not oscillation, so a
+    large Im λ must not inflate R; and the risk being diagnosed is
+    under-resolution, so the largest gap governs rather than the mean.
+    """
+    geo = circle(200)
+    mat = Material(n_core=QNM_N_CORE, pol=2)
+
+    # Im λ of 200 nm against Re λ 700 would move |λ| by 4 %; it must move R by 0.
+    assert wavelength_over_ds(geo, mat, 700.0 + 200.0j) == wavelength_over_ds(
+        geo, mat, 700.0
+    )
+
+    # A frozen node set on a perturbed shape is the case where Δs stops being
+    # uniform. R must then track max(Δs), so it can only fall relative to the
+    # shape the nodes were equidistributed for.
+    base = Geometry.gielis(RAD, 200, m=4, b=1.20)
+    stretched = Geometry.gielis(RAD, 200, m=4, b=1.60, theta=base.theta)
+    equidistributed = Geometry.gielis(RAD, 200, m=4, b=1.60)
+
+    assert wavelength_over_ds(stretched, mat, 700.0) < wavelength_over_ds(
+        equidistributed, mat, 700.0
+    )
+
+
+def test_wavelength_over_ds_flags_an_elongated_shape_as_under_resolved():
+    """§10: R is what makes a fixed n_pts mean different things across shapes.
+
+    The point of the criterion. An aspect-3 ellipse has more than twice the
+    perimeter of the circle at the same rad, so the same n_pts resolves it half
+    as well — 17.5 against 37.1, i.e. inside the 10–15 "cheap" band rather than
+    the 30–50 "accurate" one. A global n_pts must therefore be sized against the
+    worst shape in the sampled region, which is a statement this test pins in
+    numbers rather than in prose.
+    """
+    mat = Material(n_core=QNM_N_CORE, pol=2)
+    circle_r = wavelength_over_ds(Geometry.gielis(RAD, 200, m=0), mat, 700.0)
+    ellipse_r = wavelength_over_ds(Geometry.gielis(RAD, 200, m=4, b=3.0), mat, 700.0)
+
+    assert circle_r == pytest.approx(37.1, abs=0.1)
+    assert ellipse_r == pytest.approx(17.5, abs=0.1)
+    assert ellipse_r < 0.5 * circle_r
+
+    # Restoring the ratio needs n_pts up by the perimeter ratio, not a tweak.
+    recovered = wavelength_over_ds(Geometry.gielis(RAD, 426, m=4, b=3.0), mat, 700.0)
+    assert recovered == pytest.approx(circle_r, rel=0.02)
+
+
+def test_sensitivity_step_is_in_the_parameters_own_units():
+    """§11: `step` and the returned dλ/dp are in the parameter's own units.
+
+    The convention is that the caller owns the parametrisation, so a
+    reparametrisation must show up as the plain chain-rule factor and nothing
+    else. Here rad is expressed in nm and in units of 10 nm: the derivative
+    must scale by exactly 10, with no hidden normalisation by rad, by λ, or by
+    the step. Scale covariance (§9) makes both sides exact, so the tolerance is
+    the cancellation floor of the difference quotient (~ε/h = 1e-11) with two
+    decades of margin, not a fitted number.
+    """
+    geom = Geometry.gielis(rad=RAD, n_pts=200, m=0)
+    mat = Material(n_core=QNM_N_CORE, n_clad=1.0, pol=2)
+    res = QNMSolver(geom, mat).modes(z_lo=520 + 15j, z_hi=545 + 40j, n_quad_per_side=6)
+    theta = res.geometry.theta
+
+    def per_nm(delta):
+        return Geometry.gielis(rad=RAD + delta, n_pts=200, m=0, theta=theta), mat
+
+    def per_ten_nm(delta):
+        return (
+            Geometry.gielis(rad=RAD + 10.0 * delta, n_pts=200, m=0, theta=theta),
+            mat,
+        )
+
+    d_nm = res.sensitivity(per_nm, step=SHAPE_STEP)[0]
+    d_ten = res.sensitivity(per_ten_nm, step=SHAPE_STEP)[0]
+    assert d_ten == pytest.approx(10.0 * d_nm, rel=1.0e-9)
+
+
+def test_sensitivity_degenerate_dispatch_agrees_with_multiplicity():
+    """§11: the secular branch is taken exactly where `multiplicity` says so.
+
+    Two criteria for "same pole" would eventually disagree, and the branch
+    taken would then contradict the multiplicity reported next to it. The
+    grouping is asserted against `multiplicity` itself rather than against a
+    hard-coded pair count, and the degenerate group must return as many
+    derivatives as it has members — a k-fold pole has k of them, not one.
+    """
+    geom = Geometry.gielis(rad=RAD, n_pts=200, m=0)
+    mat = Material(n_core=QNM_N_CORE, n_clad=1.0, pol=2)
+    res = QNMSolver(geom, mat).modes(z_lo=745 + 2j, z_hi=775 + 15j, n_quad_per_side=6)
+    theta = res.geometry.theta
+
+    groups = _degenerate_groups(res.wavelengths)
+    assert [len(g) for g in groups] == [int(res.multiplicity[g[0]]) for g in groups]
+
+    got = res.sensitivity(
+        lambda d: (Geometry.gielis(rad=RAD + d, n_pts=200, m=0, theta=theta), mat)
+    )
+    assert got.shape == res.wavelengths.shape
+
+
+def test_sensitivity_left_vector_is_not_conj_of_the_right_one():
+    """§11: M is not complex-symmetric, so u must come from the SVD's U.
+
+    If M *were* complex-symmetric this convention would be vacuous and
+    `conj(v)` would do. The measurement that says otherwise is asserted here so
+    the convention text cannot quietly stop being true: ‖M − Mᵀ‖/‖M‖ is O(1),
+    not O(1e-14), even though each of the four n_pts blocks is symmetric.
+    """
+    geom = Geometry.gielis(rad=RAD, n_pts=200, m=0)
+    mat = Material(n_core=QNM_N_CORE, n_clad=1.0, pol=2)
+    m = BIESolver(geom, mat).assemble(530.83214 + 26.37850j)
+
+    assert np.linalg.norm(m - m.T) / np.linalg.norm(m) > 1.0
+    nn = geom.n_pts
+    block = m[:nn, :nn]
+    assert np.linalg.norm(block - block.T) / np.linalg.norm(block) < 1.0e-13
+
+
+def test_geometry_without_a_node_set_is_allowed_but_cannot_be_differentiated():
+    """§10: `theta` is optional to store, and mandatory to differentiate.
+
+    The two halves are a pair. A `Geometry` assembled from arrays that came
+    from somewhere else has no node set to report, and refusing to construct it
+    would break a scattering-only user for a reason that has nothing to do with
+    scattering — the whole solver runs without ever reading `theta`. But a
+    shape derivative *is* the node set (§10), so the frozen-node path must
+    refuse such a geometry rather than fall back to anything.
+
+    The failure therefore belongs at the point of use, not at construction, and
+    it has to name which of the two geometries is missing: `at` supplies one
+    and the result carries the other, and "theta is None" alone does not say
+    which one the caller has to fix.
+    """
+    src = Geometry.gielis(rad=RAD, n_pts=120, m=4, b=1.2)
+    bare = Geometry(src.f, src.g, src.df, src.dg, src.ddf, src.ddg, src.delt, rad=RAD)
+    assert bare.theta is None
+
+    # The solver itself never reads theta, so a bare geometry scatters exactly
+    # like the geometry it was copied from — bit for bit, since the arrays are
+    # the same objects and no node set enters the assembly.
+    mat = Material(n_core=QNM_N_CORE, n_clad=1.0, pol=2)
+    lam = 530.83214 + 26.37850j
+    assert np.array_equal(
+        BIESolver(bare, mat).assemble(lam), BIESolver(src, mat).assemble(lam)
+    )
+
+    res = QNMSolver(src, mat).modes(520 + 5j, 620 + 45j)
+    with pytest.raises(ValueError, match="perturbed geometry carries no node set"):
+        res.sensitivity(lambda d: (bare, mat))
+
+    # And the mirror: a base result with no node set is refused too, naming the
+    # base rather than the perturbed one. Without this branch `None == None`
+    # would compare equal and two unrelated discretisations would be accepted.
+    bare_res = QNMSolver(bare, mat).modes(520 + 5j, 620 + 45j)
+    with pytest.raises(ValueError, match="base geometry carries no node set"):
+        bare_res.sensitivity(lambda d: (src, mat))

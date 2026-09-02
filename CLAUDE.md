@@ -93,6 +93,51 @@ after a release rather than editing that version line by hand.
 The three `examples/` scripts generate the README figures. Their conventions
 live in [examples/CLAUDE.md](examples/CLAUDE.md).
 
+## Git workflow
+
+The rule behind all of it: **pushing a branch publishes nothing; merging to
+`main` publishes to PyPI.** `version-release.yml` fires on `push: branches:
+[main]`, runs semantic-release, tags, and `release.yml` publishes on the `v*`
+tag. So branch work is free and merging is a release decision.
+
+**Push — decide and do it, often.** Push a feature branch after the final commit
+of a working session, and mid-session whenever a unit stands on its own. Use
+`git push -u` on the first push so the branch tracks. The one push to ask about
+is a **force-push to a branch that already exists on the remote**: it is the
+only one that can destroy work that is not yours.
+
+**Open a PR early — decide.** `ci.yml` runs on `pull_request` and on pushes to
+`main`, and on nothing else, so **a branch with no PR gets no CI**. Open one
+(draft is fine) as soon as the branch holds a commit worth checking, not at the
+end. Short body, no signature.
+
+**Merge to `main` — ask, every time.** Any `feat:` or `fix:` on the branch bumps
+the version and ships it to PyPI. Consequences that follow from that:
+
+- Merge on **roadmap milestones, not on sessions or units**. v0.5 is threading
+  *and* the adjoint sensitivity API; merging half of it ships a partial API
+  under a version number that claims the whole one.
+- **Merge, do not squash.** `commit_parser_options = { ignore_merge_commits =
+  true }` means semantic-release reads the individual conventional commits;
+  squashing collapses them into one subject and the changelog loses the rest.
+- **Run `uv lock` and commit it after every merge that releases**, per
+  *Dependencies* above — semantic-release does not stamp the lockfile, so `main`
+  is otherwise left pinning the previous version.
+
+**The one merge to decide alone: docs-only.** A branch whose every commit is
+`docs:`, `chore:`, `ci:` or `test:` triggers no bump and no publish under the
+conventional parser, so merging it is silent and reversible. If a single commit
+is `feat:` or `fix:`, or carries a `BREAKING CHANGE` footer, it is a release —
+ask.
+
+**New branch — decide.** One branch per roadmap milestone, named for it
+(`v0.5-sensitivity`), *not* one per unit: the units are sequential and
+dependent, so a branch each buys no isolation and costs merge traffic. Open a
+new one when the previous milestone branch has merged, when the work belongs to
+a different milestone or gate, or for a spike that may be thrown away — name
+those `spike-<topic>` and expect to read and abandon them rather than merge.
+Never commit to `main` directly except a trivial docs fix.
+
 ## Review
 
 `/code-review` for the working diff or a PR — it takes a PR number, branch or

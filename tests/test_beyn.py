@@ -13,6 +13,8 @@ singular exactly where some fᵢ vanishes and its condition number is that of th
 diagonal alone.
 """
 
+import itertools
+
 import numpy as np
 import pytest
 
@@ -425,3 +427,53 @@ def test_newton_refine_polishes_the_vector_with_the_eigenvalue():
     )
     assert abs(np.vdot(3.0 * v0, scaled.vector) - 1.0) < 1.0e-9
     assert abs(np.linalg.norm(scaled.vector) - 1.0) > 0.1
+
+
+def test_threading_reproduces_the_serial_moments_bit_for_bit():
+    """Threading the contour must change no number, not merely no digit.
+
+    ``np.array_equal``, not ``allclose``: the workers run the same calls on the
+    same nodes, and the parent accumulates in *contour* order rather than in
+    completion order, so the sum is the identical sequence of floating-point
+    additions. A tolerance here would hide exactly the bug this guards — an
+    accumulation whose order depends on thread timing, which would make A₀
+    irreproducible in its last digits between two identical calls.
+    """
+    m_builder, _ = make_pencil([1.4 + 0.3j, 2.2 - 0.4j, 2.6 + 0.5j])
+    pts, wts = rect_contour_quad(Z_LO, Z_HI, 12)
+    v_probe = probe_matrix(N_DIM, 6, 0)
+
+    serial = contour_moments(m_builder, pts, wts, v_probe, max_workers=1)
+    threaded = contour_moments(m_builder, pts, wts, v_probe, max_workers=8)
+
+    assert np.array_equal(threaded[0], serial[0])
+    assert np.array_equal(threaded[1], serial[1])
+    assert threaded[2] == serial[2]
+
+
+def test_threaded_node_failure_still_warns_in_the_caller():
+    """A per-node LU failure survives the thread boundary.
+
+    The two traps of performance.md §3.1 in one test. ``warnings.warn`` issued
+    inside a worker does not reliably reach the caller's ``catch_warnings``
+    block, and a failure counter mutated from several threads is a race that
+    loses counts — so the worker *returns* its status and the parent both
+    counts and warns. Failing every third node makes the count deterministic
+    (16 of 48), which is what turns "a warning appeared" into a check that the
+    joining is correct.
+    """
+    m_builder, _ = make_pencil([1.4 + 0.3j, 2.2 - 0.4j])
+    pts, wts = rect_contour_quad(Z_LO, Z_HI, 12)
+    v_probe = probe_matrix(N_DIM, 6, 0)
+
+    calls = itertools.count()
+
+    def failing_builder(lam):
+        if next(calls) % 3 == 0:
+            raise np.linalg.LinAlgError("injected singular factorisation")
+        return m_builder(lam)
+
+    with pytest.warns(RuntimeWarning, match="failed to factorise") as record:
+        contour_moments(failing_builder, pts, wts, v_probe, max_workers=8)
+
+    assert f"{pts.size // 3} of {pts.size}" in str(record[0].message)

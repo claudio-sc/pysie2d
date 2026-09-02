@@ -110,6 +110,38 @@ count must therefore be **derived from a memory budget, not fixed at 8** — see
 per node, merely concurrent. That is what makes it the lowest-risk change
 available.
 
+**Built and measured** (`beyn.contour_moments`, threaded at commit `318421c`).
+48 contour nodes on the `n_core = 3` circle, box `520+10i … 560+40i`, 12 probe
+columns, M4 Pro / 10 cores, complex λ:
+
+| workers | `nn = 200` | | `nn = 400` | |
+|---|---|---|---|---|
+| serial | 2.810 s | 1.00× | 11.377 s | 1.00× |
+| 2 | 1.453 s | 1.93× | 5.992 s | 1.90× |
+| 4 | 0.789 s | 3.56× | 3.243 s | 3.51× |
+| 8 | 0.491 s | **5.73×** | 1.940 s | **5.87×** |
+| 10 | 0.439 s | 6.40× | 1.792 s | 6.35× |
+
+The 5.02× reference reproduces and is slightly beaten. **It does not saturate at
+8 on this machine** — 10 workers is still 11 % faster than 8, against §5.1's
+5.36×/5.33× on the M5 — so `MAX_CONTOUR_WORKERS = 8` is a *memory* cap, not a
+scaling one, and the ceiling of §5.1 stands as the reason for it.
+
+`A₀`, `A₁` and the cancellation ratio came back **bit-identical** at every
+worker count (`np.array_equal`, not a tolerance), which is the promise of §3.1's
+"changes no number" made checkable: the parent accumulates in contour order, so
+the sum is the same sequence of floating-point additions however the threads
+finish. `tests/test_beyn.py` pins it, along with the deterministic 16-of-48
+count of an injected per-node LU failure.
+
+**Worker-count default.** `None` derives it from `THREAD_MEMORY_BUDGET`
+(2.0 GB) as `clamp(1, min(8, ncpu, n_quad), budget / (3.6 × 16·N²))`, i.e. §5.5
+C's cap with the measured 3.6× per-node peak. A fixed 8 was rejected for the
+reason §5.1 gives: at `nn = 4000` it converts a working run into a 29 GB OOM.
+The budget is a constant rather than a query of free memory on purpose — a
+worker count that moved with what else the machine was running would make the
+LU-failure count, and hence the warning, differ between two identical calls.
+
 Decided: threading goes **inside `contour_moments`**, not in a caller-side loop
 over search boxes. It helps the interactive one-box-at-a-time pattern and the
 sweep pattern alike, and an outer loop can still be layered on top.

@@ -187,6 +187,33 @@ before using this** — it covers how to place a box, how to read the diagnostic
 what `refine()` does and does not buy you, and the limitations the feature ships
 with.
 
+### Mode sensitivity
+
+`QNMResult.sensitivity(at)` returns `dλ/dp` for every mode from the adjoint
+quotient `− uᴴ(∂M/∂p)v / uᴴ(∂M/∂λ)v`, re-extracting no eigenvalue. `at` is a
+callable `δ → (geometry, material)`, so a shape parameter and a refractive index
+go through one signature and one code path.
+
+```python
+res = QNMSolver(geom, mat).modes(745 + 2j, 775 + 15j).refine()
+theta = res.geometry.theta                     # the node set must be frozen
+
+def wider(delta):                              # dλ/db, b in its own units
+    return Geometry.gielis(rad=200, n_pts=200, theta=theta,
+                           m=4, b=1.2 + delta), mat
+
+print(res.sensitivity(wider))
+```
+
+The geometry `at` returns must carry `res.geometry.theta` **exactly** — a shape
+derivative holds the node set fixed, and differentiating the arc-length
+parametrisation along with the physics costs two orders of convergence. Degenerate
+poles dispatch to a secular problem rather than raising. `dλ/dp` converges at
+first order in `n_pts`, so `richardson_limit` extrapolates two rungs to the limit
+for less than the cost of one finer one. Conventions
+[§10](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md),
+§11 and §12 carry the details and the measured anchors.
+
 ## Performance
 
 The system is a dense `2nn × 2nn` complex matrix; at `nn = 300` (a `600 × 600`
@@ -221,11 +248,41 @@ would be an hour-long sweep takes seconds.
   and quasi-normal-mode extraction via Beyn's contour method, validated
   against analytic Mie resonances.
 - **v0.4.2** — exact scale covariance of the discrete BIE system, recorded as
-  [conventions](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md) §9. _(latest release)_
+  [conventions](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md) §9.
+- **v0.5.0** — threaded contour integration in `contour_moments`, and
+  an adjoint eigenvalue-sensitivity API (`dλ/dp` per mode) on top of the
+  identity already proved in conventions §9. _(latest release)_ **No breaking
+  changes**; every v0.4.x call still means what it meant.
 
-Work in progress on `v0.5-sensitivity`: threaded contour integration in
-`contour_moments`, and an adjoint eigenvalue-sensitivity API (`dλ/dp` per
-mode) on top of the identity already proved in conventions §9. Not released.
+### What v0.5 adds to `Geometry`
+
+`Geometry` now records the boundary node angles it was built on, as
+`Geometry.theta`, and `Geometry.gielis` accepts `theta=` to build a shape on
+angles supplied from elsewhere:
+
+```python
+base  = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.2)   # unchanged
+wider = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.3,
+                        theta=base.theta)                 # new: same node set
+```
+
+Both arguments are optional and both are additions — `Geometry.gielis` places
+nodes by uniform arc length when you omit `theta`, exactly as before, and
+`Geometry(...)` built directly from your own arrays works without one, leaving
+`theta` as `None`. Scattering, fields, LDOS and mode extraction never read it.
+
+It exists for shape derivatives. `QNMResult.sensitivity` evaluates `M(p₀−h)` and
+`M(p₀+h)` and must do so on the **same** node set; if the nodes are re-placed
+between the two, the difference quotient differentiates the arc-length
+parametrisation along with the physics. That error term is `O(h)` rather than
+`O(h²)`, it is not monotone in `h`, and it **grows** with `n_pts` — the one error
+in this package that refinement makes worse. Freezing the nodes takes the
+measured convergence rate on `∂M/∂b` from 2.7 to 100.1, against an ideal of 100.
+
+So `sensitivity` refuses a geometry with no node set, and names which one is
+missing, rather than falling back to re-inversion — a fallback would return a
+wrong answer that looks exactly like a right one. Conventions
+[§10](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md).
 
 ## License
 

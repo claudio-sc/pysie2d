@@ -140,7 +140,15 @@ def _etoil(
     n2: float,
     n1: float,
     n3: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
     """Boundary parameterisation via the Gielis super-formula (uniform theta).
 
     Args:
@@ -158,6 +166,7 @@ def _etoil(
         f, g: Boundary coordinates (nn,).
         df, dg: First derivatives w.r.t. θ.
         ddf, ddg: Second derivatives w.r.t. θ.
+        theta: (nn,) the sample angles themselves.
     """
     theta = (np.arange(1, nn + 1) - 0.5) * delt
     f, g, r, co, se, arg = gielis(theta, rad, 1, 1, m, n1, n2, n3, x0, z0)
@@ -171,12 +180,50 @@ def _etoil(
     ddf = _der_real_3(df, theta)
     ddg = _der_real_3(dg, theta)
 
-    return f, g, df, dg, ddf, ddg
+    return f, g, df, dg, ddf, ddg, theta
 
 
 # ---------------------------------------------------------------------------
 # Arc-length parameterisation  (translated from subroutine etoil_arc)
 # ---------------------------------------------------------------------------
+
+
+def _validated_theta(theta: np.ndarray) -> np.ndarray:
+    """Check an externally supplied node set before it becomes a boundary.
+
+    A frozen θ set is normally handed straight back from another Geometry, so
+    the checks are cheap insurance against the two ways it gets mangled in
+    transit — reordering and wrapping past 2π. Both produce a *plausible*
+    boundary rather than a crash: ``delt`` is a bare ``np.diff``, so a
+    reordered set gives negative quadrature weights and a boundary integral
+    that silently counts part of the curve backwards.
+
+    Args:
+        theta: (nn,) candidate sample angles.
+
+    Returns:
+        The same angles as a float array.
+
+    Raises:
+        ValueError: If the angles are not strictly increasing, or do not fit
+            inside a single 2π span.
+    """
+    theta = np.asarray(theta, dtype=float)
+    if theta.ndim != 1 or theta.size < 3:
+        raise ValueError(
+            f"theta must be a 1-D array of at least 3 angles; got {theta.shape}"
+        )
+    if not np.all(np.diff(theta) > 0.0):
+        raise ValueError(
+            "theta must be strictly increasing; a reordered node set gives "
+            "negative quadrature weights rather than an error"
+        )
+    if theta[-1] - theta[0] >= 2.0 * PI:
+        raise ValueError(
+            f"theta must span less than 2*pi; got {theta[-1] - theta[0]:.6f}, "
+            "which traverses part of the boundary twice"
+        )
+    return theta
 
 
 def _uniform_arc_theta(
@@ -210,6 +257,10 @@ def _uniform_arc_theta(
     Returns:
         theta_uniform: (nn,) theta values with uniform arc-length spacing.
         contour_length: Total perimeter of the curve.
+
+    Raises:
+        ValueError: If the inversion returns coincident nodes, which happens
+            where the curve is not monotone in arc length.
     """
     if n_fine is None:
         # A function of nn alone, and it must stay one: the whole assembly is
@@ -233,6 +284,21 @@ def _uniform_arc_theta(
     s_uniform = np.linspace(0, contour_length, nn, endpoint=False)
     theta_uniform = np.interp(s_uniform, s_fine, theta_fine)
 
+    # np.interp assumes s_fine is increasing. It is not when the curve doubles
+    # back — odd m away from a = b violates the D5 closure condition — and the
+    # inversion then returns *coincident* nodes rather than failing. Downstream
+    # _der_real_3 divides by the zero spacing and ddf/ddg come back NaN with
+    # nothing raised. Exact equality is the right test: the spacing is
+    # identically zero, and there is no separation at which two nodes on top of
+    # each other become acceptable. The prescribed-theta path already refuses
+    # the same thing (_validated_theta); this is the other entry point.
+    if not np.all(np.diff(theta_uniform) > 0.0):
+        raise ValueError(
+            f"arc-length inversion produced coincident nodes at m={m}, "
+            f"a={a}, b={b}: the curve is not monotone in arc length, so "
+            "theta cannot be recovered from it"
+        )
+
     return theta_uniform, contour_length
 
 
@@ -248,7 +314,9 @@ def _etoil_arc(
     n1: float,
     n3: float,
     n_fine: int | None = None,
+    theta: np.ndarray | None = None,
 ) -> tuple[
+    np.ndarray,
     np.ndarray,
     np.ndarray,
     np.ndarray,
@@ -276,16 +344,25 @@ def _etoil_arc(
         n1: Gielis exponent (note historic argument order).
         n3: Gielis exponent (note historic argument order).
         n_fine: Fine-grid resolution for arc-length inversion.
+        theta: (nn,) sample angles to use **instead of** re-inverting arc
+            length. This is the frozen-node path of ``docs/conventions.md``
+            §10: the spacing is then uniform in arc length on whatever shape
+            the angles were computed for, and only approximately so on this
+            one. ``nn`` is ignored when it is given.
 
     Returns:
         f, g: Boundary coordinates (nn,).
         df, dg: First derivatives w.r.t. theta.
         ddf, ddg: Second derivatives w.r.t. theta.
         delt: (nn,) per-point theta step (non-uniform).
+        theta: (nn,) the sample angles, uniform in arc length unless supplied.
     """
-    theta, _ = _uniform_arc_theta(
-        nn, rad, a, b, m, n1, n2, n3, x0=0.0, z0=0.0, n_fine=n_fine
-    )
+    if theta is None:
+        theta, _ = _uniform_arc_theta(
+            nn, rad, a, b, m, n1, n2, n3, x0=0.0, z0=0.0, n_fine=n_fine
+        )
+    else:
+        theta = _validated_theta(theta)
 
     # Per-point theta differences; last step wraps around to theta[0] + 2π
     delt = np.diff(theta, append=theta[0] + 2 * PI)
@@ -301,7 +378,7 @@ def _etoil_arc(
     ddf_theta = _der_real_3(df_theta, theta)
     ddg_theta = _der_real_3(dg_theta, theta)
 
-    return f, g, df_theta, dg_theta, ddf_theta, ddg_theta, delt
+    return f, g, df_theta, dg_theta, ddf_theta, ddg_theta, delt, theta
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +399,7 @@ def boundary_setup(
     z0: float = 0.0,
     arc_length: bool = True,
     n_fine: int | None = None,
+    theta: np.ndarray | None = None,
 ) -> tuple[
     np.ndarray,
     np.ndarray,
@@ -330,6 +408,7 @@ def boundary_setup(
     np.ndarray,
     np.ndarray,
     float | np.ndarray,
+    np.ndarray,
 ]:
     """Discretise the Gielis particle boundary.
 
@@ -352,6 +431,9 @@ def boundary_setup(
             (_etoil_arc). If False use uniform-theta sampling (_etoil; a=b=1
             forced).
         n_fine: Fine-grid resolution for arc-length inversion. None → auto.
+        theta: (nn,) sample angles to use instead of re-inverting arc length;
+            the frozen-node path (``docs/conventions.md`` §10). Arc-length
+            sampling only.
 
     Returns:
         f, g: (nn,) boundary x and z coordinates (nm).
@@ -359,14 +441,25 @@ def boundary_setup(
         ddf, ddg: (nn,) second derivatives of f, g w.r.t. theta.
         delt: Quadrature theta step. Scalar for uniform-theta; per-point array
             for arc-length sampling.
+        theta: (nn,) the sample angles the boundary was evaluated at.
+
+    Raises:
+        ValueError: If ``theta`` is given with ``arc_length=False``, which has
+            its own fixed node set and would ignore it.
     """
     if arc_length:
         # Note: _etoil_arc uses the historic (n2, n1, n3) argument order
-        return _etoil_arc(nn, x0, z0, rad, a, b, m, n2, n1, n3, n_fine=n_fine)
-    else:
-        delt = 2.0 * PI / nn
-        f, g, df, dg, ddf, ddg = _etoil(nn, delt, x0, z0, rad, m, n2, n1, n3)
-        return f, g, df, dg, ddf, ddg, delt
+        return _etoil_arc(
+            nn, x0, z0, rad, a, b, m, n2, n1, n3, n_fine=n_fine, theta=theta
+        )
+    if theta is not None:
+        raise ValueError(
+            "theta is only meaningful for arc_length=True; the uniform-theta "
+            "path has its own fixed node set and would ignore it"
+        )
+    delt = 2.0 * PI / nn
+    f, g, df, dg, ddf, ddg, theta_uniform = _etoil(nn, delt, x0, z0, rad, m, n2, n1, n3)
+    return f, g, df, dg, ddf, ddg, delt, theta_uniform
 
 
 def perimeter(
@@ -424,6 +517,21 @@ class Geometry:
         ddf, ddg: (n_pts,) second derivatives.
         delt: Quadrature weight (scalar for uniform-theta; per-point for
             arc-length).
+        theta: (n_pts,) the sample angles the boundary was evaluated at, or
+            ``None`` for a boundary whose arrays came from somewhere with no
+            node set to report. Stored rather than recomputed because it is the
+            **node set**, and a shape derivative needs to hold it fixed across a
+            finite difference (``docs/conventions.md`` §10). Recovering it after
+            the fact from ``arctan2(g - z0, f - x0)`` is not equivalent: it is
+            ambiguous for a boundary that is not star-convex about the centre,
+            and it loses the branch for one that winds past 2π.
+
+            ``Geometry.gielis`` always sets it, so every geometry the factory
+            builds can be differentiated. It is ``None`` **only** on a Geometry
+            constructed directly from external arrays without one, and the
+            frozen-node paths refuse such a geometry by name rather than
+            falling back to anything — see
+            :meth:`pysie2d.qnm.QNMResult.sensitivity`.
         rad: Gielis scale radius (nm).
         x0, z0: Particle centre coordinates (nm).
     """
@@ -438,6 +546,7 @@ class Geometry:
         ddg: np.ndarray,
         delt: float | np.ndarray,
         *,
+        theta: np.ndarray | None = None,
         rad: float,
         x0: float = 0.0,
         z0: float = 0.0,
@@ -450,6 +559,7 @@ class Geometry:
         self.ddf = ddf
         self.ddg = ddg
         self.delt = delt
+        self.theta = theta
         self.rad = rad
         self.x0 = x0
         self.z0 = z0
@@ -492,6 +602,7 @@ class Geometry:
         x0: float = 0.0,
         z0: float = 0.0,
         arc_length: bool = True,
+        theta: np.ndarray | None = None,
     ) -> "Geometry":
         """Create a Geometry from Gielis superformula parameters.
 
@@ -521,8 +632,26 @@ class Geometry:
                 with respect to ``a`` or ``b`` through that path is identically
                 zero rather than wrong-looking. Leave this True whenever ``a``
                 or ``b`` is not 1.
+            theta: (n_pts,) sample angles to use instead of re-inverting arc
+                length — normally another Geometry's ``theta``. This is how a
+                shape derivative holds the node set fixed across a finite
+                difference; see ``docs/conventions.md`` §10 for why it must.
+                ``n_pts`` is ignored when it is given.
         """
-        f, g, df, dg, ddf, ddg, delt = boundary_setup(
-            n_pts, rad, a, b, m, n1, n2, n3, x0=x0, z0=z0, arc_length=arc_length
+        f, g, df, dg, ddf, ddg, delt, theta_used = boundary_setup(
+            n_pts,
+            rad,
+            a,
+            b,
+            m,
+            n1,
+            n2,
+            n3,
+            x0=x0,
+            z0=z0,
+            arc_length=arc_length,
+            theta=theta,
         )
-        return cls(f, g, df, dg, ddf, ddg, delt, rad=rad, x0=x0, z0=z0)
+        return cls(
+            f, g, df, dg, ddf, ddg, delt, theta=theta_used, rad=rad, x0=x0, z0=z0
+        )

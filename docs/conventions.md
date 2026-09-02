@@ -276,6 +276,173 @@ refined wavelengths bit-identical for `tol` = 1e-9, 1e-7, 1e-6, 1e-4, 1e-3,
 the marginal band only for a thin set of `tol`. The exact statement above is
 therefore made on the unrefined `modes()` output.
 
+## 10. Shape derivatives use a frozen node set (v0.5)
+
+**A finite difference in a shape parameter holds the boundary node set fixed.**
+`Geometry` stores `theta`, and `Geometry.gielis(..., theta=...)` builds a shape
+on angles supplied from elsewhere instead of re-inverting arc length. Every
+`∂M/∂p` takes `M(p₀±h)` on the θ of `p₀`, and so do `∂M/∂λ` and the left and
+right null vectors that enter the adjoint quotient — all four on one node set,
+or the quotient mixes two discretisations.
+
+**Why it is not merely convenient.** Node placement is a **parametrisation
+gauge**. The BIE discretises a boundary integral, and λ — the thing the adjoint
+differentiates — does not depend on how the boundary was sampled. Re-inverting
+arc length between the two evaluations differentiates the gauge along with the
+physics, and the gauge is not differentiable: the inversion goes through
+`np.interp`, which is continuous but only *piecewise* linear in the shape
+parameter, so a node whose bracketing cell differs between `p₀−h` and `p₀+h`
+contributes an O(1) error to the quotient.
+
+The resulting term is O(h), not O(h²); it is not monotone in `h`; and it **grows
+with `n_pts`**, because a finer boundary has more cells to cross. That last
+property is why it cannot be refined away and had to be removed structurally.
+*(measured, `docs/design/studies/shape-derivative-smoothness.md`: unfrozen, the
+`h`-ladder on `∂M/∂b` falls 8.29e-5 → 3.24e-5 → 5.60e-9 — a stall then a cliff,
+with the fraction of matrix entries carrying the deviation going 0.49 → 0.05 →
+0.00, a decaying count rather than a decaying magnitude. Frozen, the same ladder
+is 1.01e-5 → 1.01e-7 → 1.67e-9: exactly ×100 per decade in every parameter until
+the cancellation floor.)*
+
+Uniformity in arc length still drifts by O(h) across the difference. That is
+accepted and is the point of `h` being small — the alternative is to
+re-equidistribute, which is the error being removed. Over the larger parameter
+steps of a continuation path the nodes **are** re-equidistributed per step, and
+the resulting jitter is measured under Gate 7 rather than assumed away.
+
+**Step size.** `h = 1e-5` in the parameter's own units, with the cancellation
+floor at ~1e-8 and truncation at ~1e-7 a decade above, i.e. about a decade of
+margin on each side. The margin, not the best value at one design point, is the
+reason for the choice: the truncation coefficient scales with the parameter's
+geometric leverage, which moves across the shape catalogue. **No second
+derivatives** — the source of the O(h) term above is a kinked first derivative,
+and freezing the nodes removes it from the difference quotient without making
+the underlying inversion C².
+
+**Two traps this pins.** A prescribed θ is validated for strict ordering and a
+sub-2π span, because `delt` is a bare `np.diff`: a reordered set gives negative
+quadrature weights and a boundary integral that counts part of the curve
+backwards, with nothing raised. And `Geometry.gielis` never accepts an *implicit*
+node set: given `theta=None` it re-inverts arc length and records what it used,
+so a geometry it builds always carries the θ it was actually evaluated on. There
+is no path on which a shape derivative silently falls back to re-inversion.
+
+**`theta` is optional to store and mandatory to differentiate.** On
+`Geometry.__init__` it defaults to `None`: a boundary assembled from arrays that
+came from elsewhere has no node set to report, and the entire solver — assembly,
+fields, LDOS, mode extraction — never reads θ, so refusing to construct such a
+geometry would break scattering-only users for a reason unrelated to scattering.
+The requirement belongs at the point of use instead, and
+`QNMResult.sensitivity` raises on a `None` node set naming *which* of the two
+geometries lacks it. Both branches are needed: without the base-side check,
+`None == None` compares equal and two unrelated discretisations are accepted.
+*(This replaces the v0.5 development-time rule that `theta` was a required
+constructor field. That rule made v0.5 a breaking release for direct array
+construction and bought nothing the point-of-use check does not — the failure it
+was guarding against, a silent fallback to re-inversion, lives on the `gielis`
+path, which never had one.)*
+
+Frozen nodes preserve §9 exactly: a supplied θ carries no length, so
+`M(s·rad, s·λ) = M(rad, λ)` entrywise still holds, and it is asserted on the
+frozen path in `tests/test_scale_covariance.py`.
+
+## 11. Adjoint eigenvalue sensitivity (v0.5)
+
+`QNMResult.sensitivity(at, step=SHAPE_STEP)` returns `dλ/dp` for every mode in
+the result, one parameter at a time, from
+
+    dλ/dp = − uᴴ (∂M/∂p) v / [ uᴴ (∂M/∂λ) v ]
+
+No eigenvalue is re-extracted: that is the whole point of the adjoint, and it
+is what makes a Jacobian over seven parameters affordable.
+
+**`at` is a callable, not a perturbed geometry.** Its signature is
+`δ → (geometry, material)` at offset `δ` from the base point, `δ = 0` being the
+base point itself. Both halves are returned because `n_core` and `n_clad` are
+parameters of the same Jacobian as the shape ones, and one signature covering
+all of them is what keeps the caller from having two code paths that can drift
+apart. The **offset is in the parameter's own units**, so `step` and `dλ/dp`
+are both in those units and the caller owns any reparametrisation — a `log`
+gauge is a two-line lambda, and §9 says the answer must be gauge-free.
+
+**The frozen node set is enforced, not documented.** The geometry returned by
+`at` must carry `result.geometry.theta` **exactly**, and `sensitivity` raises
+otherwise. Exact equality is the right test because there is no threshold at
+which node motion becomes acceptable: the term it introduces is O(h) and grows
+with `n_pts` (§10). On a circle re-inversion moves nodes by only 1.5e-13 rad,
+which is precisely why a tolerance-based check would be the wrong instrument.
+
+**`u` is a genuine left null vector**, obtained from the same SVD as `v` — the
+smallest singular triplet of `M(λ)`, `U[:, -1]` and `V[:, -1]`. It is **not**
+`conj(v)`: M is not complex-symmetric here *(measured: `‖M − Mᵀ‖/‖M‖ = 1.06`,
+and `|⟨u, conj(v)⟩| = 0.32` at the TE n=0 pole of the reference circle)*, so
+substituting `conj(v)` gives a quotient wrong by an O(1) factor with every
+residual still looking right. Cost is one assembly plus one full SVD per mode,
+0.080 s at `n_pts = 200`.
+
+**Degenerate poles dispatch to a secular problem, they do not raise.** A k-fold
+pole has a k-dimensional null space, and the scalar quotient would pick an
+arbitrary vector out of it. The k derivatives are the eigenvalues of
+
+    − (Uᴴ ∂_p M V) (Uᴴ ∂_λ M V)⁻¹
+
+with `U`, `V` the smallest k singular triplets; this reduces to the quotient at
+k = 1. Multiplicity is read from the **same** `DEGENERACY_RTOL` criterion that
+`QNMResult.multiplicity` reports, so the branch taken can never contradict the
+multiplicity printed beside it. Within a degenerate group the returned values
+are sorted by `(Re, Im)`: which partner receives which derivative is not
+defined, because the null basis is fixed only up to a k×k rotation.
+
+**Anchors.** Gate 1 — `dλ/drad = λ/rad`, and in the linear gauge this is
+*machine-exact*, since §9 makes λ exactly linear in `rad`, leaving only the
+cancellation floor ~ε/h *(measured 5.1e-11)*. Gate 1 degenerate half — a
+dilation cannot lift the ±n degeneracy of a circle, so the 2×2 secular matrix
+is a multiple of the identity *(measured: off-diagonal/‖S‖ = 2.7e-11, splitting
+1.3e-10)*. Gate 2 — at `n2 = n3`, `(log a + log b)` and `log rad` move λ
+identically, so their difference is an exact null direction of `J` *(measured
+ratio − 1 = 5.1e-14)*. Gate 3 — against central differences of independently
+re-extracted Beyn poles, second order in the step *(3.816e-4 → 3.809e-6 →
+3.816e-8, ratios 100.2 and 99.8)*. All four in
+`tests/test_sensitivity.py`.
+
+## 12. Jacobian accuracy is bought by extrapolation, not by resolution (v0.5)
+
+`J = dλ/dp` converges at **first order in `n_pts`**, exactly like λ itself:
+observed order 0.98–1.02 on every component, on three independent ladders
+(`docs/design/studies/jacobian-convergence.md`). §9's argument that the fixed
+`x_disc(n_pts) ≠ x_Mie` error is smooth in the shape parameter and cancels in
+the ratio `∂λ/∂p` is **true of the constant and false of the order** — `dλ/drad`
+is three decades better resolved than `dλ/db` at the same `R`, and neither
+converges faster than `1/n_pts`. Do not read §9 as promising more than that.
+
+Two consequences, both measured rather than argued:
+
+**Differencing does not help.** `ΔJ` between two designs `δb = 0.02` apart
+converges at order 0.94 and lands *further* from its limit than `J` does — 3×
+further on `dλ/db`, 116× on `dλ/dn_core`. Subtracting two quantities whose
+errors are the same size and only partly common-mode keeps the error and loses
+the signal.
+
+**Two-rung Richardson does.** `richardson_limit(coarse, fine, n_coarse, n_fine)`
+implements `q* = q_f + (q_f − q_c)/(n_f/n_c − 1)`, exponent **pinned at 1, not
+fitted**. From `R = 15 + 30` it puts every J component inside **6.4e-4** of the
+limit at **0.46×** the cost of one `R = 50` rung — which is itself 1.5 % out and
+misses the gate's 1 % bar. `R = 30 + 50` is the fallback, 4× more margin at 3×
+the cost.
+
+`n_fine` must exceed `n_coarse` and the function raises otherwise, because the
+formula is antisymmetric in its two rungs: swapping them extrapolates the wrong
+way, silently, with every residual still plausible. That inversion is what
+`test_gate10_jacobian_is_first_order_and_richardson_is_consistent` exists to
+catch — it pins the first-order premise and requires two extrapolants built
+from different rung pairs to agree to 2e-3, an order of magnitude tighter than
+the raw rungs they came from.
+
+**Rungs are placed in `R = wavelength_over_ds`, never in raw `n_pts`** (D17):
+200 points read as `R = 37.1` on a circle and 17.5 on an aspect-3 ellipse, so a
+ladder in `n_pts` measures different resolutions at different points of a
+catalogue.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

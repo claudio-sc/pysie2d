@@ -5,9 +5,14 @@ from pysie2d.reference import mie
 
 def test_convergence():
     # λ = 600 nm, TE. Relative error of qsca vs Mie must shrink with nn.
-    # The exact convergence order depends on the quadrature, so we assert the
-    # robust shape only: an order-of-magnitude drop from the coarsest to the
-    # finest grid, and monotone non-increase after the first point.
+    # Post-A20, qsca converges cleanly at first order in nn (measured ratio
+    # ~2.00 per doubling here) rather than flooring on the far-field grid's
+    # double-counted endpoint. A first-order quantity cannot drop by more
+    # than the refinement factor itself — 8x from nn=40 to nn=320 — so the
+    # bar is 7x, not the pre-A20 10x (which only passed because the floor
+    # partially cancelled the nn-truncation error at nn=320 by coincidence,
+    # not because the quantity actually dropped by an order of magnitude).
+    # Measured 7.92x.
     wavelength = 600.0
     x = size_parameter(wavelength)
     # Material.nc is the relative index; never divide it by n_clad again.
@@ -21,6 +26,6 @@ def test_convergence():
         eff = BIESolver(geom, mat).scatter(wavelength=wavelength).efficiencies()
         errors.append(abs(eff["qsca"] - ref) / ref)
 
-    assert errors[-1] < errors[0] / 10.0
+    assert errors[-1] < errors[0] / 7.0
     for prev, nxt in zip(errors[1:], errors[2:], strict=False):
         assert nxt <= prev

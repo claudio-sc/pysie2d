@@ -20,6 +20,7 @@ Both are asserted. Poles do *not* come in conjugate pairs: the reality
 condition is ``λ → −λ̄``, which puts mirror partners at negative ``Re λ``.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 import numpy as np
@@ -52,6 +53,15 @@ DEGENERACY_RTOL = 1.0e-9
 # "Newton failed" by comparing against the same threshold — and hard-coding
 # 1e12 at the call site would silently drift the day this value changes.
 DEGENERATE_COND = 1.0e12
+
+# Central-difference step for dM/dp, in the parameter's own units
+# (docs/conventions.md §10). Under the frozen node set the h-ladder is exactly
+# ×100 per decade until the cancellation floor at ~1e-8, with truncation at
+# ~1e-7 a decade above 1e-5 — so this is chosen on having about a decade of
+# margin on each side, not on the best value at one design point: the
+# truncation coefficient scales with the parameter's geometric leverage, which
+# moves across a shape catalogue.
+SHAPE_STEP = 1.0e-5
 
 
 @dataclass(frozen=True)
@@ -259,6 +269,131 @@ class QNMResult:
             cond_jacobian=cond_jacobian,
         )
 
+    def sensitivity(
+        self,
+        at: Callable[[float], tuple[Geometry, Material]],
+        *,
+        step: float = SHAPE_STEP,
+    ) -> np.ndarray:
+        """Adjoint derivative dλ/dp of every mode with respect to one parameter.
+
+        The identity (spec §5.1) for a **simple** pole of M(λ):
+
+            ``dλ/dp = − uᴴ (∂M/∂p) v / [ uᴴ (∂M/∂λ) v ]``
+
+        with ``v`` the right and ``u`` the left null vector of M(λ)
+        (:func:`_null_vectors` — ``u`` is not ``conj(v)`` here, M is not
+        complex-symmetric), ``∂M/∂λ`` analytic
+        (:meth:`~pysie2d.solver.BIESolver.assemble_derivative`) and ``∂M/∂p``
+        one central difference. Two extra assemblies and one SVD per mode; no
+        eigenvalue is re-extracted, which is the point of the adjoint.
+
+        **Frozen nodes are enforced, not assumed** (``docs/conventions.md``
+        §10). Both perturbed geometries must carry *exactly* the θ of the base
+        geometry, and a mismatch raises. Letting the arc-length inversion
+        re-place nodes between ``p₀−h`` and ``p₀+h`` differentiates the
+        parametrisation gauge along with the physics and puts an O(h) term into
+        the quotient that grows with ``n_pts``.
+
+        **Degenerate poles are dispatched, not refused.** A k-fold pole has a
+        k-dimensional null space and the scalar quotient would pick an
+        arbitrary vector out of it; the k derivatives are the eigenvalues of
+        the k×k secular matrix ``−(Uᴴ ∂_p M V)(Uᴴ ∂_λ M V)⁻¹`` instead, which
+        is the same identity projected onto that subspace and reduces to the
+        quotient at k = 1. Multiplicity is read from :attr:`multiplicity`'s own
+        criterion, eigenvalue spacing within ``DEGENERACY_RTOL``.
+
+        Args:
+            at: ``δ → (geometry, material)`` at parameter offset ``δ`` from the
+                base point, in the parameter's own units, with ``δ = 0`` the
+                base point itself. Returning both halves is what lets one
+                signature cover shape parameters and ``n_core``/``n_clad``
+                alike. The geometry must be built on ``self.geometry.theta``.
+            step: Central-difference step ``h``, in the parameter's own units.
+                Defaults to :data:`SHAPE_STEP`.
+
+        Returns:
+            complex (K,) ``dλ/dp`` in nm per unit of ``p``, one per mode, in
+            the order of :attr:`wavelengths`. Within a degenerate group the
+            k values are sorted by ``(Re, Im)``: which partner gets which
+            derivative is not defined, since the null basis is fixed only up
+            to a k×k rotation.
+
+        Raises:
+            ValueError: If a perturbed geometry does not carry the base node
+                set.
+        """
+        base = BIESolver(self.geometry, self.material)
+        plus = self._perturbed_solver(at, +step)
+        minus = self._perturbed_solver(at, -step)
+
+        out = np.empty(self.n_modes, dtype=complex)
+        for group in _degenerate_groups(self.wavelengths):
+            lam = self.wavelengths[group[0]]
+            # ∂M/∂p is a function of λ as much as of p, so the difference is
+            # taken at *this* mode's wavelength; a single ∂M/∂p shared across
+            # modes would be the derivative at the wrong point for all but one.
+            dm_dp = (plus.assemble(lam) - minus.assemble(lam)) / (2.0 * step)
+            dm_dlam = base.assemble_derivative(lam)
+            k = len(group)
+            u, v = _null_subspace(base, lam, k)
+            if k == 1:
+                out[group[0]] = -(u[:, 0].conj() @ dm_dp @ v[:, 0]) / (
+                    u[:, 0].conj() @ dm_dlam @ v[:, 0]
+                )
+                continue
+            # Degenerate branch: the scalar quotient would pick an arbitrary
+            # vector out of a k-dimensional null space. The k derivatives are
+            # instead the eigenvalues of the secular matrix
+            # −(Uᴴ ∂_p M V)(Uᴴ ∂_λ M V)⁻¹ — the same identity projected onto
+            # the null space, which reduces to the quotient at k = 1. Sorted
+            # so the mapping onto mode indices is deterministic; the pairing of
+            # a particular derivative to a particular partner is not meaningful
+            # anyway, since the null basis itself is only defined up to a k×k
+            # rotation.
+            secular = -(u.conj().T @ dm_dp @ v) @ np.linalg.inv(
+                u.conj().T @ dm_dlam @ v
+            )
+            vals = np.linalg.eigvals(secular)
+            order = np.lexsort((vals.imag, vals.real))
+            out[np.sort(group)] = vals[order]
+        return out
+
+    def _perturbed_solver(
+        self,
+        at: Callable[[float], tuple[Geometry, Material]],
+        delta: float,
+    ) -> BIESolver:
+        """Solver at one displaced parameter value, on the frozen node set.
+
+        The node-set check is here rather than in the caller because it is the
+        one precondition a user cannot see the violation of: with re-inverted
+        nodes every number downstream still looks plausible
+        (``docs/conventions.md`` §10).
+        """
+        geom, mat = at(delta)
+        # A geometry built directly from arrays may carry no node set at all.
+        # Refuse it by name: `None` would otherwise reach the comparison below
+        # as an AttributeError, and a base result without one would silently
+        # compare None to None and accept two unrelated discretisations.
+        if geom.theta is None or self.geometry.theta is None:
+            missing = "perturbed" if geom.theta is None else "base"
+            raise ValueError(
+                f"the {missing} geometry carries no node set (theta is None), "
+                "so the shape derivative cannot be taken on a frozen one "
+                "(docs/conventions.md §10). Build both with Geometry.gielis, "
+                "which always records theta, or pass theta= to Geometry()"
+            )
+        if geom.theta.shape != self.geometry.theta.shape or not np.array_equal(
+            geom.theta, self.geometry.theta
+        ):
+            raise ValueError(
+                "perturbed geometry must carry the base node set exactly "
+                "(docs/conventions.md §10); build it with "
+                "Geometry.gielis(..., theta=result.geometry.theta)"
+            )
+        return BIESolver(geom, mat)
+
 
 class QNMSolver:
     """Quasi-normal-mode solver for a single particle in a homogeneous background.
@@ -440,3 +575,117 @@ def _edge_margin(lams: np.ndarray, z_lo: complex, z_hi: complex) -> np.ndarray:
         ]
     )
     return dist / side
+
+
+def _null_vectors(bie: BIESolver, wavelength: complex) -> tuple[np.ndarray, np.ndarray]:
+    """Left and right null vectors of M at one **vacuum** wavelength.
+
+    The adjoint quotient ``dλ/dp = −uᴴ(∂M/∂p)v / uᴴ(∂M/∂λ)v`` needs both. The
+    right vector ``v`` is the one :attr:`QNMResult.vectors` already carries; the
+    left vector ``u`` is **not** obtainable from it, because M is not
+    complex-symmetric — each of the four ``n_pts`` blocks is symmetric to 1e-14
+    but the off-diagonal blocks are not transposes of one another
+    *(measured: ‖M − Mᵀ‖/‖M‖ = 1.05)*. Assuming ``u = v̄`` would give a quotient
+    that is wrong by an O(1) factor and would still look plausible.
+
+    From ``M = U Σ Vᴴ`` at a pole, the smallest singular triplet is the null
+    pair: ``v = V[:, -1]`` satisfies ``Mv = σ_min u`` and ``u = U[:, -1]``
+    satisfies ``uᴴM = σ_min vᴴ``. Both residuals are therefore ``σ_min``
+    exactly, and ``σ_min/σ_max`` — the number :attr:`QNMResult.sigma_ratio`
+    already reports — is how singular the pole actually came out.
+
+    Costs one assembly plus one full SVD with vectors, i.e. what
+    :func:`_sigma_ratio` already spends plus the vector accumulation.
+
+    Args:
+        bie: Solver carrying the geometry and material.
+        wavelength: Vacuum wavelength (nm), complex at a mode.
+
+    Returns:
+        ``(u, v)``, each complex ``(2·n_pts,)`` with unit norm.
+    """
+    u, v = _null_subspace(bie, wavelength, 1)
+    return u[:, 0], v[:, 0]
+
+
+def _null_subspace(
+    bie: BIESolver, wavelength: complex, k: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """The k-dimensional left and right null subspaces of M at one wavelength.
+
+    A k-fold pole has a k-dimensional null space, and the smallest k singular
+    triplets span it. Orthonormal by construction, which is what the secular
+    problem in :meth:`QNMResult.sensitivity` needs — it inverts
+    ``Uᴴ(∂M/∂λ)V``, and a non-orthonormal basis would fold the basis
+    conditioning into that inverse.
+
+    Args:
+        bie: Solver carrying the geometry and material.
+        wavelength: Vacuum wavelength (nm), complex at a mode.
+        k: Dimension of the null space, i.e. the pole multiplicity.
+
+    Returns:
+        ``(U, V)``, each complex ``(2·n_pts, k)`` with orthonormal columns,
+        ordered by increasing singular value.
+    """
+    u, _, vh = np.linalg.svd(bie.assemble(wavelength))
+    return u[:, : -k - 1 : -1], vh[: -k - 1 : -1].conj().T
+
+
+def _degenerate_groups(lams: np.ndarray) -> list[list[int]]:
+    """Partition mode indices into degenerate groups.
+
+    Uses the same ``DEGENERACY_RTOL`` closeness that :func:`_multiplicity`
+    reports, so a group's size is exactly the multiplicity the result object
+    already advertises — two criteria for "same pole" would eventually
+    disagree, and the sensitivity branch taken would then contradict the
+    multiplicity printed next to it.
+    """
+    groups: list[list[int]] = []
+    for i, lam in enumerate(lams):
+        for group in groups:
+            if abs(lam - lams[group[0]]) <= DEGENERACY_RTOL * abs(lam):
+                group.append(i)
+                break
+        else:
+            groups.append([i])
+    return groups
+
+
+def richardson_limit(
+    coarse: complex | np.ndarray,
+    fine: complex | np.ndarray,
+    n_coarse: int,
+    n_fine: int,
+) -> complex | np.ndarray:
+    """Extrapolate a first-order-in-``n_pts`` quantity to infinite resolution.
+
+    Both λ and ``dλ/dp`` converge at **first order** in ``n_pts`` — measured at
+    ``p = 1.00 ± 2 %`` on every Jacobian component (Gate 10,
+    ``docs/design/studies/jacobian-convergence.md``). So for ``q(n) = q* + C/n``
+    two rungs determine ``q*``, and a Jacobian assembled at ``R = 15`` and
+    ``R = 30`` lands two decades closer to the limit than a single rung at
+    ``R = 50`` costing more than twice as much.
+
+    The exponent is **pinned at 1, not fitted**: fitting needs a third rung and
+    returns an exponent that is badly conditioned when the two differences are
+    close, to refine a number three independent ladders already agree on.
+
+    Args:
+        coarse: The quantity at the coarser resolution.
+        fine: The same quantity at the finer resolution.
+        n_coarse: Boundary points of the coarse rung.
+        n_fine: Boundary points of the fine rung; must exceed ``n_coarse``.
+
+    Returns:
+        The extrapolated limit, same shape as the inputs.
+
+    Raises:
+        ValueError: If ``n_fine`` does not exceed ``n_coarse``. The formula is
+            antisymmetric in the two rungs, so swapping them does not merely
+            degrade the estimate — it extrapolates the wrong way, and the
+            failure is silent: every residual still looks plausible.
+    """
+    if n_fine <= n_coarse:
+        raise ValueError(f"n_fine must exceed n_coarse, got {n_fine} <= {n_coarse}")
+    return fine + (fine - coarse) / (n_fine / n_coarse - 1.0)
