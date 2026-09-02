@@ -2,6 +2,127 @@
 
 <!-- version list -->
 
+## v0.5.0 (2026-09-02)
+
+### Bug Fixes
+
+- **geometry**: Make theta optional so v0.5 stays non-breaking
+  ([`d448921`](https://github.com/claudio-sc/pysie2d/commit/d448921118bbec7b4f672dcd013d66cd2edecac5))
+
+- **geometry**: Raise on coincident arc-length nodes
+  ([`ed6a05b`](https://github.com/claudio-sc/pysie2d/commit/ed6a05bbdf44b2d3097f77a09bb9e027ed955c8c))
+
+- **scatter**: Stop double-counting the far-field grid's closing angle
+  ([`dc9da93`](https://github.com/claudio-sc/pysie2d/commit/dc9da93853cfb41151a3923d3ea0f3880b88a350))
+
+### Build System
+
+- Move changelog_file to default_templates
+  ([`5e4d5d3`](https://github.com/claudio-sc/pysie2d/commit/5e4d5d34e8ad56a8b7c7d31710eeccad7c5a3da7))
+
+- Pin uv_build to the uv version actually used
+  ([`b8a2e3e`](https://github.com/claudio-sc/pysie2d/commit/b8a2e3e994527187c9aeffc141362deed90e77f8))
+
+- Re-lock after the v0.4.2 release
+  ([`c3e5dc5`](https://github.com/claudio-sc/pysie2d/commit/c3e5dc5005f2907ab9547df8427e3f6055719902))
+
+### Documentation
+
+- A17 - the section 12 extrapolation holds at aspect 3
+  ([`b6c5f05`](https://github.com/claudio-sc/pysie2d/commit/b6c5f05dd358bd25c7b3c763eaf2e45fabdef0b1))
+
+- Add CI, PyPI, license and Python badges
+  ([`4477600`](https://github.com/claudio-sc/pysie2d/commit/44776001364264b2300a9da38a50556a99439679))
+
+- Attribute the formulation to Maradudin and Valencia
+  ([`09e0a97`](https://github.com/claudio-sc/pysie2d/commit/09e0a97fa6fb1903e673a79e42a6586e69ea352f))
+
+- Conventions section 11 — adjoint sensitivity API
+  ([`26c6068`](https://github.com/claudio-sc/pysie2d/commit/26c6068d84ff98c0f29da27fc196455478e767a3))
+
+- Correct stale claims after the v0.4.2 release
+  ([`7f83b32`](https://github.com/claudio-sc/pysie2d/commit/7f83b32e3bbfed59437f2def984c4070ba44c083))
+
+- Describe the solver as surface-integral, not Müller BIE
+  ([`dee6f9e`](https://github.com/claudio-sc/pysie2d/commit/dee6f9ee4b374a553b4737f01fff0d84e0b53d69))
+
+- Fix the conventions link that breaks on PyPI
+  ([`e6fbedf`](https://github.com/claudio-sc/pysie2d/commit/e6fbedfd890f663a644bf68bcbef4dd5c2cac9e0))
+
+- Frame docs/design as engineering history
+  ([`ab73de9`](https://github.com/claudio-sc/pysie2d/commit/ab73de923d751b3afdafe0b190378e2eed50bfba))
+
+- Measure J convergence in R for gate 10
+  ([`4bf89b1`](https://github.com/claudio-sc/pysie2d/commit/4bf89b17dc31340129c5644ff2a4d8a2c5f92385))
+
+- Measure J-difference convergence for gate 10 route 2
+  ([`4b0669c`](https://github.com/claudio-sc/pysie2d/commit/4b0669c3ddbc0592c0c2a9e24d4f06ea9ccd298a))
+
+- Measure the frozen-node h ladder
+  ([`bfbc513`](https://github.com/claudio-sc/pysie2d/commit/bfbc51303a628f3a8cbdb2454d22abf651db0375))
+
+- Measure the R band cost across the shape family
+  ([`2ef4e92`](https://github.com/claudio-sc/pysie2d/commit/2ef4e92487183614fd0fd1d5a649b85b638861e0))
+
+- Measure the shape-derivative h window at production n_pts
+  ([`6435266`](https://github.com/claudio-sc/pysie2d/commit/6435266a20ae28c99cfaafa29e2f68d8cbbca124))
+
+- Measure two-rung Richardson extrapolation of J
+  ([`612f9ca`](https://github.com/claudio-sc/pysie2d/commit/612f9ca68e03f066e446517b9e86e9b12cf6ea36))
+
+- Note the Hankel refinement question as unproven
+  ([`f137f80`](https://github.com/claudio-sc/pysie2d/commit/f137f802f89057910c25b7ff40c59a1ac3a39ebc))
+
+- Pin the frozen node set as conventions section 10
+  ([`d46c382`](https://github.com/claudio-sc/pysie2d/commit/d46c3822e489f70b860c99f6e3a2741a9870009f))
+
+- Pin the push, merge and branching policy
+  ([`982e24e`](https://github.com/claudio-sc/pysie2d/commit/982e24ee23891ba1915bc4f61b5deeaf5bb906d0))
+
+- README section for the v0.5 sensitivity API
+  ([`1c32bc8`](https://github.com/claudio-sc/pysie2d/commit/1c32bc85bdfbaee7b904254977d976039acb3bbc))
+
+- Record the measured contour threading speedup
+  ([`da4469d`](https://github.com/claudio-sc/pysie2d/commit/da4469d950a7eb38c9e87327069c661a56f60428))
+
+- Retire the unreproducible gate 9 reference ladder
+  ([`e9203cb`](https://github.com/claudio-sc/pysie2d/commit/e9203cbeccad569a825dd69754ac9778d5096c63))
+
+- Separate unreleased v0.5 work from the shipped roadmap
+  ([`11e582b`](https://github.com/claudio-sc/pysie2d/commit/11e582b3ef36cf7d9d30177e155414a5f5834ef8))
+
+- Split the h window by parameter class
+  ([`bb63e7b`](https://github.com/claudio-sc/pysie2d/commit/bb63e7bd36402750542bc4da28d88700c99b70b7))
+
+- Warn that arc_length=False ignores a and b
+  ([`564558c`](https://github.com/claudio-sc/pysie2d/commit/564558c68b06fdf792ae32e5f00090f57ccee152))
+
+### Features
+
+- **geometry**: Accept a prescribed theta node set
+  ([`247492d`](https://github.com/claudio-sc/pysie2d/commit/247492d0eaf834ed496871c1605922078b74c20a))
+
+- **qnm**: Adjoint eigenvalue sensitivity for simple poles
+  ([`267338a`](https://github.com/claudio-sc/pysie2d/commit/267338af8d7dd63890046bbcc21a8e211c5ec155))
+
+- **qnm**: Degenerate secular branch in sensitivity
+  ([`6fcb0ed`](https://github.com/claudio-sc/pysie2d/commit/6fcb0ed72bc7c892c7358c9d85d98c9a75e992ff))
+
+- **qnm**: Left null vector for the adjoint quotient
+  ([`703d9de`](https://github.com/claudio-sc/pysie2d/commit/703d9def90c07a6d87479d00471f4c829abe2f64))
+
+- **qnm**: Richardson_limit and the gate 10 accuracy policy
+  ([`c42e51b`](https://github.com/claudio-sc/pysie2d/commit/c42e51b8ce82fbfc5d7f098547bcedb727830ee1))
+
+- **solver**: Wavelength_over_ds discretization diagnostic
+  ([`967f4c3`](https://github.com/claudio-sc/pysie2d/commit/967f4c3e18f9159acc7216853f452e86f9b739aa))
+
+### Performance Improvements
+
+- Thread contour_moments over the contour nodes
+  ([`318421c`](https://github.com/claudio-sc/pysie2d/commit/318421c02d08b65832cdad4a521a4d076e292977))
+
+
 ## v0.4.2 (2026-08-09)
 
 ### Bug Fixes
