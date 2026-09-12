@@ -1,6 +1,8 @@
 # v0.6 quadrature — preliminary study plan
 
-**Status:** plan only; no gate has been run. This is doc B of two. The
+**Status:** G1 passed, G2 measured and its criterion moved to G3, G0 not run
+and under review; a Kress prototype exists in `kress_t.py`. Findings are in the
+`####` sections under each gate. This is doc B of two. The
 decisions this study works within are
 [../v0.6-architecture.md](../v0.6-architecture.md); the measurements it starts
 from are [../pysie2d-quadrature-handoff.md](../pysie2d-quadrature-handoff.md).
@@ -121,6 +123,17 @@ blocks + analytic `ddf`/`ddg` → 3.4e-15 at `nn = 30`.
 not, and then nothing downstream is trustworthy — the handoff was measured
 elsewhere.
 
+> **Not run, and now of questionable value — a decision, not an oversight.**
+> The work below jumped to a Kress prototype and anchored it against the
+> **full-precision analytic Mie pole** (machine precision, recomputed by
+> Newton), which is a stronger and more independent reference than the
+> handoff's `qext` table it was meant to reproduce. G0's purpose was to
+> establish that the handoff's numbers transfer to this machine; that purpose
+> is arguably served by having reproduced the *phenomenon* — first order
+> shipped, spectral under Kress — against a better anchor. **Either run it or
+> retire it explicitly; leaving it open and unrun is the one option that
+> misleads.**
+
 ### G1 — A smooth `w`  ← the risk
 
 Replace the `np.interp` arc-length inversion with a smooth one and demonstrate
@@ -137,6 +150,25 @@ length (conventions §9 — `n_fine` is the thing to watch).
 *Passes when* a non-circular shape shows a rate materially above 1 against the
 §3 reference. *Fails* if smoothing the inversion does not recover order — see
 §6.
+
+> **PASSED (2026-09-12) — the release's largest risk is retired.** The smooth
+> `w` is Newton inversion of an exact Fourier antiderivative, with `np.interp`
+> demoted to the initial guess (`adaptive_density.py`); `w'` and `w''` come in
+> closed form from `w' = 1/T'(w)` and `w'' = −T''(w)·(w')³`. Three pieces of
+> evidence, in ascending strength:
+>
+> 1. **Density residual 4e-16** on four stars — the map delivers the density it
+>    was asked for.
+> 2. **Parametrisation invariance at 1.6e-11.** A circle's poles cannot depend
+>    on how the circle is parametrised; a deliberately graded
+>    `θ = t + 0.3 sin 2t` agrees with uniform θ to 1.6e-11 once resolved. A C⁰
+>    map or a misplaced Jacobian fails this.
+> 3. **Spectral rates on a non-circular shape**, which is the stated criterion:
+>    at aspect 2 the error runs 3.5e-1 → 1.4e-3 → 7.7e-7 → 6.9e-10 → 2.2e-12
+>    over `nn = 20…80`. "Materially above 1" is an understatement.
+>
+> `n_fine` stayed a function of `nn` alone, so no absolute length entered and
+> conventions §9 is intact. The §6 fallback conversation is not needed.
 
 ### G2 — Adaptive density and the smooth clamp
 
