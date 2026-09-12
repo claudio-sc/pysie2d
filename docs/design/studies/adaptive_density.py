@@ -532,8 +532,16 @@ def main() -> None:
         fa, ga, *_ = gielis(ad.theta, **shape)
         sc = ax.scatter(fa, ga, c=ad.sigma_nodes, s=14, cmap="viridis", zorder=3)
         fu, gu, *_ = gielis(un.theta, **shape)
-        ax.scatter(fu, gu, s=5, marker="x", color="crimson", alpha=0.55, zorder=2,
-                   label=f"uniform arc, same nn={un.nn}")
+        ax.scatter(
+            fu,
+            gu,
+            s=5,
+            marker="x",
+            color="crimson",
+            alpha=0.55,
+            zorder=2,
+            label=f"uniform arc, same nn={un.nn}",
+        )
         ax.set_aspect("equal")
         need = 4 * ad.n_modes
         verdict = "resolved" if ad.nn >= need else f"UNDER-RESOLVED, needs {need}"
@@ -553,8 +561,14 @@ def main() -> None:
             ff, gg, *_ = gielis(theta_f, **shape)
             gam_j = np.interp(par.theta, theta_f, np.hypot(_dtheta(ff), _dtheta(gg)))
             ds = gam_j * par.dw * (2 * PI / par.nn)  # arc length per node
-            ax.plot(par.t, (REF_WAVELENGTH / N_CORE) / ds, ".", ms=3.5,
-                    color=col, label=name)
+            ax.plot(
+                par.t,
+                (REF_WAVELENGTH / N_CORE) / ds,
+                ".",
+                ms=3.5,
+                color=col,
+                label=name,
+            )
         ax.axhline(R_BAND[0], color="0.3", ls="--", lw=0.9)
         ax.axhline(R_BAND[1], color="0.3", ls="--", lw=0.9)
         ax.set_xlabel("t")
@@ -578,19 +592,31 @@ def main() -> None:
         for kw, name, col, style in (
             ({}, "α from band (clamp inactive)", "0.45", "-"),
             ({"cap_alpha": False}, "pinned α = 1/2, smooth clamp", "C0", "-"),
-            ({"cap_alpha": False, "hard": True}, "pinned α = 1/2, np.clip",
-             "darkorange", "-"),
+            (
+                {"cap_alpha": False, "hard": True},
+                "pinned α = 1/2, np.clip",
+                "darkorange",
+                "-",
+            ),
         ):
             spec = _fourier_decay(shape, R_BAND, N_CORE, **kw)
             specs[name] = spec
-            ax.semilogy(np.arange(1, len(spec)), np.maximum(spec[1:], 1e-18),
-                        style, color=col, lw=1.0, label=name)
-        gain = (specs["pinned α = 1/2, np.clip"][500]
-                / max(specs["pinned α = 1/2, smooth clamp"][500], 1e-30))
+            ax.semilogy(
+                np.arange(1, len(spec)),
+                np.maximum(spec[1:], 1e-18),
+                style,
+                color=col,
+                lw=1.0,
+                label=name,
+            )
+        gain = specs["pinned α = 1/2, np.clip"][500] / max(
+            specs["pinned α = 1/2, smooth clamp"][500], 1e-30
+        )
         ax.set_xlabel("Fourier mode j of w(t) − t")
         ax.set_ylabel("|coefficient|")
-        ax.set_title(f"pinned α: np.clip tail at j=500 is {gain:.0f}× worse",
-                     fontsize=9)
+        ax.set_title(
+            f"pinned α: np.clip tail at j=500 is {gain:.0f}× worse", fontsize=9
+        )
         ax.legend(fontsize=6.5, loc="lower left")
 
     fig.suptitle(

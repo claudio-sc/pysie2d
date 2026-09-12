@@ -196,9 +196,7 @@ def trajectory(scheme="adaptive", verbose=True):
         else:
             predict = pts[-1][1] if pts else ANCHOR
         shape = ellipse(float(aspect))
-        geom, par = geometry(
-            shape, BAND, predict.real, uniform=(scheme == "uniform")
-        )
+        geom, par = geometry(shape, BAND, predict.real, uniform=(scheme == "uniform"))
         lam, margin, gap, count, factor = find_pole(geom, predict)
         if lam is None:
             print(f"  A={aspect:4.2f} LOST — no mode found")
@@ -313,10 +311,25 @@ def main() -> None:
         pts = traj[scheme]
         lams = np.array([p[1] for p in pts])
         ax.plot(lams.real, lams.imag, "-", color=col, lw=1.0, alpha=0.7)
-        sc = ax.scatter(lams.real, lams.imag, c=[p[0] for p in pts], cmap="viridis",
-                        s=34, marker=mk, zorder=3, label=f"{scheme} nodes")
-    ax.scatter([ANCHOR.real], [ANCHOR.imag], marker="*", s=180, color="k", zorder=4,
-               label="analytic Mie pole (circle)")
+        sc = ax.scatter(
+            lams.real,
+            lams.imag,
+            c=[p[0] for p in pts],
+            cmap="viridis",
+            s=34,
+            marker=mk,
+            zorder=3,
+            label=f"{scheme} nodes",
+        )
+    ax.scatter(
+        [ANCHOR.real],
+        [ANCHOR.imag],
+        marker="*",
+        s=180,
+        color="k",
+        zorder=4,
+        label="analytic Mie pole (circle)",
+    )
     fig.colorbar(sc, ax=ax, label="aspect b/a", fraction=0.04)
     ax.set_xlabel("Re λ (nm)")
     ax.set_ylabel("Im λ (nm)")
@@ -328,41 +341,66 @@ def main() -> None:
     pts = traj["adaptive"]
     asp = np.array([p[0] for p in pts])
     lams = np.array([p[1] for p in pts])
-    ax.plot(asp, lams.real / ANCHOR.real, "-o", ms=3, color="C0",
-            label="Re λ(A) / Re λ(1)")
-    ax.plot(asp, 1.0 / np.sqrt(asp), "--", color="0.4", lw=1.0,
-            label="minor semi-axis, $A^{-1/2}$")
+    ax.plot(
+        asp, lams.real / ANCHOR.real, "-o", ms=3, color="C0", label="Re λ(A) / Re λ(1)"
+    )
+    ax.plot(
+        asp,
+        1.0 / np.sqrt(asp),
+        "--",
+        color="0.4",
+        lw=1.0,
+        label="minor semi-axis, $A^{-1/2}$",
+    )
     ax.set_xlabel("aspect b/a")
     ax.set_ylabel("relative Re λ")
-    ax.set_title("identification: the n=0 mode\nfollows the minor axis",
-                 fontsize=10)
+    ax.set_title("identification: the n=0 mode\nfollows the minor axis", fontsize=10)
     ax.legend(fontsize=8)
 
     ax = fig.add_subplot(gs[1, 2])
     for scheme, col in (("adaptive", "C0"), ("uniform", "crimson")):
         pts = traj[scheme]
-        ax.plot([p[0] for p in pts], [p[2] for p in pts], "-o", ms=3, color=col,
-                label=f"{scheme} nn")
+        ax.plot(
+            [p[0] for p in pts],
+            [p[2] for p in pts],
+            "-o",
+            ms=3,
+            color=col,
+            label=f"{scheme} nn",
+        )
     ax.set_xlabel("aspect b/a")
     ax.set_ylabel("nn from the band")
     ax.set_title(f"cost of holding R ≥ {BAND[0]:.0f}", fontsize=10)
     ax.legend(fontsize=8, loc="upper left")
     axq = ax.twinx()
     pts = traj["adaptive"]
-    axq.plot([p[0] for p in pts], [p[1].real / (2 * p[1].imag) for p in pts],
-             "-", color="0.5", lw=1.0)
+    axq.plot(
+        [p[0] for p in pts],
+        [p[1].real / (2 * p[1].imag) for p in pts],
+        "-",
+        color="0.5",
+        lw=1.0,
+    )
     axq.set_ylabel("Q = Re λ / 2 Im λ", color="0.45", fontsize=9)
 
     # (c) convergence at the circle (genuine Mie anchor) and the sharp end
     for j, aspect in enumerate((ASPECT_STOPS[0], ASPECT_STOPS[-1])):
         ax = fig.add_subplot(gs[1, j])
-        for key, col, name in (("lam_a", "C0", "adaptive"),
-                               ("lam_u", "crimson", "const density")):
+        for key, col, name in (
+            ("lam_a", "C0", "adaptive"),
+            ("lam_u", "crimson", "const density"),
+        ):
             nns, errs, ref, kind = summary[(aspect, key)]
             ax.loglog(nns, [abs(e) for e in errs], "-o", ms=4, color=col, label=name)
         guide = np.array(nns, dtype=float)
-        ax.loglog(guide, abs(errs[0]) * guide[0] / guide, "--", color="0.6", lw=0.9,
-                  label="first order")
+        ax.loglog(
+            guide,
+            abs(errs[0]) * guide[0] / guide,
+            "--",
+            color="0.6",
+            lw=0.9,
+            label="first order",
+        )
         ax.set_xlabel("nn")
         ax.set_ylabel("|λ − reference| (nm)")
         ax.set_title(f"aspect {aspect:.0f} · {kind}", fontsize=10)
