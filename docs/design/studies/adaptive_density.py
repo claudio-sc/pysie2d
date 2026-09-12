@@ -137,24 +137,31 @@ def _softclamp(s: np.ndarray, width: float, beta: float) -> np.ndarray:
     return softplus(s) - softplus(s - width)
 
 
-def lobe_count(kappa: np.ndarray, gam: np.ndarray, alpha: float = 0.5) -> int:
-    """Dominant angular harmonic of the log-curvature — the lobe count.
+def layer_width(kappa: np.ndarray, drop: float = 1.0) -> float:
+    """Angular width of the curvature layer, in radians.
 
-    Read from the spectrum rather than taken from Gielis ``m``, so the same
-    rule works for any boundary and carries no absolute length (§9).
+    The fraction of the boundary on which ``ln|κ|`` sits within ``drop`` of its
+    maximum. On a Gielis star that is the angular extent of the arm tip, and it
+    narrows as the exponent rises — the geometric signature of the thinning
+    analyticity strip that architecture §4 invokes. Measured on the raw κ,
+    which is analytic, so no smoothing is needed to define it and there is no
+    circularity with the bandwidth it feeds.
+
+    Args:
+        kappa: |κ(θ)| on the fine grid.
+        drop: How far ``ln|κ|`` may fall below its peak and still count as
+            inside the layer.
+
+    Returns:
+        The layer width in radians.
     """
-    perimeter = float(np.mean(gam) * 2.0 * PI)
-    s_raw = alpha * np.log(np.maximum(kappa * perimeter / (2.0 * PI), 1e-12))
-    power = np.abs(np.fft.rfft(s_raw - s_raw.mean())) ** 2
-    return max(1, int(np.argmax(power[1:])) + 1)
+    s_raw = np.log(np.maximum(kappa, 1e-300))
+    inside = int((s_raw > s_raw.max() - drop).sum())
+    return max(inside, 1) / kappa.size * 2.0 * PI
 
 
-def density_bandwidth(
-    kappa: np.ndarray, gam: np.ndarray, alpha: float = 0.5, per_lobe: int = 4
-) -> int:
-    """Low-pass bandwidth for the density: ``per_lobe`` harmonics per lobe.
-
-    Two things this rule is deliberately *not*:
+def density_bandwidth(kappa: np.ndarray, harmonics_per_layer: float = 1.0) -> int:
+    """Gaussian smoothing width for the density: ``2π / layer width``.
 
     **Not tied to ``nn``**, which architecture §4 suggests and measurement
     rejects: a bandwidth ∝ nn makes ``w`` a different map at every resolution,
@@ -162,23 +169,26 @@ def density_bandwidth(
     instead of converging. It is also invariant 13.3 in another guise — the
     frozen object has to be one map.
 
-    **Not a faithful fit to κ.** Retaining all but 1e-4 of the log-curvature's
-    spectral energy asks for M = 1253 on the near-corner star, i.e. no
-    smoothing at all: the density is then as sharply peaked as κ, ``w`` loses
-    its wide analyticity strip, and the clamp stops mattering because σ varies
-    violently either way. The density is a *design* profile that has to track κ
-    loosely and be smooth; a handful of harmonics per lobe is what that means.
+    **Not a faithful fit to κ either.** Retaining all but 1e-4 of the
+    log-curvature's spectral energy asks for M = 1253 on the near-corner star,
+    i.e. no smoothing at all: the density is then as sharply peaked as κ and
+    the map loses the wide analyticity strip that is the whole point.
+
+    Tying M to the *layer width* instead puts the bandwidth where the physics
+    is. It is also the rule that orders correctly with sharpness — a lobe-count
+    rule gave the **sharpest** star the **lowest** bandwidth, which is backwards
+    — and it makes the cost of the near-corner regime explicit before any solve:
+    M = 4, 18, 38, 94 across the four stars, so a graded map needs
+    ``nn ≳ 4M`` = 16, 72, 152, 376.
 
     Args:
         kappa: |κ(θ)| on the fine grid.
-        gam: γ(θ) on the fine grid.
-        alpha: Curvature exponent, as in :func:`density_shape`.
-        per_lobe: Harmonics retained per lobe.
+        harmonics_per_layer: Gaussian widths retained per layer width.
 
     Returns:
         The mode cutoff M.
     """
-    return max(4, per_lobe * lobe_count(kappa, gam, alpha))
+    return max(4, int(np.ceil(harmonics_per_layer * 2.0 * PI / layer_width(kappa))))
 
 
 def density_shape(
@@ -281,7 +291,7 @@ def build(
     alpha: float = 0.5,
     hard: bool = False,
     uniform_arc: bool = False,
-    per_lobe: int = 4,
+    per_layer: float = 1.0,
     cap_alpha: bool = True,
     nn_force: int | None = None,
 ) -> Parametrisation:
@@ -297,7 +307,7 @@ def build(
             holomorphy Beyn's contour needs (conventions §13.2).
         alpha: Curvature exponent of the density.
         hard: Use the C⁰ ``np.clip`` clamp (the G2 control).
-        per_lobe: Harmonics per lobe retained in the density.
+        per_layer: Gaussian widths retained per curvature-layer width.
         cap_alpha: Derive the curvature exponent from the band (the default);
             False pins ``alpha`` and lets the clamp bind.
         nn_force: Sample the same map at this nn instead of the one the band
@@ -323,7 +333,7 @@ def build(
     # The map is built first and depends on nn nowhere; nn is then read off
     # the band. One direction only — an nn-dependent map is invariant 13.3 in
     # another guise.
-    n_modes = density_bandwidth(kappa, gam, alpha, per_lobe=per_lobe)
+    n_modes = density_bandwidth(kappa, harmonics_per_layer=per_layer)
     sigma, alpha_eff = density_shape(
         kappa, gam, contrast, n_modes, alpha=alpha, hard=hard, cap_alpha=cap_alpha
     )
@@ -445,6 +455,7 @@ def checks(shape: dict, par: Parametrisation) -> dict:
         # Not a coupling — the map stays nn-independent — but a *check*: if it
         # fails, the band is too coarse to carry a graded map on this shape.
         "M": par.n_modes,
+        "nn_min": 4 * par.n_modes,
         "density_resolved": par.nn >= 4 * par.n_modes,
         "alpha_eff": round(par.alpha_eff, 4),
     }
@@ -485,7 +496,7 @@ STARS = [
     ("sharp  n1=12, n2=n3=24", _star(12, 24)),
     ("near-corner  n1=20, n2=n3=50", _star(20, 50)),
 ]
-R_BAND = (60.0, 120.0)
+R_BAND = (20.0, 100.0)
 N_CORE = 1.5
 
 
@@ -512,6 +523,11 @@ def main() -> None:
         ax = axes[row, 0]
         theta_f = np.linspace(0, 2 * PI, 2000)
         f_f, g_f, *_ = gielis(theta_f, **shape)
+        dense = np.linspace(0, 2 * PI, N_FINE, endpoint=False)
+        fd, gd, *_ = gielis(dense, **shape)
+        dfd, dgd = _dtheta(fd), _dtheta(gd)
+        gam_d = np.hypot(dfd, dgd)
+        kap = np.abs(dfd * _dtheta(gd, 2) - dgd * _dtheta(fd, 2)) / gam_d**3
         ax.plot(f_f, g_f, "-", color="0.75", lw=1.0, zorder=1)
         fa, ga, *_ = gielis(ad.theta, **shape)
         sc = ax.scatter(fa, ga, c=ad.sigma_nodes, s=14, cmap="viridis", zorder=3)
@@ -519,9 +535,13 @@ def main() -> None:
         ax.scatter(fu, gu, s=5, marker="x", color="crimson", alpha=0.55, zorder=2,
                    label=f"uniform arc, same nn={un.nn}")
         ax.set_aspect("equal")
-        ax.set_title(f"{label}\nadaptive nn={ad.nn}, M={ad.n_modes}"
-                     f"{'' if ad.nn >= 4 * ad.n_modes else '  (UNDER-RESOLVED)'}",
-                     fontsize=10)
+        need = 4 * ad.n_modes
+        verdict = "resolved" if ad.nn >= need else f"UNDER-RESOLVED, needs {need}"
+        ax.set_title(
+            f"{label}\nlayer {layer_width(kap):.3f} rad → M={ad.n_modes}\n"
+            f"nn={ad.nn} from the band · {verdict}",
+            fontsize=9.5,
+        )
         ax.legend(fontsize=6.5, loc="lower left")
         fig.colorbar(sc, ax=ax, fraction=0.046, label="σ (density factor)")
 
@@ -539,9 +559,12 @@ def main() -> None:
         ax.axhline(R_BAND[1], color="0.3", ls="--", lw=0.9)
         ax.set_xlabel("t")
         ax.set_ylabel("R = (λ/n_core)/Δs")
-        ax.set_title(f"R in [{ad.r_achieved[0]:.0f}, {ad.r_achieved[1]:.0f}] "
-                     f"for a requested [{R_BAND[0]:.0f}, {R_BAND[1]:.0f}]", fontsize=9)
-        ax.legend(fontsize=6.5, loc="lower left")
+        ax.set_title(
+            f"R in [{ad.r_achieved[0]:.0f}, {ad.r_achieved[1]:.0f}] of a requested "
+            f"[{R_BAND[0]:.0f}, {R_BAND[1]:.0f}] · α_eff={ad.alpha_eff:.2f}",
+            fontsize=9,
+        )
+        ax.legend(fontsize=6.5, loc="upper left", framealpha=0.85)
         axd = ax.twinx()
         axd.plot(ad.t, ad.sigma_nodes, "-", color="0.55", lw=0.9)
         axd.set_ylabel("σ (density factor)", color="0.45", fontsize=8)
@@ -573,9 +596,9 @@ def main() -> None:
     fig.suptitle(
         "v0.6 G2 prototype — curvature-adaptive node density on the "
         "4-peak Gielis star\n"
-        f"R band {R_BAND[0]:.0f}\u2013{R_BAND[1]:.0f} at "
-        f"λ_ref = {REF_WAVELENGTH:g} nm, n_core = {N_CORE}; "
-        "nn derived from the band, uniform arc shown at the same nn",
+        f"cheap on the smooth shapes, expensive at the corner: band "
+        f"{R_BAND[0]:.0f}\u2013{R_BAND[1]:.0f} at λ_ref = {REF_WAVELENGTH:g} nm, "
+        f"n_core = {N_CORE}; nn derived from the band, uniform arc at the same nn",
         fontsize=12,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.965))
