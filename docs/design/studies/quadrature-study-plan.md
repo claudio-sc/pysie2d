@@ -131,6 +131,15 @@ the spec.
 *Passes when* adaptive beats const-density at equal `nn` on a high-curvature
 shape, **and** the smooth clamp measurably beats the hard one.
 
+> **Two clauses above are superseded by the findings that follow.** "Fourier
+> low-pass with bandwidth tied to `nn`" is refuted — a bandwidth ∝ `nn` makes
+> `w` a different map at every resolution. And the first pass criterion,
+> "adaptive beats const-density at equal `nn`", is **unachievable before Kress
+> lands**: a first-order scheme's error is set by the worst-resolved node, so
+> grading at fixed `nn` necessarily loses. The gate is re-sequenced after the
+> Kress prototype; until then its meaningful half is the map, not the solution
+> error.
+
 #### G2 findings — the density is designed, node placement only (2026-09-12)
 
 Script: `adaptive_density.py`; figure `star_adaptive_sampling.png`. Four 4-peak
@@ -247,6 +256,84 @@ error as opposed to map smoothness; whether `α_eff` is right for *accuracy*
 rather than for filling the band; and the constant in `nn ≳ 4M`, which is a
 Nyquist-style rule of thumb and wants pinning against a measured rate once the
 Kress prototype exists.
+
+#### Orientation study — the ladder that says grading cannot pay yet (2026-09-12)
+
+Script: `g2_pole_ladder.py`; figure `pole_ladder.png`. **Preliminary,
+orientation only**, and run on **shipped 0.5.0** — Kress is not implemented and
+G0 has not run, so the quadrature is Maradudin and the rate is 1 by
+construction. What is being read is the error *constant*.
+
+Equal-area ellipses, `m = 4`, `n1 = n2 = n3 = 2`, `a = 1/√A`, `b = √A`, so
+`a·b = 1` and the area is the circle's at every aspect — scale covariance (§9)
+makes a pure size change exactly `λ → s·λ`, so holding the area removes that
+trivial motion and leaves the shape effect. Tracked mode: **TE n = 0 at
+530.83214 + 26.37850j**, the simple anchor of `tests/test_qnm.py`
+(rad 200, n_core 3.0, TE). Angular order 0, so it stays simple under elongation.
+R band 20–80, adaptive map rebuilt per shape, `λ_ref` fixed per shape at the
+predicted Re λ (invariant 13.2).
+
+**The result: at equal `nn`, adaptive grading is 1.4–1.6× *worse* than constant
+density, and the mechanism is arithmetic rather than a defect.**
+
+| aspect | `nn` | adaptive \|err\| | const-density \|err\| | ratio | R_worst ratio |
+|---|---|---|---|---|---|
+| 1 | 72–286 | 1.27 / 0.62 / 0.31 | identical | 1.00 | 1.00 |
+| 2 | 144 | 3.459e-1 | 2.367e-1 | 1.46 | 1.41 |
+| 3 | 208 | 2.615e-1 | 1.651e-1 | 1.58 | 1.51 |
+| 4 | 246 | 2.203e-1 | 1.529e-1 | 1.44 | 1.39 |
+
+Observed order 1.00–1.10 on every rung and both schemes, as expected. On the
+circle the two schemes are **bit-identical**: κ is constant, so σ ≡ 1 and the
+adaptive map collapses to uniform arc length — a free correctness check on the
+whole construction, and the reason the aspect-1 row has no ratio.
+
+**Why grading loses, and the condition under which it wins.** A first-order
+scheme's error is set by the **worst-resolved node**, so at fixed `nn` any
+grading strictly increases `max Δs` — it buys resolution at the tips by
+coarsening the flanks, and the flanks are what the error is measuring. The
+error ratios (1.46, 1.58, 1.44) match the worst-node resolution ratios (1.41,
+1.51, 1.39) **to within 4 %**, which is the mechanism stated quantitatively.
+Grading can therefore only pay when the error is controlled by the
+*analyticity* of the integrand rather than by `max Δs` — that is, once the
+quadrature is spectral. It predicts nothing about Kress, and it does say
+**adaptive density must not ship on the Maradudin scheme.**
+
+This is the same shape of result as handoff §9, where uniform arc length was
+worse than uniform θ on a star, and it is consistent with it: both are cases of
+redistributing nodes under a scheme whose error the redistribution cannot help.
+
+**Consequence for the gate order.** G2's stated criterion — "adaptive beats
+const-density at equal `nn`" — is **unachievable before Kress lands**, and
+would have failed here for a reason that has nothing to do with the density.
+G2 should be re-sequenced after the Kress prototype, or its criterion restated
+as a property of the map (which the 12 Sep findings above do measure) rather
+than of the solution error.
+
+**Mode identification was the fragile part, not the quadrature.** The first
+attempt — aspect steps of 0.25, nearest-neighbour tracking, a fixed ±14 nm box
+— hopped silently between branches: Q swinging 10 → 48 → 25 → 40 along what
+should be a smooth trajectory, and two walks with different step sizes
+reporting *different modes at the same aspect* (550.5+10.9j against
+529.6+29.9j). Nothing was raised and `edge_margin` stayed healthy throughout.
+Fixed with 0.05 steps and a **secant predictor**, which shrinks the box to the
+trajectory's curvature rather than its whole step; the repaired trajectory is
+monotone in Re λ with Q pinned at 10.1–11.4, one mode per box, no widening.
+Whatever continuation the downstream ladder uses needs a predictor and a
+per-step ambiguity tell, not proximity to the previous solve.
+
+**An identification check beyond proximity.** The n = 0 mode is radial, so it
+should track the **minor** semi-axis `rad/√A`; measured `Re λ(A)/Re λ(1)`
+follows `A^{-1/2}` to ~8 % across the whole ladder (0.552 against 0.500 at
+aspect 4). Not an independent anchor — the ellipse reference here is Richardson
+self-convergence (§12, exponent pinned at 1), and CLAUDE.md non-negotiable 3
+still wants Mathieu — but it is a physical argument that the tracked branch is
+the intended one, which proximity alone cannot give.
+
+**Also worth carrying forward:** holding `R ≥ 20` costs `nn` 144 → 490 from
+circle to aspect 4 under grading, against 144 → 352 at constant density, and
+`λ_ref` shrinking along the ladder (530 → 293 nm) is most of that growth — `R`
+is points per *interior* wavelength, and the wavelength is getting shorter.
 
 ### G3 — Near-corner validity envelope
 
