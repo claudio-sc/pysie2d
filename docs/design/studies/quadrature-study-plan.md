@@ -174,7 +174,9 @@ the fix interacts correctly with whatever replaces the grid.
 ## 5. Reporting
 
 **A single running artifact**, republished to the same URL as each gate closes.
-One link, always current, history in versions.
+One link, always current, history in versions:
+
+    https://claude.ai/code/artifact/e9ceb9ef-69d0-40bf-9e9e-1b1329a1fa34
 
 Findings are also written back into this file as each gate lands — the artifact
 is the readable surface, this file is the record on the branch.
