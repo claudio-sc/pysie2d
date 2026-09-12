@@ -197,6 +197,41 @@ with no conversion on the return leg: the contour is drawn directly on
 `BIESolver.assemble`, which is itself the single vacuum-to-background conversion
 point, so the eigenvalues come back in the coordinate the box was given in.
 
+**Identifying modes on a non-circular shape is done by continuation from the
+circle (v0.6).** The circle is the only shape in this package with a *labelled*
+spectrum — the analytic Mie roots of `reference/mie.py`. A deformed shape has
+none, so a mode there is identified by carrying a labelled circle mode along a
+smooth shape perturbation, and **the analytic comparison is therefore the
+starting point of any non-circular convergence study**, not an optional extra
+for the circular case.
+
+That makes continuation a **convergence check in its own right**: a smooth
+perturbation of a smooth boundary moves a pole smoothly across the complex
+plane, so a kink, a jump, or a non-monotone excursion in the trajectory is a
+defect signal — in the discretisation, in the identification, or in the
+physics — and is read as such before it is read as a result.
+
+**The failure is silent, which is why this is recorded here.** Nearest-neighbour
+tracking with steps that are too long hops onto a neighbouring branch while
+every diagnostic stays healthy: measured on an equal-area ellipse ladder at
+aspect steps of 0.25, `Q` swung 10 → 48 → 25 → 40 along what should have been a
+smooth trajectory, two walks with different step sizes reported *different modes
+at the same aspect*, and `edge_margin` looked fine throughout. What fixed it was
+a **predictor** — secant extrapolation of the last two steps — so the search box
+has to contain only the trajectory's curvature rather than its whole step, plus
+a per-step ambiguity tell (the distance to the nearest other mode in the box).
+Where a physical argument is available it is worth more than proximity: the
+`n = 0` mode is radial and tracks the minor semi-axis, `Re λ(A)/Re λ(1) ≈
+A^{-1/2}` to ~8 % out to aspect 4.
+
+**The pole landscape gets richer as the shape deforms, so identification is not
+a one-time setup.** The circle's `n ≥ 1` degeneracies split under a deformation
+that breaks the symmetry, modes enter and leave a fixed box, and trajectories
+approach each other. Any change to the shape family, the deformation path, or
+the box is a reason to re-examine the identification rather than to assume the
+previous scheme still holds; expect it to be refined as the study reaches
+richer families.
+
 `QNMResult.size_parameters` exposes the modes in the analytic anchor's
 coordinate. Note that a rectangle in `x` is **not** a rectangle in `λ`:
 `λ = 2π·n_clad·rad/x` is a Möbius map and does not carry corners to corners. A

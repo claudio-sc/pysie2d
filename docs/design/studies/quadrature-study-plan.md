@@ -75,6 +75,28 @@ validation anchor in the sense of CLAUDE.md non-negotiable 3. It is adequate to
 *measure rates* and inadequate to *validate physics*; a proper non-circular
 anchor is a known open item (§7).
 
+**Every non-circular convergence measurement starts at the circle and reaches
+its shape by continuation** (conventions §8). The circle is the only labelled
+spectrum available, so a mode on a deformed shape is identified by carrying a
+labelled circle mode along a smooth perturbation — elliptical or star-like —
+and the analytic Mie comparison is the first step of the measurement rather
+than a separate circular exercise.
+
+Two things follow, and they apply to every gate below that touches a
+non-circular shape:
+
+- **The continuation is itself a convergence check.** A smooth perturbation of
+  a smooth boundary traces a smooth pole trajectory, so a kink, a jump or a
+  non-monotone excursion is a defect signal — discretisation, identification or
+  physics — and is read that way before it is read as a result. This is a check
+  the study gets for free and should not waste.
+- **The pole landscape is a standing point of care.** It gets richer as the
+  deformation proceeds: circle degeneracies split, modes enter and leave a
+  fixed box, trajectories approach one another. Identification is expected to
+  be **refined as the study reaches richer families**, not settled once — a
+  change of shape family, path or box is a reason to re-examine it. The
+  measured failure mode is silent (see the orientation study below).
+
 Baseline case, unchanged from the handoff so numbers are comparable:
 
     geometry   : Geometry.gielis(rad=200, n_pts=nn, m=0)      # circle
@@ -320,7 +342,8 @@ Fixed with 0.05 steps and a **secant predictor**, which shrinks the box to the
 trajectory's curvature rather than its whole step; the repaired trajectory is
 monotone in Re λ with Q pinned at 10.1–11.4, one mode per box, no widening.
 Whatever continuation the downstream ladder uses needs a predictor and a
-per-step ambiguity tell, not proximity to the previous solve.
+per-step ambiguity tell, not proximity to the previous solve. This measurement
+is what §3's standing rule and conventions §8 are written from.
 
 **An identification check beyond proximity.** The n = 0 mode is radial, so it
 should track the **minor** semi-axis `rad/√A`; measured `Re λ(A)/Re λ(1)`
@@ -413,6 +436,12 @@ Carried deliberately, not oversights.
   the star have only self-convergence (§3). An ellipse against Mathieu functions
   is the realistic candidate and is real work. Deferred by decision; the
   validation scheme is to be designed when the work reaches it.
+
+  Continuation from the analytic circle (§3, conventions §8) does **not** close
+  this item and must not be mistaken for it: it identifies *which* mode is being
+  measured and flags defects through the smoothness of the trajectory, but the
+  quantity it is compared against on the deformed shape is still a
+  self-convergence extrapolant. It is a check, not an anchor.
 - **The uniform-arc-length star anomaly**, handoff §9. Untouched by decision.
   May be made moot by the `Parametrisation` rewrite — the `np.interp` inversion
   it implicates disappears — but that is a hypothesis the study does not test
