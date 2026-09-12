@@ -155,12 +155,18 @@ shape, **and** the smooth clamp measurably beats the hard one.
 
 > **Two clauses above are superseded by the findings that follow.** "Fourier
 > low-pass with bandwidth tied to `nn`" is refuted — a bandwidth ∝ `nn` makes
-> `w` a different map at every resolution. And the first pass criterion,
-> "adaptive beats const-density at equal `nn`", is **unachievable before Kress
-> lands**: a first-order scheme's error is set by the worst-resolved node, so
-> grading at fixed `nn` necessarily loses. The gate is re-sequenced after the
-> Kress prototype; until then its meaningful half is the map, not the solution
-> error.
+> `w` a different map at every resolution.
+>
+> And the first pass criterion, "adaptive beats const-density at equal `nn`",
+> **has now failed twice, for two different reasons**. On the shipped scheme it
+> is unachievable in principle: a first-order error is set by the
+> worst-resolved node, so grading at fixed `nn` necessarily loses. Under the
+> Kress prototype it fails again on ellipses, because grading narrows the
+> analyticity strip of `f∘w` and delays the spectral onset. **The criterion is
+> therefore not a gate on the density's construction at all** — it is a
+> question about which shapes grading is for, and only **G3**'s near-corner
+> regime can answer it. Until then the meaningful half of this gate is the map,
+> not the solution error.
 
 #### G2 findings — the density is designed, node placement only (2026-09-12)
 
@@ -357,6 +363,93 @@ the intended one, which proximity alone cannot give.
 circle to aspect 4 under grading, against 144 → 352 at constant density, and
 `λ_ref` shrinking along the ladder (530 → 293 nm) is most of that growth — `R`
 is points per *interior* wavelength, and the wavelength is getting shorter.
+
+#### The same ladder under Kress — spectral, and grading still does not pay (2026-09-12)
+
+Scripts: `kress_t.py` (assembly), `kress_pole_ladder.py` (study); figure
+`kress_pole_ladder.png`. Same shapes, same mode, same continuation as the
+orientation ladder above — only the quadrature changes.
+
+**The assembly works in `t`, not θ.** The inherited `exp_kress_full.py` uses
+`geom.theta` both in the singular factor `4 sin²((θ−θ')/2)` and as the step
+`2π/N`, which is correct only for nodes equispaced in θ; under grading it is
+**silently wrong** (conventions §13.1). Rather than carry the `w'` Jacobian
+through every term, `kress_t.py` samples at `θ_j = w(t_j)` and takes **every**
+derivative with respect to `t` spectrally by FFT. The Jacobian then never
+appears, and the analytic-quality `ddf`/`ddg` that the handoff's
+machine-precision column needed come for free (`_der_real_3` caps the rate at
+3, §6.4).
+
+**Two anchors had to be fixed before anything could be measured.**
+
+- *The test-suite constant is rounded.* `tests/test_qnm.py`'s
+  `530.83214 + 26.37850j` is quoted to five decimals, which reads as a fixed
+  **1.259e-6 nm** error — invisible against the shipped 0.38 nm and dominant
+  under Kress. Newton on `qnm_denominator` gives
+  `530.8321407288238 + 26.37849897377869j`, and the offset is exactly the
+  1.2587e-6 seen. **The suite's anchors need more digits when it is
+  re-anchored during the migration.**
+- *The contour was the floor at `n_quad_per_side = 6`.* It pins at 5e-6 there
+  and drops to the discretisation once raised; 12 is used throughout. The
+  justification in `test_qnm.py` ("identical modes to 1e-8 against a 0.38 nm
+  discretisation error") is a statement about the *shipped* error and does not
+  survive the migration.
+
+**Parametrisation invariance is the correctness test, and it passes.** A
+circle's poles cannot depend on how the circle is parametrised, so a
+deliberately graded map `θ = t + 0.3 sin 2t` must give the same pole as uniform
+θ. It does, at **1.6e-11** once the map is resolved (`nn ≥ 60`); a misplaced
+Jacobian fails this. Against the full-precision Mie pole on the circle:
+
+| nn | Kress uniform | Kress graded | shipped |
+|---|---|---|---|
+| 20 | 1.198e-3 | 5.348e-1 | 4.92 |
+| 30 | 1.652e-9 | 4.259e-3 | 3.20 |
+| 60 | 1.146e-11 | 1.600e-11 | 1.53 |
+| 120 | 1.066e-11 | 1.083e-11 | 0.75 |
+
+**Spectral convergence survives the deformation** — the result the migration
+rests on, now shown on a non-circular shape and on a QNM rather than on `qext`.
+At aspect 2 the constant-density error runs 3.5e-1 → 1.4e-3 → 7.7e-7 → 6.9e-10
+→ 2.2e-12 across `nn = 20 … 80`. The shipped scheme needed `nn = 572` to reach
+8.2e-2 on the same shape.
+
+**Grading still does not pay, for a different reason than before.** At equal
+`nn`, adaptive against constant density (error ratio, >1 means grading loses):
+
+| aspect | nn 20 | 30 | 40 | 60 | 80 | 120 |
+|---|---|---|---|---|---|---|
+| 1 | 1.00 | 1.00 | at floor | at floor | at floor | at floor |
+| 2 | 15.0 | 119 | 5842 | 107 | 0.25 | 0.93 |
+| 3 | 1.44 | 63.4 | 1364 | 82.5 | 0.48 | **0.01** |
+| 4 | 2.08 | — | — | — | 0.61 | 0.88 |
+
+Grading **delays the onset of spectral convergence**, heavily — up to 5800×
+pre-asymptotically — and then buys a modest-to-large constant once both schemes
+are converging (100× at aspect 3, `nn = 120`; a wash at aspect 4). On the
+circle the two are identical at low `nn` because κ is constant, so σ ≡ 1 and
+the maps coincide.
+
+**The `nn ≳ 4M` rule does not explain this, and is therefore necessary rather
+than sufficient** — correcting the framing of finding 4 above. Aspect 2 has
+`M = 5`, so `4M = 20`, yet grading is still 5842× worse at `nn = 40`. The
+mechanism is not resolving the density: composing with `w` narrows the
+**analyticity strip of `f∘w` in the `t`-plane**, and the spectral rate is set
+by that strip. Resolving the density is a floor, not a guarantee.
+
+**What this says about the release, stated carefully.** On ellipses to aspect
+4, the curvature-adaptive density (scope item 4) **is not earning its place**:
+the smooth parametrisation (item 3) delivers the spectral convergence, and
+grading mostly costs. That is not a verdict on grading in general — these are
+ellipses, whose curvature contrast is ~3 against the ~8.8e3 of the sharp stars,
+and the near-corner regime grading exists for is exactly what **G3** measures
+and what this ladder does not touch. The honest reading is that **item 4 should
+be justified by G3 or deferred**, and that the case for it cannot be made on
+smooth shapes.
+
+**Also measured:** at aspect 4 and `nn ≤ 60` the mode is not identifiable by
+either scheme — the probe saturates on spurious spectrum. That is a property of
+the resolution, not an error, and the sweep records it rather than aborting.
 
 ### G3 — Near-corner validity envelope
 
