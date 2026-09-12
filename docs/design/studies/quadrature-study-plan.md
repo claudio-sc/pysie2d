@@ -131,6 +131,43 @@ the spec.
 *Passes when* adaptive beats const-density at equal `nn` on a high-curvature
 shape, **and** the smooth clamp measurably beats the hard one.
 
+**Partial result, 12 Sep 2026 — `adaptive_density.py`, placement and map
+smoothness only, no rate claimed.** Four `m = 4` stars, `R` band 60–120,
+λ_ref = 1550 nm. Density `σ ∝ |κ|^α` dimensionless in `u = |κ|·L/2π`;
+`T(θ) = 2π/Z ∫σγ` from an exact Fourier antiderivative, inverted by **Newton**
+with `np.interp` demoted to the initial guess; `w' = 1/T'(w)` and
+`w'' = −T''(w)·(w')³` closed-form. Density residual **4e-16**; `∫w' dt = 2π` to
+1e-5–9e-3 at the band's own `nn`, → 1e-9 as the band rises. Six corrections to
+the specification, all measured:
+
+1. **Anchor the band at max κ, not min.** Curvature contrast ~8.8e3 against a
+   band of 2; anchoring low makes the upper bound bind almost everywhere and
+   grading degenerates to uniform arc length.
+2. **Derive `α` from the band.** `α_eff = min(α, ln C / range(ln|κ|))`, 0.10–0.18
+   here. At a pinned α = 1/2 the natural spread is ~93× against a band of 2×, so
+   the density goes two-level.
+3. **The clamp is then never active** — hard and smooth indistinguishable. Pin
+   α so the band binds and the `w(t) − t` tail at mode 500 is 5.9e8× / 4.8e4× /
+   3.4e2× / 1.7× worse under `np.clip`. Smooth saturation stays as a guard.
+4. **Bandwidth must not be tied to `nn`** (architecture §4 as first written said
+   otherwise, and is corrected). `nn ≥ 4M` survives as a check.
+5. **Positive smoothing kernel, not a sharp cutoff.** Truncation Gibbs-undershoot
+   digs an artificial σ minimum which then sets the band — measured, every node
+   at `R ≈ 28.7` for a requested 15–30.
+6. **Grading at fixed `R_min` adds nodes** (172 vs 96 on the mild star). The gain
+   is accuracy at equal `nn`; the fair baseline is uniform arc length at the
+   adaptive `nn`.
+
+`nn` is **derived from the band, not supplied** (D17): `min σ = 1` over-resolves
+by up to ~2×, so descend from it while *verifying* each candidate — 140 / 160 /
+170 / 216 for an achieved 60–106. Scale covariance holds by construction: the
+density reads only `|κ|·L`.
+
+*Still open in G2:* every convergence rate; the clamp's effect on solution error
+rather than map smoothness; whether `α_eff ≈ 0.1` is right for accuracy or only
+for filling the band; and the lobe-count detector, which reads 8, 8, 12, 4
+across four shapes of identical symmetry and is too crude to become a spec.
+
 #### G2 findings — the density is designed, node placement only (2026-09-12)
 
 Script: `adaptive_density.py`; figure `star_adaptive_sampling.png`, four 4-peak
