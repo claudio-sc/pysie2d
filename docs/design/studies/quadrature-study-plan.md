@@ -113,7 +113,7 @@ Baseline case, unchanged from the handoff so numbers are comparable:
 Sequential; each depends on the one before. **G1 is the riskiest and everything
 after it depends on the answer.**
 
-### G0 — Reproduce
+### G0 — Reproduce  ← RETIRED, not run
 
 Re-run the handoff's decisive numbers against shipped 0.5.0 on this machine:
 first-order baseline (§5.1), Kress on M2/M4 → rate 3 (§5.3), Kress on all four
@@ -123,16 +123,19 @@ blocks + analytic `ddf`/`ddg` → 3.4e-15 at `nn = 30`.
 not, and then nothing downstream is trustworthy — the handoff was measured
 elsewhere.
 
-> **Not run, and now of questionable value — a decision, not an oversight.**
-> The work below jumped to a Kress prototype and anchored it against the
-> **full-precision analytic Mie pole** (machine precision, recomputed by
-> Newton), which is a stronger and more independent reference than the
-> handoff's `qext` table it was meant to reproduce. G0's purpose was to
-> establish that the handoff's numbers transfer to this machine; that purpose
-> is arguably served by having reproduced the *phenomenon* — first order
-> shipped, spectral under Kress — against a better anchor. **Either run it or
-> retire it explicitly; leaving it open and unrun is the one option that
-> misleads.**
+> **RETIRED by decision, 12 Sep 2026 — superseded, not skipped.** G0 existed to
+> confirm that the handoff's numbers transfer to this machine before anything
+> downstream was trusted. The work below instead jumped to a Kress prototype
+> and anchored it against the **full-precision analytic Mie pole** — recomputed
+> by Newton on `qnm_denominator`, accurate to machine precision, against the
+> handoff's five-decimal `qext` table. The *phenomenon* G0 was to verify is
+> reproduced: first order on the shipped scheme (rate 1.00–1.10 on three
+> ladders), spectral under Kress (1.2e-3 → 1.65e-9 → 1.1e-11 on the circle).
+>
+> What is therefore **not** established, and is the price of retiring it: the
+> handoff's specific digits (`6.253e-5` at `nn = 30` for Kress on four blocks,
+> `3.36e-15` with analytic `ddf`/`ddg`) have never been reproduced here. Should
+> a later discrepancy make those digits matter, this gate is where to start.
 
 ### G1 — A smooth `w`  ← the risk
 
