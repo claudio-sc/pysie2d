@@ -443,6 +443,64 @@ the raw rungs they came from.
 ladder in `n_pts` measures different resolutions at different points of a
 catalogue.
 
+## 13. Node placement and the parametrisation (v0.6, tentative)
+
+**This section is tentative.** It is written before the work it describes, so
+that the v0.6 study and code-specs have a numbered contract to cite instead of
+re-arguing the physics each time. It will be fixed or amended before the
+migration closes. Background and decisions:
+[docs/design/v0.6-architecture.md](design/v0.6-architecture.md).
+
+v0.6 replaces the Maradudin diagonal self-patch with Kress–Martensen product
+quadrature. The solver currently converges at **exactly first order in `nn`**
+on a perfect circle with perfectly uniform nodes — node placement is
+definitionally not a factor there, and the cause is the quadrature treatment of
+the logarithmic singularity. Kress plus analytic second derivatives takes the
+circle to **3.4e-15 at `nn = 30`** against analytic Mie.
+
+Kress's weights come from trigonometric interpolation, and that imposes one
+constraint with three consequences. All three are of the kind this file exists
+for: **breaking them produces a plausible wrong answer, not an error.**
+
+**13.1 Nodes are equispaced in the quadrature parameter `t`.** Not in θ, not in
+arc length. The boundary is `θ = w(t)` with `t` equispaced and `w` a smooth
+2π-periodic monotone map; `w'` is absorbed exactly the way `γ = |x'(θ)|`
+already is, so `4 sin²((t − t')/2)` remains the correct periodic stand-in for
+the singular factor. Grading is therefore fully available — it lives in `w`,
+not in the node positions. Violating this drops the quadrature from spectral to
+first order silently.
+
+`w` must be **smooth**, which is the substantive requirement. The v0.5
+arc-length inversion uses `np.interp` and is only C⁰; a C⁰ change of variables
+destroys the smoothness the trapezoid rule's accuracy rests on. Uniform θ,
+uniform arc length and curvature-adaptive grading are one map with three
+densities `|dx/dt| = ρ(t)`, not three code paths, and `arc_length: bool` is
+removed in favour of a `Parametrisation` object carrying `w`, `w'`, `w''`.
+
+**13.2 `w` does not depend on λ.** If the parametrisation varies with the
+wavelength, `M(λ)` loses holomorphy and Beyn's contour integral silently
+returns wrong modes — holomorphy is the premise of the contour argument (§8).
+This is the same reasoning that rules out condition-number-optimal node
+placement: the smallest singular value of a matrix is not analytic in λ, and a
+quasi-normal mode is by definition a λ where `M` is singular. A density
+specified in `R = wavelength_over_ds` (§12) therefore carries its **own fixed
+reference wavelength**, set once when the `Parametrisation` is built and never
+taken from the solve.
+
+**13.3 `w` does not depend on any parameter being differentiated.** Otherwise
+`M(p₀ − h)` and `M(p₀ + h)` are built on different node sets and the O(h) term
+that freezing removes comes back — measured rate on `∂M/∂b`: 2.7 without
+freezing, 100.1 with (§10). §10's contract is therefore restated in terms of
+the parametrisation rather than the angle array: the frozen object is `w`, not
+`θ`. This is a **breaking API change** — under Kress the θ array still says
+where the nodes are, but assembly also needs `w'` and `w''` there, and those
+cannot be recovered from the array.
+
+**Scale covariance (§9) is preserved.** An `R` ratio is dimensionless, and the
+Kress weights `R_j` depend only on `nn`. What must be watched is the same thing
+§9 already names: nothing in the density evaluation or the inversion may carry
+an absolute length.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

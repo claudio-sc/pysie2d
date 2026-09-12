@@ -175,14 +175,22 @@ Shipped: v0.1 core scattering → v0.2 line dipole, self-Green, LDOS/Purcell →
 v0.3 performance (Cephes Hankel fast path, batched factorise-once
 `relative_ldos_map`) → v0.4 vacuum wavelength conventions (breaking) + QNM
 extraction via Beyn's contour method, validated against analytic Mie resonances
-→ v0.4.2 scale covariance (conventions §9).
+→ v0.4.2 scale covariance (conventions §9)
+→ v0.5 threaded `contour_moments` ([performance](docs/design/performance.md)
+§3.1, the 5.02× measurement and its two traps) + the adjoint
+eigenvalue-sensitivity API (conventions §11).
 
-**Next, v0.5: two additions only.** Threading of the contour loop in
-`contour_moments` — see [performance](docs/design/performance.md) §3.1, which
-has the 5.02× measurement and the two traps — and an adjoint
-eigenvalue-sensitivity API exposing the `dλ/dp` identity that conventions §9
-already proves and tests at operator level. Both are scoped; neither adds
-physics.
+**Next, v0.6: spectral convergence.** Kress–Martensen product quadrature
+replacing the Maradudin diagonal self-patch, a smooth `Parametrisation` object
+replacing the `np.interp` arc-length inversion, curvature-adaptive node
+density, far-field angular quadrature, and a breaking change to the frozen-node
+API. First order → machine precision at `nn = 30` on the circle. Decisions in
+[docs/design/v0.6-architecture.md](docs/design/v0.6-architecture.md), the
+preliminary study in
+[docs/design/studies/quadrature-study-plan.md](docs/design/studies/quadrature-study-plan.md),
+the invariants in `docs/conventions.md` §13 (tentative until the migration
+closes). **Nothing is implemented yet** — the study runs first and produces the
+code-specs.
 
 Longer term: slab-waveguide backgrounds, multiple particles.
 
