@@ -131,6 +131,88 @@ the spec.
 *Passes when* adaptive beats const-density at equal `nn` on a high-curvature
 shape, **and** the smooth clamp measurably beats the hard one.
 
+#### G2 findings — the density is designed, node placement only (2026-09-12)
+
+Script: `adaptive_density.py`; figure `star_adaptive_sampling.png`, four 4-peak
+Gielis stars (`m = 4`, `n1/n2 = 2/4`, `6/12`, `12/24`, `20/50`) at an `R` band
+of 60–120, λ_ref = 1550 nm, `n_core = 1.5`. **Placement and smoothness only —
+no convergence rate is claimed here**, since that needs the Kress prototype
+and G0 first. What is established is the construction and six corrections to
+architecture §4.
+
+**The construction.** One density `σ(θ) ∝ |κ|^α_eff`, dimensionless in
+`u = |κ|·L/2π` (`u ≡ 1` on a circle); `T(θ) = 2π/Z ∫₀^θ σγ` built from an exact
+Fourier antiderivative and inverted by **Newton**, with `np.interp` demoted to
+the initial guess; `w' = 1/T'(w)` and `w'' = −T''(w)·(w')³` in closed form.
+Delivered density residual `max |σ·|dx/dt| / mean − 1|` is **4e-16** on all four
+stars, and `∫w' dt = 2π` to 1e-5–9e-3 at the band's own `nn`, converging to
+1e-9 when the band is raised — the inversion machinery is exact and the
+remaining error is resolution, not the map.
+
+1. **Anchor the band at the curvature *maximum*, not the minimum.** The stars
+   carry a curvature contrast of ~8.8e3 against a requested band of 2. Scaling
+   `σ` up from `min κ` makes the *upper* bound bind over essentially the whole
+   boundary: grading degenerates into uniform arc length with a few
+   artificially coarsened points, which is the opposite of the intent. Anchored
+   at `max κ`, σ = C sits at the sharpest point and σ = 1 on the smoothest, as
+   §4 specifies.
+
+2. **Derive α from the band; do not pin it.** With `α = 1/2` the natural spread
+   is ~93× against a band of 2×, so the clamp saturates everywhere and the
+   density is two-level. `α_eff = min(α, ln C / range(ln|κ|))` — 0.10–0.18 on
+   these four stars — spans the band exactly and smoothly.
+
+3. **The smooth clamp is then never active, which is the result.** With α
+   derived, hard and smooth clamps are bit-comparable. Pin α so the band binds
+   and the difference is enormous: the `w(t) − t` tail at mode 500 is
+   **5.9e8× / 4.8e4× / 3.4e2× / 1.7×** worse under `np.clip` across the four
+   stars. So §4's trap is real but reachable only by pinning α — the smooth
+   saturation stays in as a guard, not as the normal path.
+
+4. **Bandwidth must not be tied to `nn`,** which §4 suggests. A bandwidth ∝ nn
+   makes `w` a different map at every resolution: refinement chases a moving
+   target and `∫w' dt = 2π` stalls near 1e-3 instead of converging. It is also
+   invariant 13.3 in another guise — the frozen object has to be one map. The
+   bandwidth is a property of the *shape* (harmonics per lobe, lobe count read
+   off the log-curvature spectrum). The `nn` coupling survives as a **check**,
+   `nn ≥ 4M`, which the sharp star fails at this band and which says the band
+   is too coarse to carry a graded map rather than that the map is wrong.
+
+5. **Smooth with a positive kernel, not a sharp Fourier cutoff.** Truncation
+   Gibbs-undershoots the peaked log-curvature and digs a narrow artificial
+   minimum; since `min σ = 1` is what pins `nn`, the band then gets set by the
+   undershoot and every real node is over-resolved — measured on the mild star,
+   where every node landed at `R ≈ 28.7` for a requested 15–30. A Gaussian
+   (heat-kernel) taper cannot leave the range of its input.
+
+6. **Grading at a fixed `R_min` adds nodes; it does not save them.** 172 vs 96
+   on the mild star, because the band asks for *more* resolution at the peaks
+   while holding the floor. The gain is accuracy at equal `nn`, so the fair
+   const-density baseline is uniform arc length at the adaptive `nn` — that is
+   what the figure overlays, and what the G2 pass criterion has to mean.
+
+**`nn` is derived from the band, not supplied** (D17: rungs in `R`, never in
+raw `n_pts`). `min σ = 1` gives the first estimate `nn = ⌈R_min·Z·n_core/λ_ref⌉`,
+which over-resolves by up to ~2× because nodes are sparsest exactly where σ is
+smallest, so a narrow σ minimum goes unsampled. Descending from it while
+**verifying** each candidate — not extrapolating, which lands below the band —
+gives `nn` = 140 / 160 / 170 / 216, with the achieved band 60–106 against a
+requested 60–120.
+
+**Scale covariance (§9) holds by construction.** The density reads only
+`|κ|·L`, so it carries no absolute length; the R band's absolute level enters
+`nn` alone, and `nn` is unchanged when `rad` and λ scale together. A density
+that compared λ_ref against an absolute `Δs` pointwise would move the nodes
+under `rad` scaling alone — a §9 violation the specification invites and this
+construction avoids.
+
+**Not established here:** any convergence rate, the clamp's effect on solution
+error (as opposed to map smoothness), and whether `α_eff` ~ 0.1 is the right
+exponent for *accuracy* rather than for filling the band. The lobe-count
+detector also reads 8, 8, 12 and 4 for four shapes with the same symmetry,
+which is crude; it needs either the Gielis `m` or a better rule before it
+becomes a spec.
+
 ### G3 — Near-corner validity envelope
 
 Error versus exponent at fixed `nn`, on the superellipse path (`m = 4, a = b =
