@@ -5,7 +5,8 @@ and under review; a Kress prototype exists in `kress_t.py`. Two pieces have
 been ported to production from these findings: `Parametrisation`
 (`src/pysie2d/parametrisation.py`) and analytic `ddf`/`ddg`
 (`geometry._rderiv2`) — see architecture §1, items 2–3. Kress itself (item 1)
-is still prototype-only. Findings are in the
+is still prototype-only; its production code-spec, with a verified reference
+patch, is [../kress-spec.md](../kress-spec.md) (13 Sep 2026). Findings are in the
 `####` sections under each gate. This is doc B of two. The
 decisions this study works within are
 [../v0.6-architecture.md](../v0.6-architecture.md); the measurements it starts
@@ -489,6 +490,41 @@ smooth shapes.
 **Also measured:** at aspect 4 and `nn ≤ 60` the mode is not identifiable by
 either scheme — the probe saturates on spurious spectrum. That is a property of
 the resolution, not an error, and the sweep records it rather than aborting.
+
+#### The default node map under Kress — uniform θ, and where arc length still wins (2026-09-13)
+
+Script: `kress_default_map.py`; tables in
+[../kress-spec.md](../kress-spec.md) Appendix A. Asked because uniform θ
+undersamples the arms of sharp stars, which is why v0.5 defaulted to uniform
+arc length. Three maps — uniform θ, uniform arc length, adaptive band 20–100 —
+on the rounded-square ladder (`m = 4`, 2/4 … 20/50, plus the `m = 6` §9 star)
+and on a spiky ladder (`m = 6`, n2 = n3 = 8, n1 = 4, 2, 1, 0.5: arm ratio 1.7 …
+64), probe `qext`.
+
+- **Uniform θ is the most accurate map once resolved, on every shape
+  measured.** At `nn = 640` on the near-corner 20/50: θ 2.2e-6, adaptive 6.8e-6,
+  arc length 1.8e-4. On the arm-ratio-8 spike at `nn = 960`: θ 5.8e-9, arc
+  length 3.1e-4.
+- **The v0.5 argument is true, but only pre-asymptotically.** Arc length is 2–7×
+  better at `nn = 40` on the rounded squares, and up to 30× better at `nn = 120`
+  on the arm-ratio-8 spike, where uniform θ's widest gap (the arm flanks) leaves
+  its worst node near `R ≈ 4`. θ overtakes by `nn = 320` there.
+- **The arc-length map is not the defect.** It matches an independent
+  `scipy.quad` inversion to 2.7e-15, with density residual 6.6e-14; its
+  convergence still stalls non-monotonically near 3e-4 on the spike. Composing
+  with `w` narrows the analyticity strip, the mechanism the ellipse ladder above
+  already found. A related observation, **not** a resolution of handoff §9:
+  under Kress with an exact smooth map, uniform arc length is still slower than
+  uniform θ on the §9 star, so `np.interp` is not needed for that ordering. §9
+  itself was measured on the shipped scheme and stays open by decision.
+- **Adaptive grading does not beat plain arc length** in the one regime where
+  grading helps at all. That regime — spiky, under-resolved — is G3's question.
+- `Parametrisation.gielis` fails on the arm-ratio-64 spike (Newton) and on the
+  exponent-1 star (`ZeroDivisionError`); uniform θ runs on both.
+
+**Decision (owner's question, answered by this measurement):** the v0.6 default
+is uniform θ; arc length stays available as `parametrisation=
+Parametrisation.gielis(...)`. Recorded as kress-spec D1 and conventions §13.
 
 ### G3 — Near-corner validity envelope
 
