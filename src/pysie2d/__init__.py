@@ -1,7 +1,11 @@
 """pysie2d — 2-D boundary-integral scattering solver (homogeneous background).
 
 Public API:
-    Geometry: Gielis-superformula boundary parameterisation.
+    Geometry: Gielis-superformula boundary, sampled on a Parametrisation.
+        ``Geometry.gielis`` raises ``pysie2d.geometry.NonClosingBoundaryError``
+        (a ``ValueError``) when the superformula does not close.
+    Parametrisation: the frozen node map θ = w(t); ``uniform_theta()`` is the
+        default, ``gielis(...)`` places nodes near-uniformly in arc length.
     Material: optical properties of the scatterer.
     BIESolver: solver façade; call ``scatter``/``scatter_dipole`` to obtain a
         ``ScatterResult``.
@@ -23,8 +27,9 @@ Public API:
         in the parameter's own units (§§10, 11).
     size_parameter: derived Mie size parameter x = 2π·n_clad·rad/λ_vac.
     wavelength_over_ds: boundary points per interior wavelength (§10).
-    richardson_limit: first-order extrapolation of λ or dλ/dp in ``n_pts``
-        (§12).
+    richardson_limit: two-rung extrapolation of a quantity converging at
+        first order in ``n_pts``. Since v0.6 neither λ nor dλ/dp is such a
+        quantity (§12); **deprecated** (F7), emits ``DeprecationWarning``.
 
 All public wavelengths are **vacuum** wavelengths in nm; the low-level
 primitives (``assemble_matrix``, ``assemble_matrix_reference``,
@@ -38,6 +43,7 @@ from .geometry import Geometry
 from .green import relative_ldos, relative_ldos_map, self_green
 from .kernels import assemble_matrix, assemble_matrix_reference
 from .material import Material
+from .parametrisation import Parametrisation
 from .qnm import (
     DEGENERATE_COND,
     SHAPE_STEP,
@@ -60,6 +66,7 @@ __all__ = [
     "DEGENERATE_COND",
     "Geometry",
     "Material",
+    "Parametrisation",
     "QNMResult",
     "QNMSolver",
     "SHAPE_STEP",

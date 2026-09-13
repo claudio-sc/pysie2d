@@ -34,24 +34,30 @@ def test_reciprocity():
     # discretisation accuracy here: the scattered field at r2 from a source at
     # r1 equals the scattered field at r1 from a source at r2. This exercises
     # the RHS, the solve, and eval_field in two independent combinations, so it
-    # cannot pass by accident.
+    # cannot pass by accident. At nn = 300 the discretisation is at round-off:
+    # measured 1.6e-15, bound 1e-12.
     solver = BIESolver(Geometry.gielis(rad=RAD, n_pts=300, m=0), Material(N_CORE))
     r1 = (1.5 * RAD, 0.0)
     r2 = (0.0, 1.8 * RAD)
     s12 = _cross_scattered(solver, *r1, *r2)
     s21 = _cross_scattered(solver, *r2, *r1)
-    assert s12 == pytest.approx(s21, rel=1e-6)
+    assert s12 == pytest.approx(s21, rel=1e-12)
 
 
-ANCHOR_NN = 1000
+ANCHOR_NN = 240
+# The Graf sum converges like (a/d)^(2n), so at d = 1.2a the Wiscombe order the
+# reference uses by default (~19 at this size parameter) truncates it at the
+# 1e-6 / 1e-4 level in Re S — a reference floor that no nn can move. 80 orders
+# put the truncation at (1/1.44)^80 ≈ 2e-13.
+REFERENCE_N_MAX = 80
 
 
 @pytest.fixture(scope="module", params=[2, 1], ids=["TE", "TM"])
 def factorized_solver(request):
-    # nn is raised above the 300 used for the far-field efficiency tests because
-    # the near-field self-Green converges only at first order in nn; ~1e3 points
-    # are needed for 1 % agreement at the closest distance d = 1.2a. The matrix
-    # is identical across d at fixed pol, so it is LU-factorised once per
+    # nn = 240 is set by the dipole guard, not by accuracy: line_dipole_rhs
+    # refuses sources within five boundary spacings, and d = 1.2a is 40 nm from
+    # the surface, which needs a spacing below 8 nm (nn ≥ 158). The matrix is
+    # identical across d at fixed pol, so it is LU-factorised once per
     # polarisation (module scope) and reused across the distance sweep.
     pol = request.param
     geom = Geometry.gielis(rad=RAD, n_pts=ANCHOR_NN, m=0)
@@ -64,6 +70,9 @@ def factorized_solver(request):
 def test_self_green_vs_analytic_cylinder(factorized_solver, d_over_a):
     # Strong anchor: for a circular cylinder the self-Green function has a
     # closed form via Graf's addition theorem (reference.mie.self_green_cylinder).
+    # The strongest near-field anchor in the suite, and it closes to round-off:
+    # measured ≤ 3.4e-14 relative over the four distances and both
+    # polarisations. Bound 1e-12, above the ~2e-13 reference truncation.
     pol, geom, mat, lu = factorized_solver
     k = mat.wnum_bg(WAVELENGTH)
     x = size_parameter(WAVELENGTH)
@@ -77,10 +86,10 @@ def test_self_green_vs_analytic_cylinder(factorized_solver, d_over_a):
             np.array([d]), np.array([0.0])
         )[0]
     )
-    s_ref = self_green_cylinder(x, m, k, d, pol)
+    s_ref = self_green_cylinder(x, m, k, d, pol, n_max=REFERENCE_N_MAX)
 
-    assert s_bie.real == pytest.approx(s_ref.real, rel=1e-2)
-    assert s_bie.imag == pytest.approx(s_ref.imag, rel=1e-2)
+    assert s_bie.real == pytest.approx(s_ref.real, rel=1e-12)
+    assert s_bie.imag == pytest.approx(s_ref.imag, rel=1e-12)
 
 
 def test_free_space_limit():

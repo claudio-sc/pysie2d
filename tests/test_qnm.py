@@ -10,11 +10,12 @@ error and nothing more.
 Because the two halves were validated separately, a failure here is physics or
 convention — not arithmetic.
 
-Cost note: every test in this file assembles a complex 2·n_pts matrix at each
-of ``4·n_quad_per_side`` contour points. ``n_quad_per_side = 6`` is used
-throughout instead of the default 12, on the measurement that the two give
-identical modes to 1e-8 nm while the discretisation error is 0.38 nm — the
-contour integral is nowhere near the accuracy bottleneck here.
+Resolution note: under Kress–Martensen quadrature the discretisation error at
+``n_pts = 40`` is 2.8e-14 nm on the TE n=0 anchor, so the contour integral is
+the accuracy floor: 7.0e-6 nm at 6 nodes per side, 1.1e-11 nm at the default
+12 *(measured)*. The extraction fixtures therefore use 12, and the refinement
+tests deliberately use 6, where there is a contour error for refine() to
+remove.
 """
 
 import numpy as np
@@ -24,33 +25,37 @@ from conftest import QNM_N_CORE, RAD
 from pysie2d import BIESolver, Geometry, Material, QNMSolver
 from pysie2d.qnm import _null_vectors
 
-# Anchors from the Phase-1 table in test_mie_qnm.py, vacuum nm.
+# Anchors: Newton on reference.mie.qnm_denominator, full precision, vacuum nm.
+# Five decimals (the Phase-1 table) is a fixed 1.3e-6 nm error, which a
+# spectral solver resolves, so the digits matter here.
 # TE n=0: simple (multiplicity 1), but crowded in Re λ — TE n=5 sits at
 # 505.68+0.42j and TE n=2 at 550.47+20.24j, only ~20 nm away. What separates
 # them is Im λ, so the box must be tight in Im and not generous.
-ANCHOR_TE_SIMPLE = 530.83214 + 26.37850j
+ANCHOR_TE_SIMPLE = 530.8321407288238 + 26.37849897377869j
 BOX_TE_SIMPLE = (520.0 + 15.0j, 545.0 + 40.0j)
 
 # TE n=3: doubly degenerate and isolated (nearest TE neighbours 690.51 and
 # 1035.09), so the box placement is forgiving and the rank is the point.
-ANCHOR_TE_DEGENERATE = 760.68665 + 7.94771j
+ANCHOR_TE_DEGENERATE = 760.6866483138609 + 7.94771058718579j
 BOX_TE_DEGENERATE = (745.0 + 2.0j, 775.0 + 15.0j)
 
 # TM n=0: simple, and the polarisation cross-check. A swapped pol code would
 # put a TE mode here and miss by tens of nm.
-ANCHOR_TM_SIMPLE = 690.51371 + 40.64175j
+ANCHOR_TM_SIMPLE = 690.5137112394168 + 40.64175329927141j
 BOX_TM_SIMPLE = (675.0 + 30.0j, 705.0 + 50.0j)
 
-N_PTS = 200
-N_SIDE = 6
+N_PTS = 40
+N_SIDE = 12
+# Contour-limited extraction for the refinement tests: see the module docstring.
+N_SIDE_CONTOUR_LIMITED = 6
 
-# Convergence is first order in n_pts, in *both* Re λ and Im λ
-# *(measured: order 1.00-1.03 for each over n_pts = 100 → 400)*. At n_pts = 200
-# the errors are Re −0.377 nm and Im −0.240 nm, so these bounds sit ~30 % above
-# what the discretisation delivers. They are error budgets for a first-order
-# method, not fitted numbers, and must not be widened to rescue a failure.
-ATOL_RE_NM = 0.5
-ATOL_IM_NM = 0.32
+# Error budget for an extracted pole against its analytic anchor at N_PTS and
+# N_SIDE. *(measured |Δλ|: TE n=0 1.1e-11 nm — the contour floor — TE n=3
+# 5.7e-13, TM n=0 7.1e-15.)* 1e-9 nm is ~90× the worst; a convention or
+# polarisation error misses by tens of nm and a first-order discretisation by
+# tenths, so neither can hide in it. Re and Im are held to the same bound.
+ATOL_RE_NM = 1.0e-9
+ATOL_IM_NM = 1.0e-9
 
 
 def qnm_solver(pol, n_pts=N_PTS):
@@ -63,18 +68,18 @@ def qnm_solver(pol, n_pts=N_PTS):
 
 @pytest.fixture(scope="module")
 def te_simple():
-    """The simple TE anchor, extracted once and shared: ~11 s to compute."""
+    """The simple TE anchor, extracted once and shared."""
     return qnm_solver(pol=2).modes(*BOX_TE_SIMPLE, n_quad_per_side=N_SIDE)
 
 
 @pytest.fixture(scope="module")
 def te_degenerate():
-    """The degenerate TE anchor, extracted once and shared: ~11 s to compute."""
+    """The degenerate TE anchor, extracted once and shared."""
     return qnm_solver(pol=2).modes(*BOX_TE_DEGENERATE, n_quad_per_side=N_SIDE)
 
 
 # A deliberately badly drawn box for the refinement tests: the left edge is
-# pushed to 530 nm, ~0.5 nm from the pole, so edge_margin falls to 0.018 — the
+# pushed to 530 nm, ~0.8 nm from the pole, so edge_margin falls to 0.033 — the
 # regime the diagnostic exists to warn about. It also swallows TE n=2 at
 # 550.47+20.24j, so it returns three modes and the anchor one must be picked
 # out by proximity.
@@ -83,14 +88,22 @@ N_SIDE_COARSE = 4
 
 
 @pytest.fixture(scope="module")
-def te_simple_refined(te_simple):
-    """The simple anchor after one refinement pass: ~1 s."""
-    return te_simple.refine()
+def te_simple_contour_limited():
+    """The simple anchor on a coarse contour: 7.0e-6 nm out, all of it contour."""
+    return qnm_solver(pol=2).modes(
+        *BOX_TE_SIMPLE, n_quad_per_side=N_SIDE_CONTOUR_LIMITED
+    )
+
+
+@pytest.fixture(scope="module")
+def te_simple_refined(te_simple_contour_limited):
+    """The contour-limited anchor after one refinement pass."""
+    return te_simple_contour_limited.refine()
 
 
 @pytest.fixture(scope="module")
 def te_badly_placed():
-    """Extraction from BAD_BOX_TE_SIMPLE, and the same refined: ~4 s."""
+    """Extraction from BAD_BOX_TE_SIMPLE, and the same refined."""
     res = qnm_solver(pol=2).modes(*BAD_BOX_TE_SIMPLE, n_quad_per_side=N_SIDE_COARSE)
     return res, res.refine()
 
@@ -123,28 +136,28 @@ def test_beyn_matches_analytic_pole_tm():
     assert abs(lam.imag - ANCHOR_TM_SIMPLE.imag) < ATOL_IM_NM
 
 
-def test_pole_error_is_first_order_in_resolution():
+def test_pole_error_is_spectral_in_resolution():
     """The tolerances above are an error budget; this is what justifies them.
 
     A pole that did not converge — or converged to the wrong thing — would
     still pass a fixed tolerance if that tolerance were loose enough. Measuring
-    the order instead makes the tolerance falsifiable: first order in n_pts is
-    the same rate the near-field quantities obey (see test_convergence.py).
+    the rate instead makes the tolerance falsifiable. Under Kress–Martensen
+    quadrature the error falls geometrically, faster at each step: *(measured
+    at 24 contour nodes per side, so the contour floor of ~1e-13 nm is far
+    below every rung: 1.20e-3, 8.66e-6, 3.30e-8 nm at n_pts = 20, 24, 28 —
+    ratios 139 and 262)*. The bar is ×50 per step; a first-order scheme gives
+    ×1.2 over the same steps.
     """
     errors = []
-    for n_pts in (100, 200):
-        res = qnm_solver(pol=2, n_pts=n_pts).modes(
-            *BOX_TE_SIMPLE, n_quad_per_side=N_SIDE
-        )
+    for n_pts in (20, 24, 28):
+        res = qnm_solver(pol=2, n_pts=n_pts).modes(*BOX_TE_SIMPLE, n_quad_per_side=24)
         assert res.n_modes == 1
         errors.append(abs(res.wavelengths[0] - ANCHOR_TE_SIMPLE))
 
-    # Doubling n_pts halves a first-order error. Measured ratio 2.02 over this
-    # interval; the window admits order 0.8-1.3 and excludes both stagnation
-    # (ratio 1) and the second order that would mean the anchor is not the
-    # limit being approached.
-    ratio = errors[0] / errors[1]
-    assert 1.74 < ratio < 2.46
+    for coarse, fine in zip(errors[:-1], errors[1:], strict=True):
+        assert fine < coarse / 50.0
+    # ~3× the measured 3.3e-8, so the last rung is pinned in magnitude too.
+    assert errors[-1] < 1.0e-7
 
 
 def test_degenerate_pair_has_rank_two(te_degenerate):
@@ -160,7 +173,7 @@ def test_degenerate_pair_has_rank_two(te_degenerate):
 
     lam = te_degenerate.wavelengths
     # The two partners are the same eigenvalue to working precision
-    # *(measured: 2.4e-13 nm apart)*, so they are a degeneracy and not two
+    # *(measured: 6.8e-13 nm apart)*, so they are a degeneracy and not two
     # nearby distinct modes.
     assert abs(lam[0] - lam[1]) < 1.0e-9
 
@@ -189,14 +202,14 @@ def test_quality_factor_matches_the_analytic_mode(te_simple):
     """Q = Re λ / (2 Im λ) — the derived quantity users actually quote.
 
     Q inherits the error of Im λ, which is relatively the worse of the two
-    (0.24 nm on 26 nm), so its tolerance is looser than that of Re λ and is
-    the one that matters for a resonance claim.
+    (26 nm against 531), so its tolerance follows from the λ budget rather than
+    being chosen: |ΔQ|/Q ≤ |ΔRe λ|/Re λ + |ΔIm λ|/Im λ ≤ 1e-9/531 + 1e-9/26
+    ≈ 4e-11.
     """
     q_analytic = ANCHOR_TE_SIMPLE.real / (2.0 * ANCHOR_TE_SIMPLE.imag)
 
-    # *(measured 0.87 % relative error at n_pts = 200)*: first order in n_pts,
-    # dominated by Im λ. 2 % is that with margin, not a fitted bound.
-    assert abs(te_simple.quality_factors[0] / q_analytic - 1.0) < 0.02
+    # *(measured 3.8e-13)*; the bound is the derived 4e-11 rounded up.
+    assert abs(te_simple.quality_factors[0] / q_analytic - 1.0) < 1.0e-10
 
 
 def test_no_conjugate_pair_symmetry(te_simple):
@@ -210,7 +223,7 @@ def test_no_conjugate_pair_symmetry(te_simple):
     lam = te_simple.wavelengths[0]
     solver = qnm_solver(pol=2)
 
-    # *(measured: sigma_ratio 4.3e-4 at the analytic pole against 7.2e-3 at its
+    # *(measured: sigma_ratio 1.9e-16 at the analytic pole against 3.5e-2 at its
     # conjugate — the conjugate is no more singular than a generic point.)*
     assert solver._sigma_ratio(lam.conjugate()) > 1.0e-3
 
@@ -244,12 +257,13 @@ def test_modes_are_singular_and_generic_points_are_not(te_simple):
     σ_min at the exact analytic pole is 8.2e-4, so the research code's
     sigma_threshold=1e-12 could never have fired)*.
 
-    *(measured at n_pts = 200: 8.2e-9 at the mode extracted with this test's 24
-    contour nodes, 1.5e-14 with the default 48, against 2.4e-3 to 4.6e-3 at
-    generic points.)* Note the analytic pole itself scores 4.3e-4 — no better
-    than a generic point, because it is not a pole of the *discrete* operator.
-    That gap is the discretisation error, and it is why this test compares
-    against generic points rather than against the analytic value.
+    *(measured at n_pts = 40: 1.1e-14 at the mode extracted with 12 contour
+    nodes per side, 6.8e-9 with 6, against 2.0e-3 and 5.2e-3 at the generic
+    points below.)* The analytic pole itself now scores 1.9e-16: the
+    discretised operator is singular there to round-off. v0.5's 0.38 nm error
+    made it score like a generic point, which is why this test was written
+    against generic points; that comparison still holds and still does not
+    depend on the discretisation error.
     """
     assert te_simple.sigma_ratio[0] < 1.0e-6
 
@@ -270,10 +284,9 @@ def test_rank_may_exceed_mode_count_from_outside_leakage(te_simple):
     """
     assert te_simple.rank > te_simple.n_modes
     # Leakage is quadrature error, so it falls geometrically with contour nodes
-    # *(measured sv_ratio[1] at n_quad_per_side = 6, 8, 12, 16, 24: 6.2e-4,
-    # 8.9e-5, 1.8e-6, 3.8e-8, 1.6e-11 — and by 24 it drops below rank_tol and
-    # the rank becomes 1, the correct value)*. So the spec's "clean gap" is true
-    # asymptotically, just not at the default resolution.
+    # *(measured sv_ratio[1] at n_pts = 40: 3.8e-4 at 6 nodes per side, 1.1e-6
+    # at 12)*. So the spec's "clean gap" is true asymptotically, just not at the
+    # default resolution.
     assert te_simple.sv_ratio[1] < 1.0e-3
     # It is still three decades below the genuine direction, so nothing reading
     # sv_ratio could mistake it for a mode.
@@ -284,7 +297,7 @@ def test_edge_margin_reports_a_comfortable_box(te_simple):
     """The diagnostic that catches a pole being clipped by its own contour.
 
     Near zero means the box is too tight and the value is not to be trusted.
-    Here the mode sits 42 % of the shorter side from the nearest edge.
+    Here the mode sits 43 % of the shorter side from the nearest edge.
     """
     assert np.all(te_simple.edge_margin > 0.1)
 
@@ -297,8 +310,8 @@ def test_empty_box_finds_nothing_and_says_why(te_simple):
 
     Note it does *not* report rank 0 — the neighbours leak a rank direction in,
     whose eigenvalue then lands outside and is filtered. What separates empty
-    from populated is the cancellation, and it separates them by four decades
-    *(measured 5.2e-7 here against 3.1e-2 for the box holding a mode)*. The two
+    from populated is the cancellation, and it separates them by ten decades
+    *(measured 5.7e-11 here against 0.42 for the box holding a mode)*. The two
     scale differently: leakage is quadrature error and vanishes with more nodes,
     while a residue inside the contour does not.
     """
@@ -320,12 +333,11 @@ def test_modes_are_seed_independent(te_simple):
 # Refinement (spec §6.2)
 #
 # What refinement does here is converge onto the singularity of the
-# *discretised* operator. It does not, and cannot, move the answer towards the
-# analytic Mie pole: at n_pts = 200 the discretisation error is 0.38 nm while
-# the contour estimate is already within 1e-5 nm of the discrete pole, so 100 %
-# of the remaining error belongs to n_pts. The tests below are written around
-# that fact rather than against it — see test_refine_does_not_beat_
-# discretisation, which pins it.
+# *discretised* operator. Under spectral boundary quadrature that operator is
+# already at the analytic pole to 2.8e-14 nm at n_pts = 40, so what refinement
+# removes is the contour-quadrature error — 7.0e-6 nm at 6 nodes per side. The
+# tests below use that contour-limited extraction on purpose; see
+# test_refine_removes_the_contour_error, which pins it.
 # ---------------------------------------------------------------------------
 
 
@@ -346,18 +358,18 @@ def test_fresh_result_reports_no_refinement_attempted(te_simple, te_degenerate):
 def test_refine_is_idempotent_at_convergence(te_simple, te_simple_refined):
     """A second pass has nothing left to do — the fixed point is a fixed point.
 
-    The first pass is not a no-op: it moves λ by 8.6e-6 nm *(measured)*, the
+    The first pass is not a no-op: it moves λ by 7.0e-6 nm *(measured)*, the
     distance from the contour estimate to the true pole of the discretised
-    operator. It is the *second* pass that must not move, and 1e-12 nm is the
-    step tolerance refine() was asked for, so anything at or below it means the
-    iteration recognised its own fixed point rather than orbiting it.
+    operator. It is the *second* pass that must not move *(measured 1.2e-13
+    nm)*; 1e-12 nm means the iteration recognised its own fixed point rather
+    than orbiting it.
     """
     assert te_simple_refined.converged.all()
     again = te_simple_refined.refine()
 
     assert abs(again.wavelengths[0] - te_simple_refined.wavelengths[0]) < 1.0e-12
     assert again.converged.all()
-    # cond(J) on a simple pole is ~1e3 *(measured 1.05e3)*, twelve orders below
+    # cond(J) on a simple pole is ~1e3 *(measured 1.04e3)*, twelve orders below
     # DEGENERATE_COND. Asserting it here is what makes the degenerate test's
     # threshold a separation rather than a cutoff.
     assert te_simple_refined.cond_jacobian[0] < 1.0e6
@@ -371,13 +383,13 @@ def test_refine_drives_the_operator_to_singularity(te_badly_placed):
     computation it is not circular — nothing in this assertion was produced by
     the code under test.
 
-    The contour here is badly drawn on purpose (edge_margin 0.018, the pole
-    ~0.5 nm from the left edge). It still yields a usable estimate, which is
-    the honest finding: σ_min/σ_max falls from 3.0e-7 to 1.6e-17 *(measured)*,
-    i.e. to the floor set by the conditioning of a 400×400 complex matrix,
-    while λ itself moves by only 3e-4 nm. Refinement buys singularity, not
-    accuracy. 1e-12 is four decades below the worst measured "before" and eight
-    above the "after", so it separates the two without pinning either.
+    The contour here is badly drawn on purpose (edge_margin 0.033, the pole
+    ~0.8 nm from the left edge, 4 nodes per side). It still yields a usable
+    estimate: σ_min/σ_max falls from 2.5e-7 to 7.3e-17 *(measured)*, the floor
+    set by the conditioning of an 80×80 complex matrix, while λ moves by
+    2.6e-4 nm — onto the analytic pole, to 1.3e-13 nm. 1e-12 is five decades
+    below the "before" and four above the "after", so it separates the two
+    without pinning either.
     """
     coarse, refined = te_badly_placed
     k = int(np.argmin(np.abs(coarse.wavelengths - ANCHOR_TE_SIMPLE)))
@@ -387,34 +399,34 @@ def test_refine_drives_the_operator_to_singularity(te_badly_placed):
     assert refined.sigma_ratio[k] < 1.0e-12
     assert refined.converged[k]
     # The mode did not move far while becoming far more singular. 1e-3 nm is
-    # loose enough to cover any of the boxes tried and still 400× below the
-    # discretisation error, so it cannot hide a mode jumping to a neighbour.
+    # ~4× the measured move and four decades below the 20 nm to TE n=2, the
+    # neighbour this box also holds, so it cannot hide a jump to it.
     assert abs(refined.wavelengths[k] - coarse.wavelengths[k]) < 1.0e-3
 
 
-def test_refine_does_not_beat_discretisation(te_simple, te_simple_refined):
+def test_refine_removes_the_contour_error(te_simple_contour_limited, te_simple_refined):
     """The claim the documentation has to make, as a test.
 
-    Users will reach for refine() when a mode is not accurate enough. It will
-    not help: the error against the analytic Mie pole is 0.45 nm before and
-    0.45 nm after, unchanged to eight decimals, because it is 100 % first-order
-    discretisation in n_pts. The knob that moves this number is n_pts —
-    test_pole_error_is_first_order_in_resolution is the one that shows it.
+    Under spectral boundary quadrature the discretised operator's pole sits on
+    the analytic one to 2.8e-14 nm at n_pts = 40, so a coarse contour is the
+    whole error — and refine() removes it: 7.0e-6 nm before, 1.3e-13 nm after
+    *(measured)*. The "before" bound is a sanity check that the fixture really
+    is contour-limited; the "after" bound sits ~800× above the measurement and
+    four decades below the "before", so neither half can pass by accident.
     """
-    err_before = abs(te_simple.wavelengths[0] - ANCHOR_TE_SIMPLE)
+    err_before = abs(te_simple_contour_limited.wavelengths[0] - ANCHOR_TE_SIMPLE)
     err_after = abs(te_simple_refined.wavelengths[0] - ANCHOR_TE_SIMPLE)
 
-    assert err_before > 0.4  # the discretisation error, not a small residual
-    # Refinement moved λ by 8.6e-6 nm, so it cannot change this error by more.
-    assert abs(err_after - err_before) < 1.0e-4
+    assert err_before > 1.0e-6
+    assert err_after < 1.0e-10
 
 
 def test_refine_flags_degenerate_pole(te_degenerate):
     """Every n ≥ 1 circle mode is degenerate, so this is the common case.
 
     Bordered Newton assumes a one-dimensional null space; the ±n pair gives it
-    two, and the Jacobian is singular in exact arithmetic (cond 3.2e15 and
-    5.4e15 here, *measured*). The requirement is that refine() notices, keeps
+    two, and the Jacobian is singular in exact arithmetic (cond 1.5e15 and
+    2.9e15 here, *measured*). The requirement is that refine() notices, keeps
     the contour estimate untouched, and returns normally — a raised exception
     would make refine() unusable on any circle, and a silently "refined"
     wavelength would be worse.
@@ -435,30 +447,32 @@ def test_refine_flags_degenerate_pole(te_degenerate):
     assert np.array_equal(refined.vectors, te_degenerate.vectors)
 
 
-def test_refine_polishes_the_mode_vector(te_simple, te_simple_refined):
+def test_refine_polishes_the_mode_vector(te_simple_contour_limited, te_simple_refined):
     """A refined result must not disagree with itself.
 
     Before this, refine() moved λ onto the singularity and left ``vectors``
     where the contour put them, so ``sigma_ratio`` reported 1e-16 — the
     operator *is* singular there — while the mode vector could only
     demonstrate 1e-8. Polishing the pair together closes that: the residual
-    falls from 5.7e-8 to 3.3e-16 *(measured)*.
+    falls from 4.8e-8 to 4.4e-16 on the contour-limited extraction
+    *(measured)*.
 
     Columns stay unit-norm, and stay in the gauge the contour set: the Newton
     anchor conj(v0)·v = 1 fixes the phase against the input vector, so
     renormalising by a positive real cannot rotate it. Without that, columns
     from modes() and refine() would not be comparable.
     """
-    bie = BIESolver(te_simple.geometry, te_simple.material)
+    coarse = te_simple_contour_limited
+    bie = BIESolver(coarse.geometry, coarse.material)
 
     def residual(lam, v):
         m = bie.assemble(lam)
         return np.linalg.norm(m @ v) / (np.linalg.norm(m, 2) * np.linalg.norm(v))
 
-    v_before = te_simple.vectors[:, 0]
+    v_before = coarse.vectors[:, 0]
     v_after = te_simple_refined.vectors[:, 0]
 
-    assert residual(te_simple.wavelengths[0], v_before) > 1.0e-9
+    assert residual(coarse.wavelengths[0], v_before) > 1.0e-9
     assert residual(te_simple_refined.wavelengths[0], v_after) < 1.0e-13
 
     assert np.linalg.norm(v_after) == pytest.approx(1.0)
@@ -476,21 +490,23 @@ def test_left_null_vector_is_not_the_right_one(te_simple_refined):
     Two claims, and the second is the one that matters. The adjoint quotient
     dλ/dp = −uᴴ(∂M/∂p)v / uᴴ(∂M/∂λ)v needs a genuine left null vector; a
     complex-symmetric M would give u = conj(v) for free, and this operator is
-    not complex-symmetric *(measured here: ‖M − Mᵀ‖/‖M‖ = 1.06)*. Substituting
+    not complex-symmetric *(measured here: ‖M − Mᵀ‖/‖M‖ = 1.16)*. Substituting
     conj(v) would leave the quotient wrong by an O(1) factor while every
     residual still looked right — |<u, conj(v)>| = 0.32 at this pole, so the
     error would be a factor of order three, not a rounding effect.
 
     The residual bound is not a tolerance to be tuned: from M = U Σ Vᴴ the left
     residual ‖uᴴM‖ is σ_min *exactly*, so ‖uᴴM‖/‖M‖₂ must equal σ_min/σ_max to
-    floating-point round-off on the SVD. That is what is asserted — agreement
-    with the independently computed sigma_ratio to 1e-12 relative, ~4 orders
-    above the double-precision floor and ~9 orders below the value itself
-    (4.3e-4 at n_pts = 200) — rather than "the residual is small", which the
-    ratio being 4.3e-4 would fail anyway.
+    floating-point round-off on the SVD. That round-off is ~eps/(σ_min/σ_max)
+    relative, so the check needs a λ where M is *not* singular to round-off —
+    which at the pole itself it now is (σ_min/σ_max = 1.3e-16 after refining).
+    It is taken 0.5 nm off the pole, where σ_min/σ_max = 4.9e-4 and the two
+    agree to 7.8e-15 *(measured)*: 1e-12 relative is ~100× above that floor and
+    ~9 orders below the value itself. |⟨u, conj v⟩| = 0.32 there and at the
+    pole alike — the non-symmetry is a property of the operator, not of λ.
     """
     bie = BIESolver(te_simple_refined.geometry, te_simple_refined.material)
-    lam = te_simple_refined.wavelengths[0]
+    lam = ANCHOR_TE_SIMPLE + 0.5
     m = bie.assemble(lam)
     sigma = np.linalg.svd(m, compute_uv=False)
     ratio = sigma[-1] / sigma[0]

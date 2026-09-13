@@ -4,12 +4,15 @@ Pure-geometry functions for the Gielis particle boundary. No EM physics.
 
 Public API:
     gielis: raw Gielis coordinates at arbitrary theta values.
-    boundary_setup: complete discretised boundary (f, g, df, dg, ddf, ddg, delt).
     perimeter: closed-curve arc length.
-    Geometry: high-level boundary object built via the ``gielis`` factory.
+    Geometry: high-level boundary object built via the ``gielis`` factory, on
+        nodes equispaced in the quadrature parameter t of a
+        :class:`~pysie2d.parametrisation.Parametrisation`.
 """
 
 import numpy as np
+
+from .parametrisation import Nodes, Parametrisation
 
 PI = np.pi
 
@@ -179,112 +182,67 @@ def _rderiv2(
 
 
 # ---------------------------------------------------------------------------
-# Uniform-theta parameterisation  (translated from subroutine etoil)
-# Note: the parameter order m, n2, n1, n3 is preserved from the original
-# Fortran translation.  Callers pass actual_n2 to the n2 position and
-# actual_n1 to the n1 position; gielis() then receives them correctly.
+# Discretised boundary on a parametrisation
 # ---------------------------------------------------------------------------
 
 
-def _etoil(
-    nn: int,
-    delt: float,
-    x0: float,
-    z0: float,
-    rad: float,
-    m: int,
-    n2: float,
-    n1: float,
-    n3: float,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-]:
-    """Boundary parameterisation via the Gielis super-formula (uniform theta).
+class NonClosingBoundaryError(ValueError):
+    """The superformula boundary does not close after one turn, θ → θ + 2π.
 
-    Args:
-        nn: Number of boundary quadrature points.
-        delt: Angular step = 2π/nn.
-        x0: Centre x-coordinate (nm).
-        z0: Centre z-coordinate (nm).
-        rad: Scale radius (nm).
-        m: Rotational symmetry order.
-        n2: Gielis exponent (note historic argument order).
-        n1: Gielis exponent (note historic argument order).
-        n3: Gielis exponent (note historic argument order).
-
-    Returns:
-        f, g: Boundary coordinates (nn,).
-        df, dg: First derivatives w.r.t. θ.
-        ddf, ddg: Second derivatives w.r.t. θ.
-        theta: (nn,) the sample angles themselves.
+    Odd ``m`` closes only in the symmetric case ``a == b, n2 == n3``; ``m = 1``
+    is the case most likely to be hit by accident (no ``m``-fold symmetry to
+    mask an asymmetric ``a``/``b`` or ``n2``/``n3``), so this is its own type
+    rather than a bare ``ValueError`` — a caller can catch it without matching
+    on message text. Subclasses ``ValueError`` so existing ``except
+    ValueError`` and ``pytest.raises(ValueError, ...)`` call sites still work.
     """
-    theta = (np.arange(1, nn + 1) - 0.5) * delt
-    f, g, r, co, se, arg = gielis(theta, rad, 1, 1, m, n1, n2, n3, x0, z0)
-    fact_n2 = -n2 * m / 4.0
-    fact_n3 = n3 * m / 4.0
-
-    rderiv = _rderiv(rad, n1, n2, n3, fact_n2, fact_n3, co, se, arg)
-    rderiv2 = _rderiv2(rad, n1, n2, n3, fact_n2, fact_n3, m, co, se, arg)
-
-    df = r * np.cos(theta) + np.sin(theta) * rderiv
-    dg = -r * np.sin(theta) + np.cos(theta) * rderiv
-    ddf = rderiv2 * np.sin(theta) + 2.0 * rderiv * np.cos(theta) - r * np.sin(theta)
-    ddg = rderiv2 * np.cos(theta) - 2.0 * rderiv * np.sin(theta) - r * np.cos(theta)
-
-    return f, g, df, dg, ddf, ddg, theta
 
 
-# ---------------------------------------------------------------------------
-# Arc-length parameterisation  (translated from subroutine etoil_arc)
-# ---------------------------------------------------------------------------
+def _closes(m: float, a: float, b: float, n2: float, n3: float) -> bool:
+    """Whether the superformula boundary closes after one turn, θ → θ + 2π.
 
-
-def _validated_theta(theta: np.ndarray) -> np.ndarray:
-    """Check an externally supplied node set before it becomes a boundary.
-
-    A frozen θ set is normally handed straight back from another Geometry, so
-    the checks are cheap insurance against the two ways it gets mangled in
-    transit — reordering and wrapping past 2π. Both produce a *plausible*
-    boundary rather than a crash: ``delt`` is a bare ``np.diff``, so a
-    reordered set gives negative quadrature weights and a boundary integral
-    that silently counts part of the curve backwards.
+    ``|cos u|^n2/a^n2 + |sin u|^n3/b^n3`` with ``u = mθ/4`` has period π in
+    ``u``, and period π/2 only when the swap ``cos ↔ sin`` leaves it unchanged,
+    i.e. ``a = b`` and ``n2 = n3``. One turn advances ``u`` by ``mπ/2``, so the
+    curve closes for every even integer ``m``, and for odd ``m`` only in the
+    symmetric case (D5, generalised to ``n2 ≠ n3``). A non-closing ``r(θ)`` is
+    not 2π-periodic, and the periodic quadrature would integrate a curve with
+    a jump at θ = 0 while raising nothing.
 
     Args:
-        theta: (nn,) candidate sample angles.
+        m: Rotational symmetry order.
+        a: Scale factor of the cosine term.
+        b: Scale factor of the sine term.
+        n2: Exponent of the cosine term.
+        n3: Exponent of the sine term.
 
     Returns:
-        The same angles as a float array.
+        True if ``r(θ + 2π) = r(θ)``.
+    """
+    return float(m).is_integer() and (int(m) % 2 == 0 or (a == b and n2 == n3))
+
+
+def _checked_parametrisation(parametrisation: object) -> None:
+    """Refuse anything that is not a :class:`Parametrisation`, naming the v0.5 call.
+
+    The one caller this exists for passes a v0.5 ``theta`` array. Duck typing
+    would let an array fail later as an ``AttributeError`` on ``nodes`` with no
+    hint of the API change behind it.
 
     Raises:
-        ValueError: If the angles are not strictly increasing, or do not fit
-            inside a single 2π span.
+        TypeError: If ``parametrisation`` is not ``None`` or a Parametrisation.
     """
-    theta = np.asarray(theta, dtype=float)
-    if theta.ndim != 1 or theta.size < 3:
-        raise ValueError(
-            f"theta must be a 1-D array of at least 3 angles; got {theta.shape}"
+    if parametrisation is not None and not isinstance(parametrisation, Parametrisation):
+        raise TypeError(
+            "parametrisation must be a pysie2d.Parametrisation, got "
+            f"{type(parametrisation).__name__}. v0.6 freezes the node *map*, not "
+            "the angles: replace theta=other.theta with "
+            "parametrisation=other.parametrisation"
         )
-    if not np.all(np.diff(theta) > 0.0):
-        raise ValueError(
-            "theta must be strictly increasing; a reordered node set gives "
-            "negative quadrature weights rather than an error"
-        )
-    if theta[-1] - theta[0] >= 2.0 * PI:
-        raise ValueError(
-            f"theta must span less than 2*pi; got {theta[-1] - theta[0]:.6f}, "
-            "which traverses part of the boundary twice"
-        )
-    return theta
 
 
-def _uniform_arc_theta(
-    nn: int,
+def _boundary_arrays(
+    nodes: Nodes,
     rad: float,
     a: float,
     b: float,
@@ -292,237 +250,65 @@ def _uniform_arc_theta(
     n1: float,
     n2: float,
     n3: float,
-    x0: float = 0.0,
-    z0: float = 0.0,
-    n_fine: int | None = None,
-) -> tuple[np.ndarray, float]:
-    """Return nn theta values giving uniform arc-length spacing on the curve.
-
-    Args:
-        nn: Desired number of boundary points.
-        rad: Gielis scale radius.
-        a: Gielis cosine scale factor.
-        b: Gielis sine scale factor.
-        m: Rotational symmetry order.
-        n1: Gielis exponent.
-        n2: Gielis exponent.
-        n3: Gielis exponent.
-        x0: Centre x-coordinate (default 0).
-        z0: Centre z-coordinate (default 0).
-        n_fine: Fine-grid resolution (default max(10*nn, 4096)).
-
-    Returns:
-        theta_uniform: (nn,) theta values with uniform arc-length spacing.
-        contour_length: Total perimeter of the curve.
-
-    Raises:
-        ValueError: If the inversion returns coincident nodes, which happens
-            where the curve is not monotone in arc length.
-    """
-    if n_fine is None:
-        # A function of nn alone, and it must stay one: the whole assembly is
-        # scale covariant (docs/conventions.md §9) only because the theta nodes
-        # this returns are rad-independent. Choosing n_fine from an absolute
-        # chord length in nm would break that silently.
-        n_fine = max(10 * nn, 4096)
-
-    # Dense uniform-theta forward pass
-    theta_fine = np.linspace(0, 2 * PI, n_fine, endpoint=False)
-    f_fine, g_fine, *_ = gielis(theta_fine, rad, a, b, m, n1, n2, n3, x0, z0)
-
-    # Cumulative arc length (chord-length approximation, closed curve)
-    df = np.diff(f_fine, append=f_fine[0])
-    dg = np.diff(g_fine, append=g_fine[0])
-    ds = np.sqrt(df**2 + dg**2)
-    s_fine = np.concatenate([[0.0], np.cumsum(ds[:-1])])
-    contour_length = s_fine[-1] + ds[-1]  # include the closing segment
-
-    # Invert: interpolate theta as a function of arc length
-    s_uniform = np.linspace(0, contour_length, nn, endpoint=False)
-    theta_uniform = np.interp(s_uniform, s_fine, theta_fine)
-
-    # np.interp assumes s_fine is increasing. It is not when the curve doubles
-    # back — odd m away from a = b violates the D5 closure condition — and the
-    # inversion then returns *coincident* nodes rather than failing. Downstream
-    # delt (a bare np.diff) comes back zero at that node, poisoning the
-    # quadrature weight with nothing raised. Exact equality is the right test:
-    # the spacing is identically zero, and there is no separation at which two
-    # nodes on top of each other become acceptable. The prescribed-theta path
-    # already refuses the same thing (_validated_theta); this is the other
-    # entry point.
-    if not np.all(np.diff(theta_uniform) > 0.0):
-        raise ValueError(
-            f"arc-length inversion produced coincident nodes at m={m}, "
-            f"a={a}, b={b}: the curve is not monotone in arc length, so "
-            "theta cannot be recovered from it"
-        )
-
-    return theta_uniform, contour_length
-
-
-def _etoil_arc(
-    nn: int,
     x0: float,
     z0: float,
-    rad: float,
-    a: float,
-    b: float,
-    m: int,
-    n2: float,
-    n1: float,
-    n3: float,
-    n_fine: int | None = None,
-    theta: np.ndarray | None = None,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-]:
-    """Boundary parameterisation with uniform arc-length spacing.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Boundary coordinates and their t-derivatives at the nodes of a map.
 
-    Drop-in replacement for _etoil() for shapes where uniform-theta sampling
-    produces strongly non-uniform dipole distances (e.g. stars, high-m shapes).
-    Theta values are chosen so consecutive points are evenly spaced in arc
-    length; derivatives are still w.r.t. theta, but delt is a per-point array.
+    The superformula is differentiated in θ in closed form (``_rderiv``,
+    ``_rderiv2``) and carried to the quadrature parameter by the chain rule
+    through ``θ = w(t)``:
+
+        ẋ = x'·w',        ẍ = x''·w'² + x'·w''
+
+    Kress needs derivatives in ``t``, the variable the nodes are equispaced in
+    (conventions §13.1). On the identity map ``w' = 1`` and ``w'' = 0`` and the
+    two coincide.
 
     Args:
-        nn: Number of boundary quadrature points.
+        nodes: Nodes of a :class:`Parametrisation` at the wanted ``nn``.
+        rad: Scale radius (nm).
+        a: Scale factor of the cosine term.
+        b: Scale factor of the sine term.
+        m: Rotational symmetry order.
+        n1: Gielis shape exponent.
+        n2: Gielis shape exponent.
+        n3: Gielis shape exponent.
         x0: Centre x-coordinate (nm).
         z0: Centre z-coordinate (nm).
-        rad: Scale radius (nm).
-        a: Gielis cosine scale factor.
-        b: Gielis sine scale factor.
-        m: Rotational symmetry order.
-        n2: Gielis exponent (note historic argument order).
-        n1: Gielis exponent (note historic argument order).
-        n3: Gielis exponent (note historic argument order).
-        n_fine: Fine-grid resolution for arc-length inversion.
-        theta: (nn,) sample angles to use **instead of** re-inverting arc
-            length. This is the frozen-node path of ``docs/conventions.md``
-            §10: the spacing is then uniform in arc length on whatever shape
-            the angles were computed for, and only approximately so on this
-            one. ``nn`` is ignored when it is given.
 
     Returns:
-        f, g: Boundary coordinates (nn,).
-        df, dg: First derivatives w.r.t. theta.
-        ddf, ddg: Second derivatives w.r.t. theta.
-        delt: (nn,) per-point theta step (non-uniform).
-        theta: (nn,) the sample angles, uniform in arc length unless supplied.
+        f, g, df, dg, ddf, ddg at the nodes, derivatives with respect to t.
     """
-    if theta is None:
-        theta, _ = _uniform_arc_theta(
-            nn, rad, a, b, m, n1, n2, n3, x0=0.0, z0=0.0, n_fine=n_fine
-        )
-    else:
-        theta = _validated_theta(theta)
-
-    # Per-point theta differences; last step wraps around to theta[0] + 2π
-    delt = np.diff(theta, append=theta[0] + 2 * PI)
-
+    theta = nodes.theta
     f, g, r, co, se, arg = gielis(theta, rad, a, b, m, n1, n2, n3, x0, z0)
-
-    # Analytical first derivatives w.r.t. theta
     fact_n2 = -n2 * m / 4.0
     fact_n3 = n3 * m / 4.0
     rderiv = _rderiv(rad, n1, n2, n3, fact_n2, fact_n3, co, se, arg)
     rderiv2 = _rderiv2(rad, n1, n2, n3, fact_n2, fact_n3, m, co, se, arg)
-    df_theta = r * np.cos(theta) + np.sin(theta) * rderiv
-    dg_theta = -r * np.sin(theta) + np.cos(theta) * rderiv
-    ddf_theta = (
-        rderiv2 * np.sin(theta) + 2.0 * rderiv * np.cos(theta) - r * np.sin(theta)
-    )
-    ddg_theta = (
-        rderiv2 * np.cos(theta) - 2.0 * rderiv * np.sin(theta) - r * np.cos(theta)
-    )
 
-    return f, g, df_theta, dg_theta, ddf_theta, ddg_theta, delt, theta
+    sin_t = np.sin(theta)
+    cos_t = np.cos(theta)
+    df_theta = r * cos_t + sin_t * rderiv
+    dg_theta = -r * sin_t + cos_t * rderiv
+    ddf_theta = rderiv2 * sin_t + 2.0 * rderiv * cos_t - r * sin_t
+    ddg_theta = rderiv2 * cos_t - 2.0 * rderiv * sin_t - r * cos_t
+
+    dw = nodes.dw
+    ddw = nodes.ddw
+    return (
+        f,
+        g,
+        df_theta * dw,
+        dg_theta * dw,
+        ddf_theta * dw**2 + df_theta * ddw,
+        ddg_theta * dw**2 + dg_theta * ddw,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
-
-def boundary_setup(
-    nn: int,
-    rad: float,
-    a: float,
-    b: float,
-    m: int,
-    n1: float,
-    n2: float,
-    n3: float,
-    x0: float = 0.0,
-    z0: float = 0.0,
-    arc_length: bool = True,
-    n_fine: int | None = None,
-    theta: np.ndarray | None = None,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    float | np.ndarray,
-    np.ndarray,
-]:
-    """Discretise the Gielis particle boundary.
-
-    Single entry point for all downstream BIE and QNM code. Returns the
-    complete set of quadrature data needed by assemble_matrix, far_field,
-    and eval_field.
-
-    Args:
-        nn: Number of boundary quadrature points.
-        rad: Gielis scale radius (nm).
-        a: Gielis cosine scale factor.
-        b: Gielis sine scale factor.
-        m: Rotational symmetry order.
-        n1: Gielis shape exponent.
-        n2: Gielis shape exponent.
-        n3: Gielis shape exponent.
-        x0: Centre x-coordinate (nm). Default 0.
-        z0: Centre z-coordinate (nm). Default 0.
-        arc_length: If True (default) use uniform arc-length sampling
-            (_etoil_arc). If False use uniform-theta sampling (_etoil; a=b=1
-            forced).
-        n_fine: Fine-grid resolution for arc-length inversion. None → auto.
-        theta: (nn,) sample angles to use instead of re-inverting arc length;
-            the frozen-node path (``docs/conventions.md`` §10). Arc-length
-            sampling only.
-
-    Returns:
-        f, g: (nn,) boundary x and z coordinates (nm).
-        df, dg: (nn,) first derivatives of f, g w.r.t. theta.
-        ddf, ddg: (nn,) second derivatives of f, g w.r.t. theta.
-        delt: Quadrature theta step. Scalar for uniform-theta; per-point array
-            for arc-length sampling.
-        theta: (nn,) the sample angles the boundary was evaluated at.
-
-    Raises:
-        ValueError: If ``theta`` is given with ``arc_length=False``, which has
-            its own fixed node set and would ignore it.
-    """
-    if arc_length:
-        # Note: _etoil_arc uses the historic (n2, n1, n3) argument order
-        return _etoil_arc(
-            nn, x0, z0, rad, a, b, m, n2, n1, n3, n_fine=n_fine, theta=theta
-        )
-    if theta is not None:
-        raise ValueError(
-            "theta is only meaningful for arc_length=True; the uniform-theta "
-            "path has its own fixed node set and would ignore it"
-        )
-    delt = 2.0 * PI / nn
-    f, g, df, dg, ddf, ddg, theta_uniform = _etoil(nn, delt, x0, z0, rad, m, n2, n1, n3)
-    return f, g, df, dg, ddf, ddg, delt, theta_uniform
 
 
 def perimeter(
@@ -569,32 +355,25 @@ def perimeter(
 class Geometry:
     """Discretized Gielis boundary for BIE computation.
 
-    Holds the quadrature arrays produced by :func:`boundary_setup` and
-    exposes them through named attributes rather than a positional tuple.
-    Build via the :meth:`gielis` factory; direct construction is also
-    supported when arrays come from another source.
+    Holds the boundary sampled at nodes **equispaced in a quadrature parameter
+    t**, with derivatives taken with respect to that same ``t``
+    (``docs/conventions.md`` §5, §13.1). Build via the :meth:`gielis` factory;
+    direct construction is also supported when arrays come from another source,
+    under the same contract — see :meth:`__init__`.
 
     Attributes:
         f, g: (n_pts,) boundary x and z coordinates (nm).
-        df, dg: (n_pts,) first derivatives w.r.t. arc-length parameter.
-        ddf, ddg: (n_pts,) second derivatives.
-        delt: Quadrature weight (scalar for uniform-theta; per-point for
-            arc-length).
-        theta: (n_pts,) the sample angles the boundary was evaluated at, or
-            ``None`` for a boundary whose arrays came from somewhere with no
-            node set to report. Stored rather than recomputed because it is the
-            **node set**, and a shape derivative needs to hold it fixed across a
-            finite difference (``docs/conventions.md`` §10). Recovering it after
-            the fact from ``arctan2(g - z0, f - x0)`` is not equivalent: it is
-            ambiguous for a boundary that is not star-convex about the centre,
-            and it loses the branch for one that winds past 2π.
-
-            ``Geometry.gielis`` always sets it, so every geometry the factory
-            builds can be differentiated. It is ``None`` **only** on a Geometry
-            constructed directly from external arrays without one, and the
-            frozen-node paths refuse such a geometry by name rather than
-            falling back to anything — see
-            :meth:`pysie2d.qnm.QNMResult.sensitivity`.
+        df, dg: (n_pts,) first derivatives with respect to t.
+        ddf, ddg: (n_pts,) second derivatives with respect to t.
+        parametrisation: The :class:`~pysie2d.parametrisation.Parametrisation`
+            the arrays were sampled on, or ``None`` for a boundary whose arrays
+            came from somewhere with no map to report. It is the **frozen
+            object** of a shape derivative (conventions §10, §13.3):
+            :meth:`pysie2d.qnm.QNMResult.sensitivity` requires every perturbed
+            geometry to be built on the base geometry's map, and refuses a
+            geometry that has none.
+        nodes: ``parametrisation.nodes(n_pts)`` — ``t``, ``θ = w(t)``, ``w'``,
+            ``w''`` — or ``None`` with the parametrisation.
         rad: Gielis scale radius (nm).
         x0, z0: Particle centre coordinates (nm).
     """
@@ -607,30 +386,72 @@ class Geometry:
         dg: np.ndarray,
         ddf: np.ndarray,
         ddg: np.ndarray,
-        delt: float | np.ndarray,
         *,
-        theta: np.ndarray | None = None,
         rad: float,
         x0: float = 0.0,
         z0: float = 0.0,
+        parametrisation: Parametrisation | None = None,
     ) -> None:
-        """Store the boundary quadrature arrays; see the class docstring."""
+        """Store the boundary quadrature arrays.
+
+        The arrays must be samples at ``t_j = 2π(j + ½)/n_pts`` (any fixed
+        offset is equivalent) with ``df … ddg`` differentiated with respect to
+        ``t``, traversing the boundary in the same sense as :meth:`gielis`.
+        Nothing here can check that, and arrays sampled any other way assemble
+        into a plausible matrix with first-order error.
+
+        Args:
+            f: (n_pts,) boundary x coordinates (nm).
+            g: (n_pts,) boundary z coordinates (nm).
+            df: (n_pts,) df/dt.
+            dg: (n_pts,) dg/dt.
+            ddf: (n_pts,) d²f/dt².
+            ddg: (n_pts,) d²g/dt².
+            rad: Gielis scale radius (nm).
+            x0: Centre x-coordinate (nm).
+            z0: Centre z-coordinate (nm).
+            parametrisation: The map the arrays were sampled on. Optional to
+                store, mandatory to differentiate (conventions §10).
+
+        Raises:
+            TypeError: If ``parametrisation`` is not a Parametrisation.
+        """
+        _checked_parametrisation(parametrisation)
         self.f = f
         self.g = g
         self.df = df
         self.dg = dg
         self.ddf = ddf
         self.ddg = ddg
-        self.delt = delt
-        self.theta = theta
         self.rad = rad
         self.x0 = x0
         self.z0 = z0
+        self.parametrisation = parametrisation
+        self.nodes = None if parametrisation is None else parametrisation.nodes(len(f))
 
     @property
     def n_pts(self) -> int:
         """Number of boundary quadrature points."""
         return len(self.f)
+
+    @property
+    def delt(self) -> float:
+        """Trapezoid step ``h = 2π/n_pts`` in the quadrature parameter t.
+
+        Not a free quantity: Kress's weights presume exactly this step, so it
+        is derived from ``n_pts`` rather than stored.
+        """
+        return 2.0 * PI / self.n_pts
+
+    @property
+    def theta(self) -> np.ndarray | None:
+        """(n_pts,) node angles ``θ_j = w(t_j)``, or ``None`` without a map.
+
+        Where the nodes are, for plotting and diagnostics. It is **not** the
+        frozen object: assembly also needs ``w'`` and ``w''``, which cannot be
+        recovered from the angles (conventions §13.3).
+        """
+        return None if self.nodes is None else self.nodes.theta
 
     @property
     def is_circle(self) -> bool:
@@ -664,8 +485,7 @@ class Geometry:
         b: float = 1.0,
         x0: float = 0.0,
         z0: float = 0.0,
-        arc_length: bool = True,
-        theta: np.ndarray | None = None,
+        parametrisation: Parametrisation | None = None,
     ) -> "Geometry":
         """Create a Geometry from Gielis superformula parameters.
 
@@ -685,36 +505,45 @@ class Geometry:
             n1: Shape exponent.
             n2: Shape exponent.
             n3: Shape exponent.
-            a: Cosine scale factor. **Ignored unless ``arc_length=True``.**
-            b: Sine scale factor. **Ignored unless ``arc_length=True``.**
+            a: Cosine scale factor.
+            b: Sine scale factor.
             x0: Centre x-coordinate (nm).
             z0: Centre z-coordinate (nm).
-            arc_length: Use uniform arc-length sampling (default True). The
-                uniform-theta path (``False``) **forces ``a = b = 1``** and
-                raises nothing when passed anything else, so a derivative taken
-                with respect to ``a`` or ``b`` through that path is identically
-                zero rather than wrong-looking. Leave this True whenever ``a``
-                or ``b`` is not 1.
-            theta: (n_pts,) sample angles to use instead of re-inverting arc
-                length — normally another Geometry's ``theta``. This is how a
-                shape derivative holds the node set fixed across a finite
-                difference; see ``docs/conventions.md`` §10 for why it must.
-                ``n_pts`` is ignored when it is given.
+            parametrisation: The node map ``θ = w(t)``. ``None`` (default) is
+                :meth:`Parametrisation.uniform_theta`, nodes equispaced in θ.
+                Pass another geometry's ``parametrisation`` to hold the map
+                fixed across a shape derivative (conventions §10), or
+                ``Parametrisation.gielis(...)`` for uniform arc length, which
+                is more accurate only on spiky shapes at low resolution
+                (``docs/design/kress-spec.md`` §2, D1).
+
+        Raises:
+            TypeError: If ``parametrisation`` is not a Parametrisation — in
+                particular a v0.5 ``theta`` array.
+            NonClosingBoundaryError: If the boundary does not close after one
+                turn: odd ``m`` unless ``a = b`` and ``n2 = n3``, or
+                non-integer ``m``.
         """
-        f, g, df, dg, ddf, ddg, delt, theta_used = boundary_setup(
-            n_pts,
-            rad,
-            a,
-            b,
-            m,
-            n1,
-            n2,
-            n3,
-            x0=x0,
-            z0=z0,
-            arc_length=arc_length,
-            theta=theta,
+        _checked_parametrisation(parametrisation)
+        if not _closes(m, a, b, n2, n3):
+            raise NonClosingBoundaryError(
+                f"the boundary does not close at m={m}, a={a}, b={b}, n2={n2}, "
+                f"n3={n3}: r(θ + 2π) ≠ r(θ). Odd m needs a == b and n2 == n3"
+            )
+        if parametrisation is None:
+            parametrisation = Parametrisation.uniform_theta()
+        f, g, df, dg, ddf, ddg = _boundary_arrays(
+            parametrisation.nodes(n_pts), rad, a, b, m, n1, n2, n3, x0, z0
         )
         return cls(
-            f, g, df, dg, ddf, ddg, delt, theta=theta_used, rad=rad, x0=x0, z0=z0
+            f,
+            g,
+            df,
+            dg,
+            ddf,
+            ddg,
+            rad=rad,
+            x0=x0,
+            z0=z0,
+            parametrisation=parametrisation,
         )
