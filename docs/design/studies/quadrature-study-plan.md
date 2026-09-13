@@ -1,13 +1,17 @@
 # v0.6 quadrature — preliminary study plan
 
-**Status:** G1 passed, G2 measured and its criterion moved to G3, G0 not run
-and under review; a Kress prototype exists in `kress_t.py`. Two pieces have
-been ported to production from these findings: `Parametrisation`
-(`src/pysie2d/parametrisation.py`) and analytic `ddf`/`ddg`
-(`geometry._rderiv2`) — see architecture §1, items 2–3. Kress itself (item 1)
-is still prototype-only; its production code-spec, with a verified reference
-patch, is [../kress-spec.md](../kress-spec.md) (13 Sep 2026). Findings are in the
-`####` sections under each gate. This is doc B of two. The
+**Status:** G1 passed, G2 passed (13 Sep 2026, with a caveat — see findings
+below), G0 not run and under review. Kress–Martensen is now **landed in
+production** (`feat!: Kress-Martensen quadrature on a frozen node map`,
+commit `771bc9b`), not just the `kress_t.py` prototype this status line used to
+point to. Three pieces are now in production from this study's findings:
+`Parametrisation` (`src/pysie2d/parametrisation.py`, including the
+curvature-adaptive density of §5), analytic `ddf`/`ddg` (`geometry._rderiv2`),
+and Kress quadrature on all four blocks — see architecture §1, items 1–3. Its
+code-spec, with a verified reference patch, is
+[../kress-spec.md](../kress-spec.md) (13 Sep 2026); that spec's own status line
+is stale in the same way and should be corrected when next touched. Findings
+are in the `####` sections under each gate. This is doc B of two. The
 decisions this study works within are
 [../v0.6-architecture.md](../v0.6-architecture.md); the measurements it starts
 from are [../pysie2d-quadrature-handoff.md](../pysie2d-quadrature-handoff.md).
@@ -403,6 +407,60 @@ the intended one, which proximity alone cannot give.
 circle to aspect 4 under grading, against 144 → 352 at constant density, and
 `λ_ref` shrinking along the ladder (530 → 293 nm) is most of that growth — `R`
 is points per *interior* wavelength, and the wavelength is getting shorter.
+
+#### G2 findings, part 2 — the solution-error rate, now that Kress is landed (2026-09-13)
+
+Script: `g2_solution_error.py`; full findings in
+[g2-solution-error-findings.md](g2-solution-error-findings.md). Closes the
+three items the 12 Sep findings above left open, running entirely through
+**production** code on the landed Kress path (`771bc9b`): `Parametrisation`,
+`Geometry.gielis(parametrisation=...)`, `BIESolver.scatter`. Shape: the G2
+ladder's baseline star (`m=4, n1=6, n2=n3=12`), TE, `qext` (not `qsca` — the
+angular-quadrature trap), reference = uniform-θ Kress at `nn=800` (its own
+floor measured at 1.3e-15, five decades below every reported error). Rate is
+the least-squares slope of `ln err` vs `nn` over rungs `nn ≥ 4M = 72`
+(rounded to the next ladder step, 80) — below that the graded map is
+under-sampled by its own construction, per the 12 Sep table, and a rate fit
+there is not measuring accuracy.
+
+**Both pass clauses are now met, reproducibly across three wavelengths (600,
+450, 900 nm, `b` stable to <8%):**
+
+1. **Adaptive beats uniform arc length, decisively, at equal `nn`**: rate `b`
+   0.0657 vs 0.0416 (1.58×), error 46–104× smaller across `nn = 80–200`. This
+   reverses the 12 Sep orientation-ladder finding, and the reversal has a
+   cause: pre-Kress the error is set by the worst-resolved node, so grading at
+   fixed `nn` cannot win by construction; under Kress the error is set by the
+   analyticity strip of `f∘w`, where grading toward curvature helps. **The
+   "superseded" note above, which restated this clause as unachievable, is
+   itself now superseded** — it was correct for the shipped (pre-Kress) scheme
+   and for the ellipse it was measured on, not in general.
+2. **Smooth clamp beats hard `np.clip`, decisively, on solution error** (not
+   just map smoothness): at matched realised contrast, 1.53× in rate and 10.7×
+   in error at `nn=200`. Stronger and solve-free: the hard-clipped `σγ` is C⁰,
+   so its spectral tail (1.3e-5 at `N_f=4096`) never reaches the production
+   constructor's round-off acceptance threshold (`4·eps = 8.9e-16`, itself
+   justified as the doubling loop's own termination criterion) — the smooth
+   clamp is not a refinement of `np.clip`, it is what makes `Parametrisation`'s
+   Newton/series construction terminate at all.
+
+**The caveat that keeps the gate from being a green light for the density in
+general:** on this same shape, at the same `nn`, the *production default*
+(uniform θ, no grading) still beats adaptive by 1.37× in rate and 46× in error
+at `nn=200`. The density is well constructed and the gate's stated criterion
+is met against the baseline it names — but nobody should prefer it to uniform
+θ on this shape. Whether it acquires a shape where it should is **G3's
+question** (the cost-curve table above predicts the knee between `n1=6`, used
+here, and `n1=12`); this study does not move conventions §13's "still
+tentative" note to settled.
+
+Also measured: `α_eff` derived from the `R` band (D17) sits inside a genuine
+interior accuracy optimum (`α_eff ≈ 0.20–0.25`) on this shape — it is not
+merely band-filling — but the optimum tracks the band (`C=2→0.123` up to
+`C=20→0.293`), so the un-derived, un-validated knob is the band's own
+calibration, not `α_eff` itself. Not run here: a near-corner shape (G3's, not
+this gate's), a complex-λ/QNM probe (G4's), and a second observable — all
+listed as what would change the verdict, in the findings doc.
 
 #### The same ladder under Kress — spectral, and grading still does not pay (2026-09-12)
 
