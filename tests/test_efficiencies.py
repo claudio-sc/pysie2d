@@ -22,10 +22,21 @@ RTOL_MIE = 4e-3
 RTOL_ENERGY = 1e-3
 
 
+#  m=0 is the trivial superformula branch (fact_n2 = fact_n3 = 0, so the
+# analytic ddf/ddg's tan/cot terms never fire); m=4, n1=n2=n3=2 is the same
+# exact circle routed through the non-trivial branch. Both must match Mie, or
+# a bug confined to the non-trivial branch would pass silently.
+CIRCLE_BRANCHES = [
+    {"m": 0},
+    {"m": 4, "n1": 2.0, "n2": 2.0, "n3": 2.0},
+]
+
+
 @pytest.mark.parametrize("wavelength", [500.0, 600.0, 800.0])
 @pytest.mark.parametrize("pol", [1, 2])
-def test_efficiencies_match_mie(circle, wavelength, pol):
-    geom = circle(300)
+@pytest.mark.parametrize("branch", CIRCLE_BRANCHES, ids=["m0", "m4-n2"])
+def test_efficiencies_match_mie(circle, branch, wavelength, pol):
+    geom = circle(300, **branch)
     mat = Material(n_core=N_CORE, n_clad=N_CLAD, pol=pol)
     result = BIESolver(geom, mat).scatter(wavelength=wavelength)
     eff = result.efficiencies()

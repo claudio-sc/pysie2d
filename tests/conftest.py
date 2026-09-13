@@ -35,10 +35,25 @@ def size_parameter(wavelength: float) -> float:
 
 @pytest.fixture(scope="module")
 def circle():
-    """Factory building a circular Geometry at a chosen resolution."""
+    """Factory building a circular Geometry at a chosen resolution.
+
+    ``m=0`` (the default) is the trivial superformula branch: the Gielis
+    ``fact_n2``/``fact_n3`` prefactors are exactly zero there, so a shape
+    derivative bug confined to that branch's ``tan``/``cot`` machinery would
+    validate against Mie anyway. ``m=4, n1=n2=n3=2`` is the same exact circle
+    (``Geometry.is_circle`` holds) routed through the non-trivial branch, and
+    is what actually exercises it.
+    """
     from pysie2d import Geometry
 
-    def _make(n_pts: int = 300):
-        return Geometry.gielis(rad=RAD, n_pts=n_pts, m=0)
+    def _make(
+        n_pts: int = 300,
+        *,
+        m: int = 0,
+        n1: float = 2.0,
+        n2: float = 2.0,
+        n3: float = 2.0,
+    ):
+        return Geometry.gielis(rad=RAD, n_pts=n_pts, m=m, n1=n1, n2=n2, n3=n3)
 
     return _make
