@@ -598,6 +598,67 @@ D6 curvature rejection a threshold to cite.
 hypothesis. It can only be uninformative, which happens if the sweep is too
 coarse to locate the knee.
 
+#### G3 findings — the envelope, and the first shape where grading pays (2026-09-13)
+
+Script: `g3_corner_envelope.py`, one exponent per process. Superellipse
+`n = 2, 4, … 256` (even only — odd `n` is finitely smooth at the axes and would
+measure regularity, not sharpness), `rad` 200, TE, n_core 1.5, λ 600 nm, `qext`
+against uniform-θ Kress at `nn = 1280`. Production code throughout, except the
+density floor below. `κ_max·rad ≈ 0.70·n` along the whole ladder (2.5 at
+`n = 4`, 90 at 128, 181 at 256), which is the conversion D6 needs.
+
+**Envelope.** Relative `qext` error at `nn = 320` (a little above the current
+default `n_pts = 200`), reference floor in the last column:
+
+| n | κ_max·rad | 4M | uniform θ | arc length | adaptive 20–100 | ref floor |
+|---|---|---|---|---|---|---|
+| 4 | 2.5 | 10 | 1.0e-15 | 2.9e-16 | 2.9e-16 | 7e-16 |
+| 8 | 5.4 | 27 | 1.2e-15 | 1.2e-15 | 1.4e-16 | 2e-15 |
+| 16 | 11 | 61 | 2.3e-15 | 1.2e-10 | 4.1e-16 | 2e-15 |
+| 32 | 22 | 129 | 1.1e-9 | 2.5e-7 | 2.2e-12 | 5e-16 |
+| 64 | 45 | 266 | 7.2e-7 | 6.3e-6 | 2.9e-9 | 2e-11 |
+| 128 | 90 | 538 | 2.7e-5 | 2.1e-5 | 3.9e-7 | 1e-8 |
+| 256 | 181 | 1084 | 8.4e-5 | 3.3e-5 | 2.8e-6 | 3e-7 |
+
+**The number:** at a 1e-6 relative `qext` target and `nn ≤ 320`, **graded Kress
+delivers to `n = 128` (`κ_max·rad ≈ 90`) and stops at `n = 256`**; uniform θ
+stops one rung earlier, at `n = 128`. Doubling to `nn = 640` buys one more rung
+for uniform θ (1.3e-7 at 128) and leaves graded Kress at 5e-8 on `n = 256`,
+which is already at that shape's reference floor — beyond `n ≈ 256` this sweep
+cannot resolve anything, so that is where the envelope is honestly stated to
+end. Every entry sits below the shipped first-order scheme's ~1.5e-3 at
+`nn = 300` *on the circle*, its easiest shape; the envelope is where Kress stops
+being spectral at practical `nn`, not where it stops beating v0.5.
+
+**G2's knee prediction holds.** The band-derived `nn` stays at 80–110 along the
+ladder, and `4M` overtakes it between `n = 16` (61) and `n = 32` (129). That is
+exactly where the ordering flips: uniform θ is the most accurate map through
+`n = 16`, and **adaptive beats it at equal `nn` from `n = 32` on** — 500× at
+`n = 32`, 250× at 64, 70× at 128 (`nn = 320`). This is the regime the
+2026-09-13 G2 caveat and the default-map study both deferred to G3, and it
+answers scope item 4: **grading has a shape class where it pays** — flat-sided,
+corner-dominated shapes with `κ_max·rad ≳ 20`. Plain arc length never beats
+adaptive, and only overtakes uniform θ once both are out of the envelope
+(`n ≥ 128`).
+
+**Defect found: `Parametrisation.gielis` raises on every `n ≥ 4`
+superellipse**, including the `C = 1` arc-length map that needs no curvature.
+The sides are flat points (`κ = 0` on the axes), `ln|κ|` in `_density` is −∞,
+`0·NaN` survives even at `α_eff = 0`, and the doubling loop exits with
+`ValueError` at `N_f = 2^20`. The study wraps `_speed_curvature` with a smooth
+relative floor `hypot(κ, ε·max|κ|)` (no absolute length, §9). The arc-length
+map is floor-independent to all digits, as it must be. **The adaptive map is
+not:** `ε = 1e-3` gives `α_eff ≈ 0.18`, `ε = 1e-6` gives `≈ 0.10` — the floor
+enters `range(s̃)` and so `α_eff` — and the error moves by up to 200× (`n = 8`,
+`nn = 80`: 1.7e-7 vs 3.4e-5). The table uses `ε = 1e-3`. **So a flat point is
+not just a crash to guard; the density needs a stated floor, and that floor is
+a design parameter production does not have yet.** Code-spec item, not fixed
+here.
+
+**Not established:** the floor's accuracy-optimal value; any shape with true
+inflection points (a superellipse's curvature has zeros but no sign change);
+anything past `n = 256`; QNM or complex λ (G4).
+
 ### G4 — Holomorphy and the QNM path
 
 Confirm the contour method still works: `R`, `L` and `h` are λ-independent by
