@@ -310,7 +310,11 @@ def test_the_map_carries_no_absolute_length():
     big = Parametrisation.gielis(rad=1400.0, wavelength_ref=7 * 1550.0, **kw)
     assert (big.n_fine, big.n_terms) == (small.n_fine, small.n_terms)
     assert big.nn_from_band == small.nn_from_band
-    assert big.alpha_eff == small.alpha_eff
+    # alpha_eff is fit from the same non-bit-identical FFT coefficients as the
+    # nodes above, so it gets the same round-off allowance rather than ==,
+    # which is architecture-dependent (macOS ARM64 passes bit-exact, Linux
+    # x86_64 CI observed a 1-ULP divergence, ~1e-16 relative).
+    assert big.alpha_eff == pytest.approx(small.alpha_eff, rel=1e-13)
     assert (
         np.abs(big.nodes(60).theta - small.nodes(60).theta).max() <= 16.0 * THETA_FLOOR
     )
