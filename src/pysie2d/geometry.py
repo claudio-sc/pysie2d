@@ -105,21 +105,77 @@ def _rderiv(
     )
 
 
-def _der_real_3(arr: np.ndarray, x: np.ndarray) -> np.ndarray:
-    """Central-difference derivative; one-sided at endpoints (DER_REAL_3).
+def _rderiv2(
+    rad: float,
+    n1: float,
+    n2: float,
+    n3: float,
+    fact_n2: float,
+    fact_n3: float,
+    m: int,
+    co: np.ndarray,
+    se: np.ndarray,
+    arg: np.ndarray,
+) -> np.ndarray:
+    """Compute d²r/dθ² for the Gielis formula, safe at sin/cos zeros.
+
+    Closed form, differentiating S = co + se a second time (S' is
+    ``_rderiv``'s ``fact_n2*co*tan(arg) + fact_n3*se*cot(arg)``):
+
+        S'' = co*[fact_n2²·tan²(arg) + fact_n2·(m/4)·sec²(arg)]
+            + se*[fact_n3²·cot²(arg) - fact_n3·(m/4)·csc²(arg)]
+
+    then r = rad·S^p with p = -1/n1 gives
+    r'' = rad·p(p-1)·S^(p-2)·(S')² + rad·p·S^(p-1)·S''. The zero-denominator
+    guard mirrors ``_rderiv``: at cos(arg)=0, co·tan²(arg) ~ |cos|^(n2-2),
+    which is the analytic limit 0 for n2 > 2 but a genuine singularity for
+    n2 < 2 (a real corner, not a masking artefact) — this function is only
+    valid away from that regime, matching the "no true corners" scope.
 
     Args:
-        arr: Sampled function values.
-        x: Sample abscissae (same shape as arr).
+        rad: Scale radius (nm).
+        n1: Gielis shape exponent.
+        n2: Gielis shape exponent.
+        n3: Gielis shape exponent.
+        fact_n2: Prefactor -n2 * m / 4 for the cosine term.
+        fact_n3: Prefactor n3 * m / 4 for the sine term.
+        m: Rotational symmetry order (needed directly, not just via the
+            fact_n2/fact_n3 already-scaled prefactors).
+        co: Intermediate quantity |cos(m θ/4)/a|^n2.
+        se: Intermediate quantity |sin(m θ/4)/b|^n3.
+        arg: m θ / 4.
 
     Returns:
-        d(arr)/dx approximated at every sample point.
+        d²r/dθ² evaluated at every theta.
     """
-    d_arr = np.empty_like(arr)
-    d_arr[1:-1] = (arr[2:] - arr[:-2]) / (x[2:] - x[:-2])
-    d_arr[0] = (arr[1] - arr[0]) / (x[1] - x[0])
-    d_arr[-1] = (arr[-1] - arr[-2]) / (x[-1] - x[-2])
-    return d_arr
+    cos_arg = np.cos(arg)
+    sin_arg = np.sin(arg)
+    safe_cos = np.where(cos_arg == 0.0, 1.0, cos_arg)
+    safe_sin = np.where(sin_arg == 0.0, 1.0, sin_arg)
+    tan_arg = np.where(cos_arg == 0.0, 0.0, sin_arg / safe_cos)
+    cot_arg = np.where(sin_arg == 0.0, 0.0, cos_arg / safe_sin)
+    sec2 = np.where(cos_arg == 0.0, 0.0, 1.0 + tan_arg**2)
+    csc2 = np.where(sin_arg == 0.0, 0.0, 1.0 + cot_arg**2)
+    term_co = np.where(
+        cos_arg == 0.0,
+        0.0,
+        co * (fact_n2**2 * tan_arg**2 + fact_n2 * (m / 4.0) * sec2),
+    )
+    term_se = np.where(
+        sin_arg == 0.0,
+        0.0,
+        se * (fact_n3**2 * cot_arg**2 - fact_n3 * (m / 4.0) * csc2),
+    )
+    s_dd = term_co + term_se
+
+    s = co + se
+    s_d = np.where(cos_arg == 0.0, 0.0, fact_n2 * co * tan_arg) + np.where(
+        sin_arg == 0.0, 0.0, fact_n3 * se * cot_arg
+    )
+    p = -1.0 / n1
+    return (
+        rad * p * (p - 1.0) * s ** (p - 2.0) * s_d**2 + rad * p * s ** (p - 1.0) * s_dd
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -174,11 +230,12 @@ def _etoil(
     fact_n3 = n3 * m / 4.0
 
     rderiv = _rderiv(rad, n1, n2, n3, fact_n2, fact_n3, co, se, arg)
+    rderiv2 = _rderiv2(rad, n1, n2, n3, fact_n2, fact_n3, m, co, se, arg)
 
     df = r * np.cos(theta) + np.sin(theta) * rderiv
     dg = -r * np.sin(theta) + np.cos(theta) * rderiv
-    ddf = _der_real_3(df, theta)
-    ddg = _der_real_3(dg, theta)
+    ddf = rderiv2 * np.sin(theta) + 2.0 * rderiv * np.cos(theta) - r * np.sin(theta)
+    ddg = rderiv2 * np.cos(theta) - 2.0 * rderiv * np.sin(theta) - r * np.cos(theta)
 
     return f, g, df, dg, ddf, ddg, theta
 
@@ -287,11 +344,12 @@ def _uniform_arc_theta(
     # np.interp assumes s_fine is increasing. It is not when the curve doubles
     # back — odd m away from a = b violates the D5 closure condition — and the
     # inversion then returns *coincident* nodes rather than failing. Downstream
-    # _der_real_3 divides by the zero spacing and ddf/ddg come back NaN with
-    # nothing raised. Exact equality is the right test: the spacing is
-    # identically zero, and there is no separation at which two nodes on top of
-    # each other become acceptable. The prescribed-theta path already refuses
-    # the same thing (_validated_theta); this is the other entry point.
+    # delt (a bare np.diff) comes back zero at that node, poisoning the
+    # quadrature weight with nothing raised. Exact equality is the right test:
+    # the spacing is identically zero, and there is no separation at which two
+    # nodes on top of each other become acceptable. The prescribed-theta path
+    # already refuses the same thing (_validated_theta); this is the other
+    # entry point.
     if not np.all(np.diff(theta_uniform) > 0.0):
         raise ValueError(
             f"arc-length inversion produced coincident nodes at m={m}, "
@@ -373,10 +431,15 @@ def _etoil_arc(
     fact_n2 = -n2 * m / 4.0
     fact_n3 = n3 * m / 4.0
     rderiv = _rderiv(rad, n1, n2, n3, fact_n2, fact_n3, co, se, arg)
+    rderiv2 = _rderiv2(rad, n1, n2, n3, fact_n2, fact_n3, m, co, se, arg)
     df_theta = r * np.cos(theta) + np.sin(theta) * rderiv
     dg_theta = -r * np.sin(theta) + np.cos(theta) * rderiv
-    ddf_theta = _der_real_3(df_theta, theta)
-    ddg_theta = _der_real_3(dg_theta, theta)
+    ddf_theta = (
+        rderiv2 * np.sin(theta) + 2.0 * rderiv * np.cos(theta) - r * np.sin(theta)
+    )
+    ddg_theta = (
+        rderiv2 * np.cos(theta) - 2.0 * rderiv * np.sin(theta) - r * np.cos(theta)
+    )
 
     return f, g, df_theta, dg_theta, ddf_theta, ddg_theta, delt, theta
 

@@ -422,10 +422,10 @@ def test_coincident_arc_length_nodes_are_rejected_not_returned_as_nan():
     At odd ``m`` away from ``a = b`` the D5 closure condition is violated and
     the curve doubles back, so ``s_fine`` is not monotone and the ``np.interp``
     inversion returns *coincident* θ — minimum spacing exactly 0.0 at
-    ``m = 3, b = 1.20, n_pts = 200``, four duplicated nodes. ``_der_real_3``
-    then divides by a zero spacing and ``ddf``/``ddg`` come back NaN with
-    nothing raised: a boundary object that looks constructed and poisons every
-    assembly downstream.
+    ``m = 3, b = 1.20, n_pts = 200``, four duplicated nodes. ``delt`` (a bare
+    ``np.diff``) then comes back zero at that node with nothing raised: a
+    boundary object that looks constructed and poisons every assembly
+    downstream.
 
     The prescribed-θ path already rejects exactly this (a non-strictly-
     increasing set), so the two entry points to a node set disagreed. Zero
