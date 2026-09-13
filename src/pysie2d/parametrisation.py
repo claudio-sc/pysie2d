@@ -5,9 +5,9 @@ Implements `docs/design/parametrisation-spec.md` §3–§6: closed-form Gielis
 map, the curvature-driven near-uniform density, and the frozen
 ``Parametrisation`` object that carries them.
 
-This module is **additive**. It is not wired into ``Geometry`` — the API break
-that replaces the v0.5 ``np.interp`` inversion belongs to the migration spec
-(v0.6-architecture §5), not here.
+``Geometry.gielis(..., parametrisation=...)`` consumes the object; with none
+given it uses :meth:`Parametrisation.uniform_theta`, the identity map
+(``docs/design/kress-spec.md`` §2, D1).
 
 Conventions (spec §2, conventions §13):
     Boundary ``f = r sin θ + x0``, ``g = r cos θ + z0``; primes are ``d/dθ``,
@@ -302,7 +302,8 @@ class Parametrisation:
         coef: ``c_k`` for ``k = 1…K`` of ``σγ = a_0 + 2 Re Σ c_k e^{ikθ}``.
         theta_fine: The uniform θ grid the series was sampled on.
         t_fine: ``T`` on that grid, used to seed Newton.
-        nn_from_band: ``nn`` derived from the ``R`` band (spec §5.4).
+        nn_from_band: ``nn`` derived from the ``R`` band (spec §5.4), or ``None``
+            for :meth:`uniform_theta`, which has no band.
         contrast_realised: ``exp(α_eff Δ) ≤ C`` — the bound, not the promise.
         alpha_eff: The curvature exponent actually used.
         n_fine: ``N_f``, shape-intrinsic (spec §4.2).
@@ -313,7 +314,7 @@ class Parametrisation:
     coef: np.ndarray
     theta_fine: np.ndarray
     t_fine: np.ndarray
-    nn_from_band: int
+    nn_from_band: int | None
     contrast_realised: float
     alpha_eff: float
     n_fine: int
@@ -423,6 +424,38 @@ class Parametrisation:
         )
 
     # -- construction -------------------------------------------------------
+
+    @classmethod
+    def uniform_theta(cls) -> "Parametrisation":
+        """The identity map ``w(t) = t``: nodes equispaced in θ.
+
+        The default node map of :meth:`pysie2d.geometry.Geometry.gielis`. It
+        depends on no shape parameter, so every geometry built on it shares one
+        frozen map automatically (conventions §13.3), it needs no construction
+        and no ``n_core``, and it accepts shapes :meth:`gielis` cannot resolve
+        (non-analytic exponents). Under Kress it also converges fastest on every
+        star measured once resolved — see ``docs/design/kress-spec.md`` §2, D1,
+        for where uniform arc length wins instead.
+
+        It goes through the same :meth:`nodes` code as every other map: an
+        empty series makes ``T(θ) = θ`` exactly, and one Newton step lands on
+        ``θ_j = t_j`` bit-for-bit, with ``w' = 1`` and ``w'' = 0``.
+
+        Returns:
+            The identity :class:`Parametrisation`.
+        """
+        theta_f = np.linspace(0.0, TWOPI, N_FINE_START, endpoint=False)
+        return cls(
+            a0=1.0,
+            coef=np.zeros(0, dtype=complex),
+            theta_fine=theta_f,
+            t_fine=np.append(theta_f, TWOPI),
+            nn_from_band=None,
+            contrast_realised=1.0,
+            alpha_eff=0.0,
+            n_fine=N_FINE_START,
+            n_terms=0,
+        )
 
     @classmethod
     def gielis(

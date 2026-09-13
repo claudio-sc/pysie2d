@@ -326,3 +326,20 @@ def test_the_object_is_frozen():
     par = Parametrisation.gielis(rad=200.0, **MILD, n_core=3.0)
     with pytest.raises(AttributeError):
         par.alpha_eff = 0.1
+
+
+def test_uniform_theta_is_the_identity_map_bit_for_bit():
+    """The default map places θ_j = t_j exactly, with w' = 1 and w'' = 0.
+
+    Exact rather than to a tolerance: an empty series makes T(θ) = θ, and one
+    Newton step from any seed within an ulp lands on t_j itself (Sterbenz), so
+    anything short of bit-identity means the identity map is not the identity.
+    Odd and even nn, since node offsets differ.
+    """
+    par = Parametrisation.uniform_theta()
+    assert par.nn_from_band is None
+    for nn in (37, 200):
+        nodes = par.nodes(nn)
+        assert np.array_equal(nodes.theta, nodes.t)
+        assert np.all(nodes.dw == 1.0)
+        assert np.all(nodes.ddw == 0.0)
