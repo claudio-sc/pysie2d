@@ -1,6 +1,8 @@
 # `Parametrisation` — code-spec, near-uniform arc length (draft 1)
 
-**Status:** draft 1, 12 Sep 2026. Nothing implemented. Written from the G1/G2
+**Status:** draft 1, 12 Sep 2026. Implemented 13 Sep 2026
+(`src/pysie2d/parametrisation.py` — `Parametrisation`, `_density`,
+`_layer_bandwidth`). Written from the G1/G2
 prototypes (`studies/adaptive_density.py`, `studies/kress_t.py`) and five
 rounds of questions answered on 12 Sep 2026 (§11). Decisions it works within:
 [v0.6-architecture.md](v0.6-architecture.md) §3–4; contract:

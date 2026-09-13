@@ -1,7 +1,11 @@
 # v0.6 quadrature — preliminary study plan
 
 **Status:** G1 passed, G2 measured and its criterion moved to G3, G0 not run
-and under review; a Kress prototype exists in `kress_t.py`. Findings are in the
+and under review; a Kress prototype exists in `kress_t.py`. Two pieces have
+been ported to production from these findings: `Parametrisation`
+(`src/pysie2d/parametrisation.py`) and analytic `ddf`/`ddg`
+(`geometry._rderiv2`) — see architecture §1, items 2–3. Kress itself (item 1)
+is still prototype-only. Findings are in the
 `####` sections under each gate. This is doc B of two. The
 decisions this study works within are
 [../v0.6-architecture.md](../v0.6-architecture.md); the measurements it starts
