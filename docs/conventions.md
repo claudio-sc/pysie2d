@@ -489,6 +489,21 @@ the solve. Kress itself adds nothing λ-dependent: `R`, `W` and `h` are
 geometry- and wavelength-free, and `J₀`, `J₁`, `H₀^{(1)}`, `H₁^{(1)}` and
 `ln k` are holomorphic on the search half-plane of §8.
 
+**The tell for lost holomorphy is `sigma_ratio`, not the mode count.** A
+holomorphic `M` puts Beyn's eigenvalues exactly on its singularities, so a
+returned λ at which `σ_min/σ_max` of `M` is not at round-off is not a pole of
+the operator that was integrated. Mode count, `edge_margin` and the rank gap do
+not see a mild violation at all *(measured, TE n = 0 circle, `nn = 80`, on the
+graded map `θ = t + ε sin 2t` with `ε` made to depend on Re λ — valid, and
+Mie-exact to 1e-11, at every fixed λ: at a slope of 1e-4 and 1e-3 per 25 nm the
+pole moved 3.9e-4 and 3.9e-3 nm with the count at 1 and `edge_margin` at 0.433
+unchanged to three digits, while `sigma_ratio` rose from 8.1e-15 to 3.0e-7 and
+3.0e-6; from 1e-2 the probe saturates and Beyn raises;
+`docs/design/studies/g4_holomorphy_qnm.py`)*. Any check that a map, a material
+model or an assembly path has kept `M(λ)` holomorphic reads `sigma_ratio`. A
+stable mode count is necessary and says nothing about accuracy: on a circle at
+`nn = 20` the count is right with the poles 2 nm out.
+
 **13.3 `w` does not depend on any parameter being differentiated.** The frozen
 object of §10 is the map, not the angle array: under Kress the θ array still says
 where the nodes are, but assembly also needs `w'` and `w''`, and those cannot be
