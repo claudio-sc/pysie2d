@@ -27,6 +27,14 @@ boundary points, converging toward analytic Mie theory (both polarisations):
 
 ![Convergence to Mie theory](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/convergence_study.png)
 
+The same error over size parameter `x = 0.1 … 30` and `nn`, log colour scale.
+The error falls from `10⁻³` to `10⁻¹²` across a narrow front (black contours,
+`10⁻⁶` solid); past it the solver is at round-off. The white line is 6 points
+per interior wavelength `λ/n_core`, which tracks the front's round-off edge
+from `x ≈ 2` up — `10⁻⁶` itself is reached at a median of 4.7:
+
+![Convergence map](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/convergence_map.png)
+
 Near field of a Gielis `m = 6` star under plane-wave illumination (scattered
 field outside the boundary, internal field inside):
 
@@ -62,6 +70,7 @@ Regenerate them with:
 
 ```bash
 uv run python examples/convergence_study.py
+uv run python examples/convergence_map.py
 uv run python examples/nearfield_map.py
 uv run python examples/purcell_map.py
 uv run python examples/qnm_spectrum.py

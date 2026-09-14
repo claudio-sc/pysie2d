@@ -91,7 +91,7 @@ after a release rather than editing that version line by hand.
 
 ## Figures
 
-The three `examples/` scripts generate the README figures. Their conventions
+The `examples/` scripts generate the README figures. Their conventions
 live in [examples/CLAUDE.md](examples/CLAUDE.md).
 
 ## Git workflow
