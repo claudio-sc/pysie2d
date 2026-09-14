@@ -203,7 +203,7 @@ class ScatterResult:
             self.ei,
         )
 
-    def efficiencies(self, n_angles: int = 3000) -> dict[str, float]:
+    def efficiencies(self, n_angles: int = 500) -> dict[str, float]:
         """Scattering, extinction, and absorption efficiencies.
 
         Efficiencies are normalised by the geometric width ``2·rad``, which
@@ -212,6 +212,10 @@ class ScatterResult:
 
         Args:
             n_angles: Number of far-field angles used in the angular integral.
+                The periodic trapezoid rule is spectral in it: Q_sca reaches
+                round-off by 257 at size parameter 50 (n_core = 3.5), so the
+                default of 500 leaves ~2× headroom. Raise it for larger
+                particles. Q_ext does not depend on it.
 
         Returns:
             dict with keys 'qsca', 'qext', 'qabs'.

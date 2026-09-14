@@ -125,7 +125,7 @@ def test_qext_is_exact_at_off_grid_incidence(pol):
     37° and 123.456° fall between far-field grid angles at every n_angles
     used: reading the nearest sample was 1.5e-7 off at n_angles = 3000 and
     8.3e-6 at 500, so the 1e-12 bar (RTOL_QEXT) cannot pass on a grid sample.
-    n_angles = 17 is far below the grid any nearest-sample read could survive.
+    n_angles = 17 makes the grid step 22.5°, so qext is checked independent of it.
     """
     geom = Geometry.gielis(rad=200.0, n_pts=300, m=0)
     mat = Material(n_core=N_CORE, n_clad=N_CLAD, pol=pol)
@@ -136,3 +136,22 @@ def test_qext_is_exact_at_off_grid_incidence(pol):
             assert result.efficiencies(n_angles)["qext"] == pytest.approx(
                 ref[f"Q_ext_{POL_TAG[pol]}"], rel=RTOL_QEXT
             )
+
+
+@pytest.mark.parametrize("pol", [1, 2])
+def test_default_angular_grid_resolves_a_high_multipole_particle(pol):
+    """The default n_angles must integrate a strongly multipolar far field.
+
+    rad = 2000 nm at 500 nm, n_core = 2: size parameter 25, so |amp|² carries
+    many angular harmonics. qsca against Mie at the default grid measured
+    1.1e-15 / 1.3e-15 (TE/TM) at nn = 400; 1e-12 is RTOL_QSCA. The test can
+    fail: TE measured 6.1e-1 at 33 angles and 4.1e-6 at 65, round-off from 129
+    — so a default shrunk toward the grid this far field needs fails here.
+    """
+    geom = Geometry.gielis(rad=2000.0, n_pts=400, m=0)
+    mat = Material(n_core=2.0, n_clad=N_CLAD, pol=pol)
+    result = BIESolver(geom, mat).scatter(wavelength=500.0)
+    ref = mie.efficiencies(result.size_parameter, complex(mat.nc))
+    assert result.efficiencies()["qsca"] == pytest.approx(
+        ref[f"Q_sca_{POL_TAG[pol]}"], rel=RTOL_QSCA
+    )

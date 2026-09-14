@@ -37,7 +37,7 @@ QNMSolver.modes(self, z_lo: complex, z_hi: complex, *, n_quad_per_side: int = 12
 SHAPE_STEP: float = 1e-05
 class ScatterResult
 ScatterResult.__init__(self, ei: numpy.ndarray, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float, angle: float = 0.0) -> None
-ScatterResult.efficiencies(self, n_angles: int = 3000) -> dict[str, float]
+ScatterResult.efficiencies(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
 ScatterResult.far_field(self, n_angles: int = 3000) -> tuple[numpy.ndarray, numpy.ndarray]
 ScatterResult.size_parameter -> property
