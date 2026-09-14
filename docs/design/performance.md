@@ -20,6 +20,14 @@ At complex λ — the QNM case, and the one that is slow —
 is **2.4 %**. Any optimisation that does not touch Hankel evaluation, or the
 number of times it happens, is optimising 2 % of the runtime.
 
+**Under Kress quadrature (v0.6) the shape holds.** The logarithmic splitting
+needs `J₀`/`J₁` beside `H₀^{(1)}`/`H₁^{(1)}`, and at complex λ that is a separate
+`jv` call (1.45× the v0.5 assembly). The `jv`+`hankel1` pairs are **98.8 % of one
+assembly** *(measured, `nn = 200`, λ = 530 + 26i, single BLAS thread; the
+figures below this note are v0.5's)*, and `jv` releases the GIL too: one
+`beyn_modes` contour takes 4.19 s serial, 1.20 s on 4 workers and 0.78 s on 8 —
+**5.4×**, the §3.1 result reproduced.
+
 This is not an artefact of the small `nn` it was measured at. §5.2 puts the
 crossover where dense linear algebra overtakes Hankel evaluation at
 **`nn ≈ 20 700`**, so the statement holds across the whole large-system range.

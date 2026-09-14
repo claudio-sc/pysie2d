@@ -67,8 +67,9 @@ after a release rather than editing that version line by hand.
    respect that boundary.
 4. **Justify every tolerance.** Each `rtol`/`atol` in a test carries a reason in
    a comment: a convergence order, a quadrature floor, a precision bound.
-   Near-field quantities converge at first order in `nn` (hence `nn = 1000` for
-   1 % on the self-Green anchor); far-field efficiencies are fine at `nn = 300`.
+   Under Kress quadrature near- and far-field quantities converge spectrally:
+   the circle anchors reach round-off by `nn ≈ 30–40`, so a tolerance cites a
+   measured value against a round-off or contour floor, not a convergence order.
    Never widen a tolerance to make a test pass.
 
 ## Style
@@ -153,10 +154,11 @@ them as duplication.
 
 ## Performance shape
 
-**This is a special-function-bound code.** At complex λ,
-`scipy.special.hankel1` is 98 % of one assembly and 95 % of a whole
-`QNMSolver.modes()` call; dense linear algebra is 2 %. Optimise anything else and
-you are optimising 2 % of the runtime. `hankel1` also **releases the GIL**, so
+**This is a special-function-bound code.** At complex λ the `jv`+`hankel1`
+pairs of the Kress splitting are 99 % of one assembly (v0.5: `hankel1` alone,
+98 % of an assembly and 95 % of a whole `QNMSolver.modes()` call); dense linear
+algebra is ~2 %. Optimise anything else and you are optimising 2 % of the
+runtime. Both **release the GIL**, so
 threading a loop of assemblies is a real 5× and `multiprocessing` is strictly
 worse. Numbers, and the rejected alternatives, in
 [docs/design/performance.md](docs/design/performance.md) — read it before
@@ -180,17 +182,17 @@ extraction via Beyn's contour method, validated against analytic Mie resonances
 §3.1, the 5.02× measurement and its two traps) + the adjoint
 eigenvalue-sensitivity API (conventions §11).
 
-**Next, v0.6: spectral convergence.** Kress–Martensen product quadrature
-replacing the Maradudin diagonal self-patch, a smooth `Parametrisation` object
-replacing the `np.interp` arc-length inversion, curvature-adaptive node
-density, far-field angular quadrature, and a breaking change to the frozen-node
-API. First order → machine precision at `nn = 30` on the circle. Decisions in
+**v0.6, on `v0.6-quadrature`: spectral convergence.** Kress–Martensen product
+quadrature replacing the Maradudin diagonal self-patch, a smooth
+`Parametrisation` node map with uniform θ as the default, and the breaking
+`theta=` → `parametrisation=` change. First order → machine precision at
+`nn ≈ 30` on the circle. Implemented, with README, QNM guide and figures
+updated; the curvature-adaptive density ships as a non-default map with known
+limits (no flat points). Decisions in
 [docs/design/v0.6-architecture.md](docs/design/v0.6-architecture.md), the
-preliminary study in
+study in
 [docs/design/studies/quadrature-study-plan.md](docs/design/studies/quadrature-study-plan.md),
-the invariants in `docs/conventions.md` §13 (tentative until the migration
-closes). **Nothing is implemented yet** — the study runs first and produces the
-code-specs.
+the invariants in `docs/conventions.md` §13.
 
 Longer term: slab-waveguide backgrounds, multiple particles.
 
