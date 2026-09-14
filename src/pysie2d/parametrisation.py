@@ -479,6 +479,16 @@ class Parametrisation:
         or for ``C = 1`` (spec §6, contract 2), so the Mie anchor exercises the
         code the stars run.
 
+        **Not the default, and not every shape builds.** A boundary with a flat
+        point (``κ = 0``: every superellipse with exponent ≥ 4) makes ``ln|κ|``
+        infinite, so the map cannot be built at any ``r_band`` — including the
+        near-corner shapes where grading is most accurate. Very spiky stars can
+        also fail the Newton inversion. :meth:`uniform_theta` accepts all of
+        these and is the more accurate map on most shapes (conventions §13).
+        The ``R`` band is a bound, not a promise: a nearly round shape has no
+        curvature contrast to grade, so ``contrast_realised`` can fall well
+        short of ``R_max/R_min``.
+
         The representation of ``σγ`` is a function of the shape alone: ``N_f``
         doubles from 1024 until the top quarter of the spectrum has decayed to
         the round-off plateau, and ``K`` is the last coefficient above ``eps``
