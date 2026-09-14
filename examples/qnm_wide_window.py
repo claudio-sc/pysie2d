@@ -11,9 +11,9 @@ eleven modes costs no more than finding one; only the probe count has to exceed
 the mode count. The seven-box example does 7 × 4 × 6 = 168 assemblies to find
 nine modes, and this one does 4 × 32 = 128 to find eleven.
 
-The two agree. Every mode here reproduces the corresponding narrow-box value to
-~1e-12 nm, except the one the wide contour under-resolves — and ``refine()``
-recovers that one to ~1e-13 nm. See the printed table.
+The two agree. Every mode here sits on its analytic Mie pole to ~1e-11 nm,
+except the one the wide contour under-resolves — and ``refine()`` recovers that
+one to ~1e-13 nm. See the printed table.
 
 Run:
     uv run python examples/qnm_wide_window.py
@@ -40,14 +40,14 @@ POL = 2  # TE (E_y); one polarisation keeps the box a single spectrum
 # Q = 598 mode at 505.68+0.42j, whose leaked rank is visible in `rank` below.
 Z_LO, Z_HI = 500.0 + 1.0j, 1100.0 + 50.0j
 
-# 32 nodes per side against the default 12. A wide contour is the one regime
-# where the quadrature, not n_pts, sets the accuracy: the contour is long, and
-# the poles just outside it are close relative to its size. Measured on the TE
-# n=0 mode, the worst-resolved of the eleven, error against the narrow-box
-# value falls 6.86 → 0.93 → 0.12 nm at 16 → 24 → 32 nodes per side, while the
-# other ten sit at ~1e-12 nm from 16 upward. refine() removes even that
-# residual, which is why a coarser contour plus refinement is also a valid
-# strategy here.
+# 32 nodes per side against the default 12. The boundary is at round-off at
+# n_pts = 200 under Kress quadrature, so the contour sets the accuracy, and a
+# wide one most of all: it is long, and the poles just outside it are close
+# relative to its size. Measured on the TE n=0 mode, the worst-resolved of the
+# eleven, the error against Mie falls 6.34 → 1.01 → 0.11 nm at 16 → 24 → 32
+# nodes per side, while the other ten reach 2.7e-6 → 8.3e-10 → 2.6e-11 nm.
+# refine() takes n=0 to 1.2e-13 nm from any of the three, which is why a
+# coarser contour plus refinement is also a valid strategy here.
 N_SIDE = 32
 # Must exceed the mode count *with multiplicity* (11), counting rank leaked from
 # poles just outside the box (3 more). 20 clears both with margin.
@@ -113,10 +113,9 @@ def report(res, refined, orders: np.ndarray, lams: np.ndarray) -> None:
         )
     print(
         "\nerr_Mie  distance to the analytic Mie pole, nm. At n_pts = "
-        f"{N_PTS} the discretisation\n"
-        "         error alone is ~0.4 nm, so that is the floor, not the "
-        "target — it is a\n"
-        "         statement about n_pts, not about the contour.\n"
+        f"{N_PTS} the boundary\n"
+        "         discretisation is at round-off, so what remains is the "
+        "contour.\n"
         "sigma    the universal resolution flag, and the one to read first. Ten "
         "of the\n"
         "         eleven sit at 1e-13 or below — on the pole to machine "
@@ -129,23 +128,20 @@ def report(res, refined, orders: np.ndarray, lams: np.ndarray) -> None:
         "         rows *by construction* — refine() skips them — so it measures "
         "the\n"
         "         contour only on the simple n=0 mode, where it recovers "
-        "0.118 nm.\n"
+        "0.114 nm.\n"
         "'deg'    the doubly degenerate n >= 1 pairs, which refine() leaves "
         "alone by design.\n\n"
         "Two readings worth having:\n"
-        "  - n=0's err_Mie is *smaller* before refinement (0.365 vs 0.447) "
-        "and that is not\n"
-        "    a win: the raw value's quadrature error happens to cancel part of "
-        "the\n"
-        "    discretisation error. The refined value is the true singularity "
-        "of the\n"
-        "    discretised operator. Judge the contour by 'moved', the physics "
-        "by n_pts.\n"
-        "  - n=4 shows edge = 0.014, which normally warns of a clipped pole — "
+        "  - n=0's 'moved' equals its err_Mie: refinement lands on the analytic "
+        "pole to\n"
+        "    ~1e-13 nm, so the whole 0.114 nm was contour error. Judge the "
+        "contour by\n"
+        "    'moved' and sigma; raise n_pts only when refine() stops helping.\n"
+        "  - n=4 shows edge = 0.017, which normally warns of a clipped pole — "
         "it sits\n"
-        "    0.67 nm above the box floor. Here sigma = 3e-15, and the mode "
-        "agrees with\n"
-        "    its narrow-box value to 1e-12 nm, so it is genuinely resolved. A "
+        "    0.84 nm above the box floor. Here sigma = 5e-15, and the mode "
+        "sits on its\n"
+        "    analytic pole to ~1e-11 nm, so it is genuinely resolved. A "
         "low\n"
         "    edge_margin is a reason to check, not a verdict."
     )

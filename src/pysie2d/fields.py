@@ -20,7 +20,7 @@ def far_field(
     g: np.ndarray,
     df: np.ndarray,
     dg: np.ndarray,
-    delt: float | np.ndarray,
+    delt: float,
     ei: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute the 2-D far-field scattering amplitude.
@@ -35,9 +35,9 @@ def far_field(
             Pass a complex value for quasi-normal-mode searches.
         f: (nn,) boundary x coordinates (nm).
         g: (nn,) boundary z coordinates (nm).
-        df: (nn,) first derivative of f w.r.t. θ.
-        dg: (nn,) first derivative of g w.r.t. θ.
-        delt: Quadrature θ-step (scalar or per-point array).
+        df: (nn,) df/dt, t the quadrature parameter the nodes are equispaced in.
+        dg: (nn,) dg/dt.
+        delt: Trapezoid step 2π/nn in t (:attr:`pysie2d.geometry.Geometry.delt`).
         ei: complex (2nn,) BIE solution vector.
 
     Returns:
@@ -45,6 +45,22 @@ def far_field(
         angles: float (nff,) observation angles (rad), from −π to π.
     """
     angles = -PI + np.arange(nff) * 2.0 * PI / (nff - 1.0)
+    amp = _far_field_at(angles, nn, wnum_bg, f, g, df, dg, delt, ei)
+    return amp, angles
+
+
+def _far_field_at(
+    angles: np.ndarray,
+    nn: int,
+    wnum_bg: complex,
+    f: np.ndarray,
+    g: np.ndarray,
+    df: np.ndarray,
+    dg: np.ndarray,
+    delt: float,
+    ei: np.ndarray,
+) -> np.ndarray:
+    """Far-field amplitude at arbitrary observation angles; see :func:`far_field`."""
     se = np.sin(angles)
     co = np.cos(angles)
 
@@ -53,11 +69,7 @@ def far_field(
     phi_j = ei[:nn, None]
     chi_j = ei[nn:, None]
     puto = 1j * wnum_bg * (dg[:, None] * se - df[:, None] * co) * phi_j - chi_j
-    # delt may be a scalar or a per-point (nn,) array
-    delt_col = np.reshape(delt, (-1, 1)) if np.ndim(delt) > 0 else delt
-    amp = np.sum(np.exp(arg) * puto * delt_col, axis=0)
-
-    return amp, angles
+    return np.sum(np.exp(arg) * puto * delt, axis=0)
 
 
 # ---------------------------------------------------------------------------
@@ -85,8 +97,8 @@ def _is_outside(
         x3: Observation z-coordinate (nm).
         f: (nn,) boundary x coordinates (nm).
         g: (nn,) boundary z coordinates (nm).
-        df: (nn,) first derivative of f w.r.t. θ.
-        dg: (nn,) first derivative of g w.r.t. θ.
+        df: (nn,) df/dt.
+        dg: (nn,) dg/dt.
 
     Returns:
         True if the point lies outside the particle.
@@ -108,7 +120,7 @@ def eval_field(
     df: np.ndarray,
     g: np.ndarray,
     dg: np.ndarray,
-    delt: float | np.ndarray,
+    delt: float,
     wnum_bg: complex,
     x_pts: np.ndarray,
     z_pts: np.ndarray,
@@ -130,10 +142,10 @@ def eval_field(
         ei: complex (2nn,) BIE solution vector (φ = ei[:nn], χ = ei[nn:]).
         nn: Number of boundary points.
         f: (nn,) boundary x coordinates (nm).
-        df: (nn,) first derivative of f w.r.t. θ.
+        df: (nn,) df/dt, t the quadrature parameter the nodes are equispaced in.
         g: (nn,) boundary z coordinates (nm).
-        dg: (nn,) first derivative of g w.r.t. θ.
-        delt: Quadrature θ-step.
+        dg: (nn,) dg/dt.
+        delt: Trapezoid step 2π/nn in t (:attr:`pysie2d.geometry.Geometry.delt`).
         wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), where
             λ_vac is the public **vacuum** wavelength. Build it with
             :meth:`pysie2d.material.Material.wnum_bg`; this function takes no

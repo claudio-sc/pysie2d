@@ -67,8 +67,9 @@ after a release rather than editing that version line by hand.
    respect that boundary.
 4. **Justify every tolerance.** Each `rtol`/`atol` in a test carries a reason in
    a comment: a convergence order, a quadrature floor, a precision bound.
-   Near-field quantities converge at first order in `nn` (hence `nn = 1000` for
-   1 % on the self-Green anchor); far-field efficiencies are fine at `nn = 300`.
+   Under Kress quadrature near- and far-field quantities converge spectrally:
+   the circle anchors reach round-off by `nn ≈ 30–40`, so a tolerance cites a
+   measured value against a round-off or contour floor, not a convergence order.
    Never widen a tolerance to make a test pass.
 
 ## Style
@@ -90,7 +91,7 @@ after a release rather than editing that version line by hand.
 
 ## Figures
 
-The three `examples/` scripts generate the README figures. Their conventions
+The `examples/` scripts generate the README figures. Their conventions
 live in [examples/CLAUDE.md](examples/CLAUDE.md).
 
 ## Git workflow
@@ -153,10 +154,11 @@ them as duplication.
 
 ## Performance shape
 
-**This is a special-function-bound code.** At complex λ,
-`scipy.special.hankel1` is 98 % of one assembly and 95 % of a whole
-`QNMSolver.modes()` call; dense linear algebra is 2 %. Optimise anything else and
-you are optimising 2 % of the runtime. `hankel1` also **releases the GIL**, so
+**This is a special-function-bound code.** At complex λ the `jv`+`hankel1`
+pairs of the Kress splitting are 99 % of one assembly (v0.5: `hankel1` alone,
+98 % of an assembly and 95 % of a whole `QNMSolver.modes()` call); dense linear
+algebra is ~2 %. Optimise anything else and you are optimising 2 % of the
+runtime. Both **release the GIL**, so
 threading a loop of assemblies is a real 5× and `multiprocessing` is strictly
 worse. Numbers, and the rejected alternatives, in
 [docs/design/performance.md](docs/design/performance.md) — read it before
@@ -175,14 +177,22 @@ Shipped: v0.1 core scattering → v0.2 line dipole, self-Green, LDOS/Purcell →
 v0.3 performance (Cephes Hankel fast path, batched factorise-once
 `relative_ldos_map`) → v0.4 vacuum wavelength conventions (breaking) + QNM
 extraction via Beyn's contour method, validated against analytic Mie resonances
-→ v0.4.2 scale covariance (conventions §9).
+→ v0.4.2 scale covariance (conventions §9)
+→ v0.5 threaded `contour_moments` ([performance](docs/design/performance.md)
+§3.1, the 5.02× measurement and its two traps) + the adjoint
+eigenvalue-sensitivity API (conventions §11).
 
-**Next, v0.5: two additions only.** Threading of the contour loop in
-`contour_moments` — see [performance](docs/design/performance.md) §3.1, which
-has the 5.02× measurement and the two traps — and an adjoint
-eigenvalue-sensitivity API exposing the `dλ/dp` identity that conventions §9
-already proves and tests at operator level. Both are scoped; neither adds
-physics.
+**v0.6, on `v0.6-quadrature`: spectral convergence.** Kress–Martensen product
+quadrature replacing the Maradudin diagonal self-patch, a smooth
+`Parametrisation` node map with uniform θ as the default, and the breaking
+`theta=` → `parametrisation=` change. First order → machine precision at
+`nn ≈ 30` on the circle. Implemented, with README, QNM guide and figures
+updated; the curvature-adaptive density ships as a non-default map with known
+limits (no flat points). Decisions in
+[docs/design/v0.6-architecture.md](docs/design/v0.6-architecture.md), the
+study in
+[docs/design/studies/quadrature-study-plan.md](docs/design/studies/quadrature-study-plan.md),
+the invariants in `docs/conventions.md` §13.
 
 Longer term: slab-waveguide backgrounds, multiple particles.
 

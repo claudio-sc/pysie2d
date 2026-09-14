@@ -20,6 +20,7 @@ Both are asserted. Poles do *not* come in conjugate pairs: the reality
 condition is ``λ → −λ̄``, which puts mirror partners at negative ``Re λ``.
 """
 
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
@@ -170,15 +171,16 @@ class QNMResult:
     def refine(self, *, tol: float = 1.0e-9, max_iter: int = 30) -> "QNMResult":
         """Polish each mode with bordered Newton, returning a new result.
 
-        **This is insurance, not accuracy, and it is opt-in for that reason.**
-        On a well-drawn contour the extraction is already converged to ~1e-8 nm
-        while the *discretisation* error is 0.38 nm at ``n_pts = 200`` — so
-        100 % of the error against the analytic pole is ``n_pts`` and 0 % is
-        extraction, and refining changes the answer in the eighth decimal of a
-        number that is wrong in the first. What this buys is the recovery path
-        for a contour too coarse or too badly placed to locate the pole, and
-        the ``converged`` flag. **If a mode is not accurate enough, raise
-        ``n_pts``** — refining is tuning the wrong knob.
+        **It removes the contour-quadrature error, which is often the larger
+        one.** Newton converges onto the singularity of the *discretised*
+        operator, and under spectral boundary quadrature that operator is
+        already close to exact: on the TE n=0 circle anchor at ``n_pts = 40``
+        the discretisation error is 2.8e-14 nm, while the contour estimate is
+        7.0e-6 nm out at 6 nodes per side and 1.1e-11 nm at 12. One refinement
+        takes both to ~1.3e-13 nm *(measured)*. It also recovers a mode from a
+        contour too coarse or too badly placed to locate it, and sets the
+        ``converged`` flag. What it cannot fix is an under-resolved boundary:
+        if ``n_pts`` is the limit, raise ``n_pts``.
 
         Degenerate poles are found, reported, and deliberately **not** refined:
         bordered Newton assumes a simple eigenvalue, so on the doubly
@@ -191,9 +193,9 @@ class QNMResult:
         (:func:`pysie2d.kernels.assemble_matrix_dwn`).
 
         Cost is ``max_iter``-bounded but typically one iteration per mode on a
-        simple pole, each iteration two assemblies *(measured: 2.05 assemblies,
-        the derivative being 1.05× the matrix)*, plus one assembly and SVD per
-        mode to bring ``sigma_ratio`` with it.
+        simple pole, each iteration two assemblies *(measured: 2.01 assemblies,
+        the derivative being 1.01× the matrix at nn = 200, complex λ)*, plus one
+        assembly and SVD per mode to bring ``sigma_ratio`` with it.
 
         Args:
             tol: Convergence threshold on the Newton step size, in nm.
@@ -288,12 +290,14 @@ class QNMResult:
         one central difference. Two extra assemblies and one SVD per mode; no
         eigenvalue is re-extracted, which is the point of the adjoint.
 
-        **Frozen nodes are enforced, not assumed** (``docs/conventions.md``
-        §10). Both perturbed geometries must carry *exactly* the θ of the base
-        geometry, and a mismatch raises. Letting the arc-length inversion
-        re-place nodes between ``p₀−h`` and ``p₀+h`` differentiates the
-        parametrisation gauge along with the physics and puts an O(h) term into
-        the quotient that grows with ``n_pts``.
+        **The frozen map is enforced, not assumed** (``docs/conventions.md``
+        §10). Both perturbed geometries must carry *exactly* the node set —
+        ``θ``, ``w'`` and ``w''`` — of the base geometry, and a mismatch raises.
+        Rebuilding the map at ``p₀ ± h`` makes ``∂M/∂p`` differentiate the node
+        gauge along with the shape *(measured: 20 % of ‖∂M/∂b‖ on an ellipse)*,
+        so the four matrices of the quotient would belong to different
+        discretisations. On the default :meth:`Parametrisation.uniform_theta`
+        map this holds automatically.
 
         **Degenerate poles are dispatched, not refused.** A k-fold pole has a
         k-dimensional null space and the scalar quotient would pick an
@@ -308,7 +312,8 @@ class QNMResult:
                 base point, in the parameter's own units, with ``δ = 0`` the
                 base point itself. Returning both halves is what lets one
                 signature cover shape parameters and ``n_core``/``n_clad``
-                alike. The geometry must be built on ``self.geometry.theta``.
+                alike. The geometry must be built on
+                ``self.geometry.parametrisation``.
             step: Central-difference step ``h``, in the parameter's own units.
                 Defaults to :data:`SHAPE_STEP`.
 
@@ -376,21 +381,27 @@ class QNMResult:
         # Refuse it by name: `None` would otherwise reach the comparison below
         # as an AttributeError, and a base result without one would silently
         # compare None to None and accept two unrelated discretisations.
-        if geom.theta is None or self.geometry.theta is None:
-            missing = "perturbed" if geom.theta is None else "base"
+        if geom.nodes is None or self.geometry.nodes is None:
+            missing = "perturbed" if geom.nodes is None else "base"
             raise ValueError(
-                f"the {missing} geometry carries no node set (theta is None), "
-                "so the shape derivative cannot be taken on a frozen one "
+                f"the {missing} geometry carries no node set (parametrisation is "
+                "None), so the shape derivative cannot be taken on a frozen one "
                 "(docs/conventions.md §10). Build both with Geometry.gielis, "
-                "which always records theta, or pass theta= to Geometry()"
+                "which always records its parametrisation, or pass "
+                "parametrisation= to Geometry()"
             )
-        if geom.theta.shape != self.geometry.theta.shape or not np.array_equal(
-            geom.theta, self.geometry.theta
-        ):
+        # The whole node set, not θ alone: assembly reads w' and w'' too, and two
+        # maps can share their angles at every node while differing in both.
+        base = self.geometry.nodes
+        same = geom.n_pts == self.geometry.n_pts and all(
+            np.array_equal(getattr(geom.nodes, name), getattr(base, name))
+            for name in ("theta", "dw", "ddw")
+        )
+        if not same:
             raise ValueError(
                 "perturbed geometry must carry the base node set exactly "
-                "(docs/conventions.md §10); build it with "
-                "Geometry.gielis(..., theta=result.geometry.theta)"
+                "(docs/conventions.md §10); build it with Geometry.gielis(..., "
+                "parametrisation=result.geometry.parametrisation)"
             )
         return BIESolver(geom, mat)
 
@@ -438,11 +449,13 @@ class QNMSolver:
         Args:
             z_lo: Bottom-left corner of the search rectangle, **vacuum** nm.
             z_hi: Top-right corner, **vacuum** nm.
-            n_quad_per_side: Gauss-Legendre nodes per contour edge. The
-                default resolves the contour integral far below the
-                discretisation error in ``n_pts`` *(measured: identical modes
-                to 1e-8 nm from 6 nodes per side upward, against a 0.38 nm
-                discretisation error at n_pts = 200)*.
+            n_quad_per_side: Gauss-Legendre nodes per contour edge. Under
+                spectral boundary quadrature the contour is often the accuracy
+                floor, not ``n_pts``: *(measured on the TE n=0 circle anchor at
+                n_pts = 40, discretisation error 2.8e-14 nm: 7.0e-6 nm at 6
+                nodes per side, 1.1e-11 nm at the default 12, 1.1e-13 nm at
+                24)*. When a mode must be exact, :meth:`QNMResult.refine` removes
+                the contour error for one Newton step.
             n_probe: Probe columns; must exceed the number of modes inside,
                 counting rank leaked from poles just outside.
             rank_tol: Relative singular-value floor for rank detection.
@@ -660,12 +673,13 @@ def richardson_limit(
 ) -> complex | np.ndarray:
     """Extrapolate a first-order-in-``n_pts`` quantity to infinite resolution.
 
-    Both λ and ``dλ/dp`` converge at **first order** in ``n_pts`` — measured at
-    ``p = 1.00 ± 2 %`` on every Jacobian component (Gate 10,
-    ``docs/design/studies/jacobian-convergence.md``). So for ``q(n) = q* + C/n``
-    two rungs determine ``q*``, and a Jacobian assembled at ``R = 15`` and
-    ``R = 30`` lands two decades closer to the limit than a single rung at
-    ``R = 50`` costing more than twice as much.
+    For ``q(n) = q* + C/n`` two rungs determine ``q*``. This was how v0.5
+    bought Jacobian accuracy, when λ and ``dλ/dp`` converged at first order
+    (conventions §12). **Since v0.6 neither does**: under Kress–Martensen
+    quadrature both converge spectrally, and extrapolating a spectrally
+    converged pair with a pinned first-order exponent *adds* error rather than
+    removing it. The function is kept for quantities that genuinely are first
+    order; no pysie2d output is one.
 
     The exponent is **pinned at 1, not fitted**: fitting needs a third rung and
     returns an exponent that is badly conditioned when the two differences are
@@ -685,7 +699,19 @@ def richardson_limit(
             antisymmetric in the two rungs, so swapping them does not merely
             degrade the estimate — it extrapolates the wrong way, and the
             failure is silent: every residual still looks plausible.
+
+    .. deprecated::
+        No pysie2d quantity is first order in ``n_pts`` any more (F7); kept
+        only so a caller with a genuinely first-order quantity of their own
+        is not stranded. Emits a ``DeprecationWarning``.
     """
+    warnings.warn(
+        "richardson_limit is deprecated: since v0.6 no pysie2d quantity "
+        "converges at first order in n_pts, so there is nothing in this "
+        "package left to extrapolate with it.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if n_fine <= n_coarse:
         raise ValueError(f"n_fine must exceed n_coarse, got {n_fine} <= {n_coarse}")
     return fine + (fine - coarse) / (n_fine / n_coarse - 1.0)

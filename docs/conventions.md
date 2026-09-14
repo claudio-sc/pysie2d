@@ -103,15 +103,22 @@ line-dipole sources populate only the `φ` half; the `χ` half stays zero.
 
 ## 5. Geometry arrays
 
-`Geometry` holds the boundary coordinates and their derivatives with respect to
-the boundary parameter `θ`:
+`Geometry` holds the boundary sampled at nodes **equispaced in the quadrature
+parameter `t`** (§13.1), `t_j = 2π(j + ½)/nn`, and derivatives with respect to
+that same `t`:
 
 - `f` — x-coordinates; `g` — z-coordinates. **`g` is a coordinate array, not a
   Green function** (an unfortunate historical name).
-- `df`, `dg` — first derivatives of `f`, `g` w.r.t. `θ`.
-- `ddf`, `ddg` — second derivatives.
-- `delt` — the quadrature `θ`-step: a scalar for uniform-`θ` sampling, or a
-  per-point array for uniform arc-length sampling.
+- `df`, `dg` — first derivatives of `f`, `g` w.r.t. `t`.
+- `ddf`, `ddg` — second derivatives w.r.t. `t`.
+- `delt` — the trapezoid step `2π/nn`, a read-only property. It is not an input
+  anywhere: Kress's weights presume exactly this step (v0.6).
+- `parametrisation` — the map `θ = w(t)` the arrays were sampled on, and
+  `nodes` its `t`, `θ`, `w'`, `w''` at this `nn`. `theta` is `nodes.theta`.
+
+On a map other than the identity, `x_t = x_θ·w'` and `x_tt = x_θθ·w'² + x_θ·w''`.
+The χ half of the solution vector (§4) carries the Jacobian of `t`, so it is not
+comparable across two maps; φ is.
 
 ## 6. Complex wavenumbers are supported deliberately
 
@@ -197,6 +204,41 @@ with no conversion on the return leg: the contour is drawn directly on
 `BIESolver.assemble`, which is itself the single vacuum-to-background conversion
 point, so the eigenvalues come back in the coordinate the box was given in.
 
+**Identifying modes on a non-circular shape is done by continuation from the
+circle (v0.6).** The circle is the only shape in this package with a *labelled*
+spectrum — the analytic Mie roots of `reference/mie.py`. A deformed shape has
+none, so a mode there is identified by carrying a labelled circle mode along a
+smooth shape perturbation, and **the analytic comparison is therefore the
+starting point of any non-circular convergence study**, not an optional extra
+for the circular case.
+
+That makes continuation a **convergence check in its own right**: a smooth
+perturbation of a smooth boundary moves a pole smoothly across the complex
+plane, so a kink, a jump, or a non-monotone excursion in the trajectory is a
+defect signal — in the discretisation, in the identification, or in the
+physics — and is read as such before it is read as a result.
+
+**The failure is silent, which is why this is recorded here.** Nearest-neighbour
+tracking with steps that are too long hops onto a neighbouring branch while
+every diagnostic stays healthy: measured on an equal-area ellipse ladder at
+aspect steps of 0.25, `Q` swung 10 → 48 → 25 → 40 along what should have been a
+smooth trajectory, two walks with different step sizes reported *different modes
+at the same aspect*, and `edge_margin` looked fine throughout. What fixed it was
+a **predictor** — secant extrapolation of the last two steps — so the search box
+has to contain only the trajectory's curvature rather than its whole step, plus
+a per-step ambiguity tell (the distance to the nearest other mode in the box).
+Where a physical argument is available it is worth more than proximity: the
+`n = 0` mode is radial and tracks the minor semi-axis, `Re λ(A)/Re λ(1) ≈
+A^{-1/2}` to ~8 % out to aspect 4.
+
+**The pole landscape gets richer as the shape deforms, so identification is not
+a one-time setup.** The circle's `n ≥ 1` degeneracies split under a deformation
+that breaks the symmetry, modes enter and leave a fixed box, and trajectories
+approach each other. Any change to the shape family, the deformation path, or
+the box is a reason to re-examine the identification rather than to assume the
+previous scheme still holds; expect it to be refined as the study reaches
+richer families.
+
 `QNMResult.size_parameters` exposes the modes in the analytic anchor's
 coordinate. Note that a rectangle in `x` is **not** a rectangle in `λ`:
 `λ = 2π·n_clad·rad/x` is a Möbius map and does not carry corners to corners. A
@@ -211,18 +253,17 @@ radius that a star does not have. Every length and every wavenumber in
 `assemble_matrix` appears in one of exactly four combinations, each of total
 degree zero under `rad → s·rad`, `λ → s·λ`:
 
-    k·r                 all off-diagonal Hankel arguments
-    k·delt/(2e)·gamma   both singular diagonals
-    k²·cij              c1 and c3 against the boundary cross products
+    k·r                 all off-diagonal Bessel and Hankel arguments
+    k·gamma             inside ln(k·γ/2) on the M2 and M4 diagonals
+    k²·cij              the double-layer kernels against the cross products
     deriv/gamma²        the M1 and M3 diagonals
 
-`delt` and the θ-nodes are degree 0. That is true on the arc-length path too,
-and for a better reason than "the inversion is accurate": the chord-length arc
-estimate in `_uniform_arc_theta` is inexact *as an arc length* but exactly
-homogeneous of degree 1 in `rad`, and `np.interp` is homogeneous of degree 0 in
-its query and table jointly. Covariance needs the homogeneity, not the
-accuracy. `n_fine` depends on `nn` alone, and must keep doing so — choosing it
-from an absolute chord length in nm would break this silently.
+The Kress weights `R`, `W` and the step `2π/nn` depend on `nn` alone. The nodes
+are degree 0: trivially on the default uniform-θ map, and on an arc-length
+`Parametrisation` because its series is truncated **relative to its own mean
+coefficient**, so `N_f`, `K` and every node are the same at every `rad`.
+Covariance needs that homogeneity, not the accuracy of the map. A truncation
+threshold in absolute nm would break this silently.
 
 Hence, entrywise and at any `n_pts`:
 
@@ -235,8 +276,9 @@ secular problem is a multiple of the identity, so both partners share it in any
 null-space basis and **a dilation can never split a degeneracy**.
 
 Three things this does *not* say. It is not accuracy: the discrete pole sits at
-a fixed `x_disc(n_pts) ≠ x_Mie`, so covariance is exact while the wavelength is
-still wrong in the first decimal. It is largely not a convention check: signs
+a fixed `x_disc(n_pts) ≠ x_Mie`, so covariance is exact whatever the
+discretisation error — v0.5 held it while the wavelength was still wrong in the
+first decimal. It is largely not a convention check: signs
 and the `H^{(1)}` choice are scale-free and wholly invisible to it, and a `pol`
 swap is caught only indirectly, by moving the poles out of the search boxes and
 tripping the mode counts. And it holds only for a **non-dispersive** material —
@@ -250,20 +292,14 @@ two, where binary floating point makes bit-identity a theorem and the assertion
 carries no tolerance at all, and a generic ratio, which is the only variant
 that can fail from conditioning.
 
-**The algebra holds for any boundary; the conditioning can fail on one that is
-not C¹.** At a ratio with no exact binary representation the θ-nodes move by an
-ulp. On a boundary with a corner — the superformula at exponent 1, say — a node
-that sits numerically *on* the kink then jumps to the other one-sided tangent,
-and `df, dg` and the cross product `cij` change by a finite amount, so the
-matrix differs by O(1).
-
-This is a knife edge and not a property of inexact ratios: *(measured on that
-shape at `n_pts = 200`: 0.264 relative at s = 1.7 and at s = 0.61, but 3.2e-13
-at s = 0.37 and 1.7e-13 at s = 3.0 — against 1.5e-13 for a smooth star at all
-four, and bit-identity for the cusped shape itself at s = 2)*. It is a
-statement about discretising a corner rather than about covariance, and it is
-the reason a rough boundary handed to this solver is better C¹: not that it
-will lose the covariance, but that it may.
+**The v0.5 knife edge on non-C¹ boundaries is gone.** v0.5's arc-length nodes
+moved by an ulp at an inexact ratio, and a node sitting numerically on a kink of
+the exponent-1 superformula jumped to the other one-sided tangent, changing the
+matrix by O(1) *(measured then: 0.264 at s = 1.7)*. The uniform-θ map's nodes
+are bit-identical at every `rad`, so no node can cross a kink under rescaling
+*(measured on the same cusped star: 1.4e-15 at s = 1.7)*, and an arc-length
+`Parametrisation` refuses a cusped shape rather than approximating it. A rough
+boundary still converges only algebraically; it no longer loses covariance.
 
 **One exception, in `QNMResult.refine` / `newton_refine`.** `tol` is a Newton
 step size in *absolute* nm, so it is the one scale-dependent quantity in the
@@ -276,73 +312,56 @@ refined wavelengths bit-identical for `tol` = 1e-9, 1e-7, 1e-6, 1e-4, 1e-3,
 the marginal band only for a thin set of `tol`. The exact statement above is
 therefore made on the unrefined `modes()` output.
 
-## 10. Shape derivatives use a frozen node set (v0.5)
+## 10. Shape derivatives use a frozen map (v0.5, amended v0.6)
 
-**A finite difference in a shape parameter holds the boundary node set fixed.**
-`Geometry` stores `theta`, and `Geometry.gielis(..., theta=...)` builds a shape
-on angles supplied from elsewhere instead of re-inverting arc length. Every
-`∂M/∂p` takes `M(p₀±h)` on the θ of `p₀`, and so do `∂M/∂λ` and the left and
-right null vectors that enter the adjoint quotient — all four on one node set,
-or the quotient mixes two discretisations.
+**A finite difference in a shape parameter holds the node map fixed.** Every
+`∂M/∂p` takes `M(p₀±h)` on the `Parametrisation` of `p₀`
+(`Geometry.gielis(..., parametrisation=base.parametrisation)`), and so do
+`∂M/∂λ` and the left and right null vectors that enter the adjoint quotient —
+all four on one discretisation. `QNMResult.sensitivity` enforces it: the
+perturbed geometry must carry the base geometry's `θ`, `w'` and `w''` exactly,
+and a geometry with no map is refused by name. On the default uniform-θ map this
+holds automatically, since the identity depends on no shape parameter.
 
-**Why it is not merely convenient.** Node placement is a **parametrisation
-gauge**. The BIE discretises a boundary integral, and λ — the thing the adjoint
-differentiates — does not depend on how the boundary was sampled. Re-inverting
-arc length between the two evaluations differentiates the gauge along with the
-physics, and the gauge is not differentiable: the inversion goes through
-`np.interp`, which is continuous but only *piecewise* linear in the shape
-parameter, so a node whose bracketing cell differs between `p₀−h` and `p₀+h`
-contributes an O(1) error to the quotient.
+**Why, as of v0.6.** Node placement is a parametrisation gauge: λ does not depend
+on how the boundary was sampled, but `M` does. Rebuilding the map at `p₀ ± h`
+therefore differentiates the gauge along with the shape. Under the smooth
+`Parametrisation` that term is **not** an error in the rate — both derivatives
+are second order in `h` — but it changes `∂M/∂p` by an O(1) fraction *(measured
+on an ellipse, `b = 1.2`, `n_pts = 60`: rate 100.0 frozen and 100.0 rebuilt,
+‖∂M/∂b(frozen) − ∂M/∂b(rebuilt)‖/‖∂M/∂b‖ = 0.200)*, while `dλ/db` from the two
+agrees only to discretisation accuracy *(1.2e-10)*. Freezing is what makes the
+quotient the exact derivative of the discrete eigenvalue rather than an
+approximation to it, and what keeps integer-valued properties of a rebuilt map
+(`N_f`, `K`) from stepping inside a difference.
 
-The resulting term is O(h), not O(h²); it is not monotone in `h`; and it **grows
-with `n_pts`**, because a finer boundary has more cells to cross. That last
-property is why it cannot be refined away and had to be removed structurally.
-*(measured, `docs/design/studies/shape-derivative-smoothness.md`: unfrozen, the
-`h`-ladder on `∂M/∂b` falls 8.29e-5 → 3.24e-5 → 5.60e-9 — a stall then a cliff,
-with the fraction of matrix entries carrying the deviation going 0.49 → 0.05 →
-0.00, a decaying count rather than a decaying magnitude. Frozen, the same ladder
-is 1.01e-5 → 1.01e-7 → 1.67e-9: exactly ×100 per decade in every parameter until
-the cancellation floor.)*
-
-Uniformity in arc length still drifts by O(h) across the difference. That is
-accepted and is the point of `h` being small — the alternative is to
-re-equidistribute, which is the error being removed. Over the larger parameter
-steps of a continuation path the nodes **are** re-equidistributed per step, and
-the resulting jitter is measured under Gate 7 rather than assumed away.
+**Why, in v0.5 — history.** The v0.5 arc-length inversion went through
+`np.interp`, piecewise linear in the shape parameter, so a node whose bracketing
+cell differed between `p₀ − h` and `p₀ + h` put an O(h) term into the quotient
+that grew with `n_pts` *(measured then: the h-ladder on `∂M/∂b` fell 8.29e-5 →
+3.24e-5 → 5.60e-9 unfrozen, against 1.01e-5 → 1.01e-7 → 1.67e-9 frozen;
+`docs/design/studies/shape-derivative-smoothness.md`)*. That mechanism no longer
+exists.
 
 **Step size.** `h = 1e-5` in the parameter's own units, with the cancellation
 floor at ~1e-8 and truncation at ~1e-7 a decade above, i.e. about a decade of
 margin on each side. The margin, not the best value at one design point, is the
 reason for the choice: the truncation coefficient scales with the parameter's
-geometric leverage, which moves across the shape catalogue. **No second
-derivatives** — the source of the O(h) term above is a kinked first derivative,
-and freezing the nodes removes it from the difference quotient without making
-the underlying inversion C².
+geometric leverage, which moves across the shape catalogue. For a length
+parameter in nm the cancellation floor on `dλ/dp` is `ε·p/h`, not `ε/h` — about
+4e-9 for `rad = 200` — which is the bound the Gate 1 tests are derived from.
 
-**Two traps this pins.** A prescribed θ is validated for strict ordering and a
-sub-2π span, because `delt` is a bare `np.diff`: a reordered set gives negative
-quadrature weights and a boundary integral that counts part of the curve
-backwards, with nothing raised. And `Geometry.gielis` never accepts an *implicit*
-node set: given `theta=None` it re-inverts arc length and records what it used,
-so a geometry it builds always carries the θ it was actually evaluated on. There
-is no path on which a shape derivative silently falls back to re-inversion.
-
-**`theta` is optional to store and mandatory to differentiate.** On
+**`parametrisation` is optional to store and mandatory to differentiate.** On
 `Geometry.__init__` it defaults to `None`: a boundary assembled from arrays that
-came from elsewhere has no node set to report, and the entire solver — assembly,
-fields, LDOS, mode extraction — never reads θ, so refusing to construct such a
-geometry would break scattering-only users for a reason unrelated to scattering.
-The requirement belongs at the point of use instead, and
-`QNMResult.sensitivity` raises on a `None` node set naming *which* of the two
-geometries lacks it. Both branches are needed: without the base-side check,
-`None == None` compares equal and two unrelated discretisations are accepted.
-*(This replaces the v0.5 development-time rule that `theta` was a required
-constructor field. That rule made v0.5 a breaking release for direct array
-construction and bought nothing the point-of-use check does not — the failure it
-was guarding against, a silent fallback to re-inversion, lives on the `gielis`
-path, which never had one.)*
+came from elsewhere has no map to report, and the solver — assembly, fields,
+LDOS, mode extraction — never reads it, so refusing to construct such a geometry
+would break scattering-only users for a reason unrelated to scattering. The
+requirement belongs at the point of use, and `QNMResult.sensitivity` raises on a
+missing map naming *which* of the two geometries lacks it. Both branches are
+needed: without the base-side check, `None == None` compares equal and two
+unrelated discretisations are accepted.
 
-Frozen nodes preserve §9 exactly: a supplied θ carries no length, so
+Frozen maps preserve §9 exactly: a map carries no length, so
 `M(s·rad, s·λ) = M(rad, λ)` entrywise still holds, and it is asserted on the
 frozen path in `tests/test_scale_covariance.py`.
 
@@ -365,20 +384,19 @@ apart. The **offset is in the parameter's own units**, so `step` and `dλ/dp`
 are both in those units and the caller owns any reparametrisation — a `log`
 gauge is a two-line lambda, and §9 says the answer must be gauge-free.
 
-**The frozen node set is enforced, not documented.** The geometry returned by
-`at` must carry `result.geometry.theta` **exactly**, and `sensitivity` raises
-otherwise. Exact equality is the right test because there is no threshold at
-which node motion becomes acceptable: the term it introduces is O(h) and grows
-with `n_pts` (§10). On a circle re-inversion moves nodes by only 1.5e-13 rad,
-which is precisely why a tolerance-based check would be the wrong instrument.
+**The frozen map is enforced, not documented.** The geometry returned by `at`
+must carry the node set of `result.geometry.parametrisation` **exactly** — `θ`,
+`w'` and `w''` — and `sensitivity` raises otherwise. Exact equality is the right
+test because there is no threshold at which a different discretisation becomes
+the same one (§10).
 
 **`u` is a genuine left null vector**, obtained from the same SVD as `v` — the
 smallest singular triplet of `M(λ)`, `U[:, -1]` and `V[:, -1]`. It is **not**
-`conj(v)`: M is not complex-symmetric here *(measured: `‖M − Mᵀ‖/‖M‖ = 1.06`,
+`conj(v)`: M is not complex-symmetric here *(measured: `‖M − Mᵀ‖/‖M‖ = 1.16`,
 and `|⟨u, conj(v)⟩| = 0.32` at the TE n=0 pole of the reference circle)*, so
 substituting `conj(v)` gives a quotient wrong by an O(1) factor with every
 residual still looking right. Cost is one assembly plus one full SVD per mode,
-0.080 s at `n_pts = 200`.
+0.080 s at `n_pts = 200` (v0.5 measurement).
 
 **Degenerate poles dispatch to a secular problem, they do not raise.** A k-fold
 pole has a k-dimensional null space, and the scalar quotient would pick an
@@ -395,53 +413,132 @@ defined, because the null basis is fixed only up to a k×k rotation.
 
 **Anchors.** Gate 1 — `dλ/drad = λ/rad`, and in the linear gauge this is
 *machine-exact*, since §9 makes λ exactly linear in `rad`, leaving only the
-cancellation floor ~ε/h *(measured 5.1e-11)*. Gate 1 degenerate half — a
-dilation cannot lift the ±n degeneracy of a circle, so the 2×2 secular matrix
-is a multiple of the identity *(measured: off-diagonal/‖S‖ = 2.7e-11, splitting
-1.3e-10)*. Gate 2 — at `n2 = n3`, `(log a + log b)` and `log rad` move λ
+cancellation floor ε·rad/h ≈ 4e-9 *(measured 5.8e-10 at `n_pts = 40`)*. Gate 1
+degenerate half — a dilation cannot lift the ±n degeneracy of a circle, so the
+2×2 secular matrix is a multiple of the identity *(measured: splitting
+3.1e-10)*. Gate 2 — at `n2 = n3`, `(log a + log b)` and `log rad` move λ
 identically, so their difference is an exact null direction of `J` *(measured
-ratio − 1 = 5.1e-14)*. Gate 3 — against central differences of independently
-re-extracted Beyn poles, second order in the step *(3.816e-4 → 3.809e-6 →
-3.816e-8, ratios 100.2 and 99.8)*. All four in
-`tests/test_sensitivity.py`.
+ratio − 1 = 1.3e-12)*. Gate 3 — against central differences of independently
+re-extracted Beyn poles, second order in the step *(4.495e-4 → 4.489e-6 →
+4.493e-8, ratios 100.1 and 99.9)*. All four in `tests/test_sensitivity.py`.
 
-## 12. Jacobian accuracy is bought by extrapolation, not by resolution (v0.5)
+## 12. Jacobian accuracy is bought by resolution (v0.6; extrapolation in v0.5)
 
-`J = dλ/dp` converges at **first order in `n_pts`**, exactly like λ itself:
-observed order 0.98–1.02 on every component, on three independent ladders
-(`docs/design/studies/jacobian-convergence.md`). §9's argument that the fixed
-`x_disc(n_pts) ≠ x_Mie` error is smooth in the shape parameter and cancels in
-the ratio `∂λ/∂p` is **true of the constant and false of the order** — `dλ/drad`
-is three decades better resolved than `dλ/db` at the same `R`, and neither
-converges faster than `1/n_pts`. Do not read §9 as promising more than that.
-
-Two consequences, both measured rather than argued:
-
-**Differencing does not help.** `ΔJ` between two designs `δb = 0.02` apart
-converges at order 0.94 and lands *further* from its limit than `J` does — 3×
-further on `dλ/db`, 116× on `dλ/dn_core`. Subtracting two quantities whose
-errors are the same size and only partly common-mode keeps the error and loses
-the signal.
-
-**Two-rung Richardson does.** `richardson_limit(coarse, fine, n_coarse, n_fine)`
-implements `q* = q_f + (q_f − q_c)/(n_f/n_c − 1)`, exponent **pinned at 1, not
-fitted**. From `R = 15 + 30` it puts every J component inside **6.4e-4** of the
-limit at **0.46×** the cost of one `R = 50` rung — which is itself 1.5 % out and
-misses the gate's 1 % bar. `R = 30 + 50` is the fallback, 4× more margin at 3×
-the cost.
-
-`n_fine` must exceed `n_coarse` and the function raises otherwise, because the
-formula is antisymmetric in its two rungs: swapping them extrapolates the wrong
-way, silently, with every residual still plausible. That inversion is what
-`test_gate10_jacobian_is_first_order_and_richardson_is_consistent` exists to
-catch — it pins the first-order premise and requires two extrapolants built
-from different rung pairs to agree to 2e-3, an order of magnitude tighter than
-the raw rungs they came from.
+**Since v0.6, `J = dλ/dp` converges spectrally in `n_pts`, like λ itself**, and
+no extrapolation is needed *(measured on the Gate-10 ellipse, `m = 4`, `b = 1.2`,
+TE, `n_core = 3`: `|J(40) − J(80)|/|J(80)| = 3.0e-10`, `|J(60) − J(80)|/|J(80)|
+= 4e-11`, the latter at the contour and central-difference floor)*.
+`richardson_limit` is kept for genuinely first-order quantities; applying it,
+with its exponent pinned at 1, to a spectrally converged pair adds error.
 
 **Rungs are placed in `R = wavelength_over_ds`, never in raw `n_pts`** (D17):
-200 points read as `R = 37.1` on a circle and 17.5 on an aspect-3 ellipse, so a
-ladder in `n_pts` measures different resolutions at different points of a
-catalogue.
+200 points read as `R = 37.1` on a circle and 17.5 on an aspect-3 ellipse at
+uniform arc length, so a ladder in `n_pts` measures different resolutions at
+different points of a catalogue. On the default uniform-θ map the same ellipse
+reads 9.2: `R` reports the worst-resolved node, and uniform θ stretches the
+flanks.
+
+**v0.5 history.** Under the Maradudin self-patch `J` converged at first order,
+observed order 0.98–1.02 on every component on three independent ladders
+(`docs/design/studies/jacobian-convergence.md`); differencing two designs did
+not help, and two-rung Richardson from `R = 15 + 30` put every component inside
+6.4e-4 of the limit at 0.46× the cost of one `R = 50` rung. That is the problem
+v0.6 removed rather than solved.
+
+## 13. Node placement and the parametrisation (v0.6)
+
+v0.6 replaces the Maradudin diagonal self-patch with **Kress–Martensen product
+quadrature** (`docs/design/kress-spec.md`). Under the self-patch the solver
+converged at exactly first order in `nn` even on a perfect circle with perfectly
+uniform nodes; under Kress, with analytic `ddf`/`ddg`, the circle is at
+round-off by `nn = 30` against analytic Mie *(measured: ≤ 1.1e-15 on `qext`, TE
+and TM, both circle branches)*.
+
+Kress's weights come from trigonometric interpolation, and that imposes one
+constraint with three consequences. All three are of the kind this file exists
+for: **breaking them produces a plausible wrong answer, not an error.**
+
+**13.1 Nodes are equispaced in the quadrature parameter `t`, and every
+derivative is taken in `t`.** Not in θ, not in arc length. The boundary is
+`θ = w(t)` with `t` equispaced and `w` a smooth 2π-periodic monotone map;
+`4 sin²((t − t')/2)` is then the correct periodic stand-in for the singular
+factor, and `w'` is absorbed into `|dx/dt|` exactly the way `|dx/dθ|` was.
+Grading lives in `w`, not in the node positions. Violating this drops the
+quadrature from spectral to first order silently.
+
+`w` must be **smooth**. The v0.5 `np.interp` inversion was C⁰, and a C⁰ change of
+variables destroys the smoothness the trapezoid rule's accuracy rests on. Uniform
+θ, uniform arc length and curvature-adaptive grading are one map with three
+densities `|dx/dt| = ρ(t)`, not three code paths: a `Parametrisation` carries
+`w`, `w'`, `w''`, and `arc_length: bool` is gone.
+
+**The weights depend on the parity of `nn`.** For odd `nn` there is no Nyquist
+mode, and the textbook even-`nn` formula applied there returns a plausible wrong
+matrix *(measured: a QNM displaced by 1.1 nm at `nn = 115`)*.
+`kernels._kress_log_weights` handles both.
+
+**13.2 `w` does not depend on λ.** If the parametrisation varies with the
+wavelength, `M(λ)` loses holomorphy and Beyn's contour integral silently returns
+wrong modes — holomorphy is the premise of the contour argument (§8). This is
+the same reasoning that rules out condition-number-optimal node placement: the
+smallest singular value of a matrix is not analytic in λ, and a quasi-normal mode
+is by definition a λ where `M` is singular. A density specified in
+`R = wavelength_over_ds` (§12) therefore carries its **own fixed reference
+wavelength**, set once when the `Parametrisation` is built and never taken from
+the solve. Kress itself adds nothing λ-dependent: `R`, `W` and `h` are
+geometry- and wavelength-free, and `J₀`, `J₁`, `H₀^{(1)}`, `H₁^{(1)}` and
+`ln k` are holomorphic on the search half-plane of §8.
+
+**The tell for lost holomorphy is `sigma_ratio`, not the mode count.** A
+holomorphic `M` puts Beyn's eigenvalues exactly on its singularities, so a
+returned λ at which `σ_min/σ_max` of `M` is not at round-off is not a pole of
+the operator that was integrated. Mode count, `edge_margin` and the rank gap do
+not see a mild violation at all *(measured, TE n = 0 circle, `nn = 80`, on the
+graded map `θ = t + ε sin 2t` with `ε` made to depend on Re λ — valid, and
+Mie-exact to 1e-11, at every fixed λ: at a slope of 1e-4 and 1e-3 per 25 nm the
+pole moved 3.9e-4 and 3.9e-3 nm with the count at 1 and `edge_margin` at 0.433
+unchanged to three digits, while `sigma_ratio` rose from 8.1e-15 to 3.0e-7 and
+3.0e-6; from 1e-2 the probe saturates and Beyn raises;
+`docs/design/studies/g4_holomorphy_qnm.py`)*. Any check that a map, a material
+model or an assembly path has kept `M(λ)` holomorphic reads `sigma_ratio`. A
+stable mode count is necessary and says nothing about accuracy: on a circle at
+`nn = 20` the count is right with the poles 2 nm out.
+
+**13.3 `w` does not depend on any parameter being differentiated.** The frozen
+object of §10 is the map, not the angle array: under Kress the θ array still says
+where the nodes are, but assembly also needs `w'` and `w''`, and those cannot be
+recovered from it. That is why `Geometry.gielis` takes `parametrisation=` and not
+`theta=`. Under a smooth map a rebuilt `w` no longer degrades the rate of `∂M/∂p`
+— it changes what is differentiated (§10).
+
+**The default map is uniform θ** (`Parametrisation.uniform_theta()`). Under
+Kress it converges fastest once resolved on every shape measured, from mild
+superellipses to near-corner ones and spiky stars *(measured, `qext` at
+`nn = 640` on the `m = 4`, `n = 20/50/50` near-corner shape: uniform θ 2.2e-6,
+adaptive 6.8e-6, uniform arc length 1.8e-4)*: composing the boundary with a
+graded `w` narrows the analyticity strip the trapezoid rule's rate is set by.
+**Uniform arc length is not the better choice at low resolution either.** On
+spiky stars at campaign resolutions, below ~1e-2 relative error no map is
+consistently ahead: every map's error swings 3–10× between neighbouring `nn`,
+so a single-rung comparison picks a winner by noise. Where 1e-3 is reachable
+by `nn = 300`, uniform θ reaches it first; where it is not, the remedy is more
+nodes, not another map *(measured, `qext`, TE, λ = 450/600/900 nm, `m = 6`,
+n2 = n3 = 8, `nn` 50–300: arm ratio 4, uniform θ at 1e-3 by `nn` = 200/200/300
+against 300/—/— for arc length; arm ratio 8 and 16, no map at 1e-3 by 300;
+uniform θ 6.4e-5 at `nn = 480` on arm ratio 8)*. `Parametrisation.gielis` is
+also not robust there: Newton fails at some `nn` from arm ratio 8, and the map
+cannot be built at arm ratio 16. Pass a non-default map only to freeze one
+across a shape derivative (§10) or for a study.
+
+**Scale covariance (§9) is preserved.** `R`, `W` and `h` depend only on `nn`;
+nothing in the map construction carries an absolute length.
+
+**The curvature-adaptive density ships as a non-default map** (architecture
+item 4), `Parametrisation.gielis` with a non-degenerate `r_band`. G3 found the
+one shape class where it pays — flat-sided, near-corner shapes with
+`κ_max·rad ≳ 20` — but it cannot be built on them (`ln|κ|` is infinite at flat
+points), and very spiky stars can fail its Newton inversion. Both limits are
+stated in its docstring; nothing in this section depends on it.
 
 ## Formulation and validation references
 

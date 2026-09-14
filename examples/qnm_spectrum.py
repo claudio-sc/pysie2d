@@ -30,10 +30,10 @@ RAD = 200.0
 N_CORE = 3.0
 N_CLAD = 1.0
 N_PTS = 200
-# 6 nodes per side rather than the default 12: measured to give identical modes
-# to 1e-8 nm, against a 0.38 nm discretisation error at n_pts = 200. The contour
-# integral is nowhere near the accuracy bottleneck, so the extra nodes would buy
-# only runtime.
+# 6 nodes per side rather than the default 12. Under Kress quadrature the
+# contour, not n_pts, is the accuracy floor: 7e-6 nm at 6 nodes per side
+# against 1e-11 at 12 on the TE n=0 anchor. At the scale of this plot (hundreds
+# of nm) either is invisible, so the extra nodes would buy only runtime.
 N_SIDE = 6
 
 # Size-parameter window for the analytic reference, chosen to cover the plotted

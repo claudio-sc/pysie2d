@@ -9,15 +9,16 @@ Every length and every wavenumber in :func:`pysie2d.kernels.assemble_matrix`
 appears in one of exactly four combinations, each of total degree zero under
 ``rad → s·rad``, ``λ → s·λ``:
 
-    k·r                (all off-diagonal Hankel arguments)
-    k·delt/(2e)·gamma  (both singular diagonals)
-    k²·cij             (c1 and c3 against the boundary cross products)
+    k·r                (all off-diagonal Bessel and Hankel arguments)
+    k·gamma            (inside ln(k·γ/2) on the M2 and M4 diagonals)
+    k²·cij             (the double-layer kernels against the cross products)
     deriv/gamma²       (the M1 and M3 diagonals)
 
-``delt`` and the θ-nodes are degree 0 — including on the arc-length path, where
-the chord-length arc estimate is *inexact as an arc length but exactly
-homogeneous of degree 1 in rad*, and ``np.interp`` is homogeneous of degree 0 in
-(query, table) jointly. Covariance needs the homogeneity, not the accuracy.
+The Kress weights and the step 2π/nn depend on ``nn`` alone. The nodes are
+degree 0 on the uniform-θ map trivially, and on an arc-length map because
+``Parametrisation`` truncates its series *relative to* its mean coefficient, so
+``N_f``, ``K`` and every node are ``rad``-independent. Covariance needs that
+homogeneity, not the accuracy of the map.
 
 Hence ``M(s·rad, s·λ) = M(rad, λ)`` **entrywise**, at any ``n_pts``, and
 therefore ``λ(s·rad) = s·λ(rad)``, ``dλ/drad = λ/rad`` and ``dQ/drad = 0``.
@@ -25,9 +26,9 @@ therefore ``λ(s·rad) = s·λ(rad)``, ``dλ/drad = λ/rad`` and ``dQ/drad = 0``
 Two things this is *not*:
 
 - It is not a validation of the physics. The discrete pole sits at a fixed
-  ``x_disc(n_pts) ≠ x_Mie``: covariance is exact while the wavelength is still
-  wrong in the first decimal. A wholly incorrect ``M`` passes every assertion
-  here. ``test_qnm.py`` is what pins the accuracy.
+  ``x_disc(n_pts) ≠ x_Mie``: covariance is exact whatever the discretisation
+  error. A wholly incorrect ``M`` passes every assertion here. ``test_qnm.py``
+  is what pins the accuracy.
 - It is not a statement about degeneracy. Since ``∂M/∂rad = −(λ/rad)·∂M/∂λ``,
   a dilation perturbs the operator only along the trivial λ-direction: the 2×2
   secular problem of the ``±n`` pair reduces to a multiple of the identity, so
@@ -47,13 +48,18 @@ What these tests detect, stated so nobody over-reads them: expressions that are
 not dimensionally homogeneous, and absolute lengths in nm that are *in range* at
 ``rad = 200`` under the ratios used here. A hard-coded length below the ~6 nm
 point spacing at ``n_pts = 200`` never binds and stays invisible.
+
+The v0.5 knife edge — a cusped boundary losing the covariance at a generic
+ratio, because arc-length nodes moved by an ulp across a kink — cannot occur on
+the uniform-θ map, whose nodes are bit-identical at every ``rad``, and an
+arc-length map refuses a cusped shape outright. Its test is gone with it.
 """
 
 import numpy as np
 import pytest
 
 from conftest import QNM_N_CORE, RAD
-from pysie2d import BIESolver, Geometry, Material, QNMSolver
+from pysie2d import BIESolver, Geometry, Material, Parametrisation, QNMSolver
 
 # Taken from the shared fixture rather than restated: the mode counts asserted
 # below are properties of this contrast and this radius, and a local copy would
@@ -80,22 +86,19 @@ EXACT_RATIOS = (2.0, 0.5)
 # ratios cannot see.
 INEXACT_RATIOS = (1.7, 0.37)
 
-# Round-off floor on the relative max entry difference at an inexact ratio.
-# *(measured over s ∈ {1.7, 0.37, 3.0, 0.61} × n_pts ∈ {100, 200, 400} × both
-# polarisations: worst 4.3e-15 on the uniform-θ path, worst 1.7e-13 on the
-# arc-length path.)* The arc-length excess is the fine-grid inversion — one ulp
-# of difference between `linspace(0, s·L, nn)` and `s·linspace(0, L, nn)` maps
-# into δθ through dθ/ds — and it does not have a clean n_pts law: `n_fine` is
-# `max(10·nn, 4096)`, hence 4096 throughout that sweep, so the floor varies
-# with the shape rather than with the resolution.
+# Round-off floor on the max entry difference at an inexact ratio, relative to
+# the largest entry. *(measured at n_pts = 200 over s ∈ {1.7, 0.37} × both
+# polarisations: worst 1.6e-15 on the uniform-θ map including the cusped star,
+# worst 4.3e-15 on the star's arc-length map rebuilt at each radius.)* The
+# arc-length excess is the rebuilt map: its Fourier coefficients scale with rad
+# and are not bit-identical at an inexact ratio, so nodes move by ~1 ulp.
 #
-# The headroom over the measurement is ~3×, for a different BLAS or libm
+# The headroom over the measurement is ~5×, for a different BLAS or libm
 # rounding, and it is not room to absorb a real failure: a missing power of s
-# at s = 1.7 is a 40 % discrepancy, twelve orders above this floor, and the
-# measured sensitivity is a relative error of 5e-13 in λ. There is no regime in
-# which widening these would rescue anything.
-ATOL_UNIFORM_THETA = 2.0e-14
-ATOL_ARC_LENGTH = 5.0e-13
+# at s = 1.7 is a 40 % discrepancy, fourteen orders above this floor. There is
+# no regime in which widening these would rescue anything.
+ATOL_UNIFORM_THETA = 1.0e-14
+ATOL_ARC_LENGTH = 2.0e-14
 
 CIRCLE = {"m": 0}
 # The examples' star. Note that Geometry.gielis defaults to n1 = n2 = n3 = 2,
@@ -105,19 +108,17 @@ CIRCLE = {"m": 0}
 # rough boundary will take.
 STAR = {"m": 6, "n1": 6.0, "n2": 12.0, "n3": 12.0}
 # Superformula exponent 1 puts |cos|-kinks on the boundary, so the tangent is
-# discontinuous and the shape is not C¹. See the two tests for what that costs.
+# discontinuous and the shape is not C¹. Uniform θ only: Parametrisation.gielis
+# cannot resolve it, and says so.
 CUSPED_STAR = {"m": 6, "n1": 1.0, "n2": 1.0, "n3": 1.0}
 
 # (id, shape kwargs, arc_length, tolerance).
-CONDITIONED_SHAPES = [
+SHAPES = [
     ("circle-uniform-theta", CIRCLE, False, ATOL_UNIFORM_THETA),
     ("circle-arc-length", CIRCLE, True, ATOL_ARC_LENGTH),
+    ("star-uniform-theta", STAR, False, ATOL_UNIFORM_THETA),
     ("star-arc-length", STAR, True, ATOL_ARC_LENGTH),
-]
-# The exact-ratio test carries the cusped star too: the algebra is exact
-# whatever the boundary regularity, and only the conditioning is not.
-EXACT_SHAPES = CONDITIONED_SHAPES + [
-    ("cusped-star-arc-length", CUSPED_STAR, True, None)
+    ("cusped-star-uniform-theta", CUSPED_STAR, False, ATOL_UNIFORM_THETA),
 ]
 
 
@@ -126,33 +127,45 @@ def _params(rows):
     return [pytest.param(kw, arc, atol, id=name) for name, kw, arc, atol in rows]
 
 
+def geometry(rad, shape, arc_length):
+    """The shape at scale ``rad``, its arc-length map (if any) rebuilt at ``rad``.
+
+    Rebuilt rather than frozen on purpose: covariance of the map *construction*
+    is the claim, and a frozen map would only test the evaluation.
+    """
+    full = {"m": 4, "n1": 2.0, "n2": 2.0, "n3": 2.0, "a": 1.0, "b": 1.0, **shape}
+    par = Parametrisation.gielis(rad=rad, **full, n_core=N_CORE) if arc_length else None
+    return Geometry.gielis(rad=rad, n_pts=N_PTS, **shape, parametrisation=par)
+
+
 def assemble(rad, lam, shape, arc_length, pol):
     """M(λ) for a Gielis boundary of scale radius ``rad``, centred on origin."""
     return BIESolver(
-        Geometry.gielis(rad=rad, n_pts=N_PTS, arc_length=arc_length, **shape),
+        geometry(rad, shape, arc_length),
         Material(n_core=N_CORE, n_clad=1.0, pol=pol),
     ).assemble(lam)
 
 
 @pytest.mark.parametrize("s", EXACT_RATIOS)
-@pytest.mark.parametrize("shape, arc_length, _atol", _params(EXACT_SHAPES))
+@pytest.mark.parametrize("shape, arc_length, _atol", _params(SHAPES))
 @pytest.mark.parametrize("pol", [1, 2])
 def test_matrix_is_bit_identical_under_binary_scaling(s, shape, arc_length, _atol, pol):
     """M(s·rad, s·λ) == M(rad, λ) to the last bit, for s a power of two.
 
     Also pins the two premises separately, so a failure says which one broke:
-    the θ-nodes (hence ``delt``) are rad-independent, and the coordinates are
-    homogeneous of degree 1. ``n_fine`` in the arc-length inversion depends on
-    ``nn`` alone; the natural-looking "improvement" of choosing it from an
-    absolute chord length in nm would break the first assertion here.
+    the node set is rad-independent, and the coordinates are homogeneous of
+    degree 1. ``Parametrisation`` sizes its series relative to its own mean
+    coefficient; the natural-looking "improvement" of an absolute threshold in
+    nm would break the first assertion here.
 
     The cusped star passes exactly like the rest: boundary regularity has
     nothing to do with the algebra.
     """
-    g1 = Geometry.gielis(rad=RAD, n_pts=N_PTS, arc_length=arc_length, **shape)
-    g2 = Geometry.gielis(rad=s * RAD, n_pts=N_PTS, arc_length=arc_length, **shape)
+    g1 = geometry(RAD, shape, arc_length)
+    g2 = geometry(s * RAD, shape, arc_length)
 
-    assert np.array_equal(np.atleast_1d(g1.delt), np.atleast_1d(g2.delt))
+    for name in ("theta", "dw", "ddw"):
+        assert np.array_equal(getattr(g1.nodes, name), getattr(g2.nodes, name))
     assert np.array_equal(s * g1.f, g2.f)
     assert np.array_equal(s * g1.dg, g2.dg)
     assert np.array_equal(s * g1.ddf, g2.ddf)
@@ -162,38 +175,8 @@ def test_matrix_is_bit_identical_under_binary_scaling(s, shape, arc_length, _ato
     assert np.array_equal(m1, m2)
 
 
-def test_a_cusped_boundary_can_lose_the_covariance_at_a_generic_ratio():
-    """The conditioning limit, pinned rather than left as a surprise.
-
-    At exponent 1 the boundary has kinks, where ``dr/dθ`` takes opposite values
-    on the two sides and ``_rderiv`` returns whichever side its node fell on.
-    A node sitting numerically *on* a kink therefore takes a finite jump in
-    ``df, dg`` — and hence in the cross product ``cij`` — from the ulp-level
-    node displacement an inexact ratio introduces. The matrix then differs by
-    O(1).
-
-    **This is a knife edge, not a property of inexact ratios.** It happens at
-    s = 1.7, where ``dg[100]`` flips from +299.999999999999 to −299.999999999997;
-    it does not happen at the other ratio this file uses. *(measured on the
-    cusped star: 0.264 at s = 1.7 and 0.264 at s = 0.61, against 3.2e-13 at
-    s = 0.37 and 1.7e-13 at s = 3.0 — and 1.5e-13 for the smooth star at every
-    one of them. Stable in resolution: 0.305 / 0.264 / 0.248 at n_pts =
-    100 / 200 / 400.)* The bimodality is why the threshold below is not a close
-    call.
-
-    This is a statement about discretising a corner, not about the covariance —
-    the same shape is bit-identical at s = 2 above. It is recorded because the
-    roughness programme will feed this solver arbitrary boundaries, and one
-    that is not C¹ can inherit exactly this.
-    """
-    m1 = assemble(RAD, LAM, CUSPED_STAR, True, 2)
-    m2 = assemble(1.7 * RAD, 1.7 * LAM, CUSPED_STAR, True, 2)
-    rel = np.abs(m2 - m1).max() / np.abs(m1).max()
-    assert rel > 1.0e-3  # measured 0.264; the smooth shapes hold to 5e-13
-
-
 @pytest.mark.parametrize("s", INEXACT_RATIOS)
-@pytest.mark.parametrize("shape, arc_length, atol", _params(CONDITIONED_SHAPES))
+@pytest.mark.parametrize("shape, arc_length, atol", _params(SHAPES))
 @pytest.mark.parametrize("pol", [1, 2])
 def test_matrix_covariance_survives_a_generic_ratio(s, shape, arc_length, atol, pol):
     """The identity is well conditioned, not merely exact on binary ratios.
@@ -241,13 +224,16 @@ BOX_TE_SIMPLE = (520.0 + 15.0j, 545.0 + 40.0j)
 BOX_TE_DEGENERATE = (745.0 + 2.0j, 775.0 + 15.0j)
 BOXES = [("simple", BOX_TE_SIMPLE, 1), ("degenerate", BOX_TE_DEGENERATE, 2)]
 
-N_SIDE = 6  # as in test_qnm.py: identical modes to 1e-8 nm against the default
+# Mode-level resolution. Covariance needs no accuracy, only a well-separated
+# mode in each box; these match test_qnm.py's extraction fixtures.
+N_PTS_QNM = 40
+N_SIDE = 12
 
 # Round-off floor on |λ(s·rad)/s − λ(rad)| / |λ|, at an inexact ratio.
 # **Measured, and not derivable**: the map from the matrix floor above to a
 # floor on λ is the eigenvalue condition number, a property of the operator
-# rather than of the arithmetic. *(measured: worst 7.8e-16 over
-# s ∈ {1.7, 0.37} × both anchors.)* The bound below is ~6× that, and the same
+# rather than of the arithmetic. *(measured: worst 6.0e-16 over
+# s ∈ {1.7, 0.37} × both anchors.)* The bound below is ~8× that, and the same
 # argument as for the matrix applies — a missing power of s is a 40 % error at
 # s = 1.7, not a 1e-15 one.
 RTOL_LAM = 5.0e-15
@@ -260,7 +246,7 @@ def qnm_modes(rad, box, s):
     turn this into a different test.
     """
     solver = QNMSolver(
-        Geometry.gielis(rad=rad, n_pts=N_PTS, m=0, arc_length=True),
+        Geometry.gielis(rad=rad, n_pts=N_PTS_QNM, m=0),
         Material(n_core=N_CORE, n_clad=1.0, pol=2),
     )
     return solver.modes(s * box[0], s * box[1], n_quad_per_side=N_SIDE)
@@ -268,7 +254,7 @@ def qnm_modes(rad, box, s):
 
 @pytest.fixture(scope="module")
 def unscaled():
-    """The reference spectra at rad = 200 nm, ~1.5 s per box."""
+    """The reference spectra at rad = 200 nm."""
     return {name: qnm_modes(RAD, box, 1.0) for name, box, _ in BOXES}
 
 
@@ -344,46 +330,52 @@ def test_qnm_scale_covariance_at_a_generic_ratio(unscaled, s, name, box, n_modes
     assert np.all(rel_q < rtol_q)
 
 
-def test_frozen_theta_reproduces_the_geometry_it_came_from():
-    """Handing a Geometry's own theta back must be a no-op, bit-for-bit.
+def test_frozen_parametrisation_reproduces_the_geometry_it_came_from():
+    """Handing a Geometry's own map back must be a no-op, bit-for-bit.
 
     The freeze of ``docs/conventions.md`` §10 is only trustworthy if it changes
     nothing at the base point: every shape derivative evaluates M at ``p0 ± h``
-    on a node set taken from ``p0``, and if that path differed from the ordinary
+    on a map taken from ``p0``, and if that path differed from the ordinary
     one even in the last digit, the difference would enter every Jacobian entry
     as a constant offset. ``np.array_equal`` rather than a tolerance for exactly
-    that reason — there is no approximation here to allow for, the same angles
-    go into the same closed-form evaluation.
+    that reason — ``Parametrisation.nodes`` is pure, so the same map gives the
+    same nodes and the same closed-form evaluation.
     """
-    base = Geometry.gielis(RAD, 200, m=4, b=1.20, arc_length=True)
-    frozen = Geometry.gielis(RAD, 200, m=4, b=1.20, arc_length=True, theta=base.theta)
+    shape = {"m": 4, "b": 1.20}
+    par = Parametrisation.gielis(
+        rad=RAD, a=1.0, b=1.20, m=4, n1=2.0, n2=2.0, n3=2.0, n_core=N_CORE
+    )
+    base = Geometry.gielis(RAD, 200, **shape, parametrisation=par)
+    frozen = Geometry.gielis(RAD, 200, **shape, parametrisation=base.parametrisation)
 
     for name in ("f", "g", "df", "dg", "ddf", "ddg", "delt", "theta"):
         assert np.array_equal(getattr(frozen, name), getattr(base, name)), name
+    assert np.array_equal(frozen.nodes.dw, base.nodes.dw)
+    assert np.array_equal(frozen.nodes.ddw, base.nodes.ddw)
 
 
-def test_frozen_theta_preserves_exact_scale_covariance():
-    """A frozen node set must not smuggle an absolute length into the geometry.
+def test_frozen_parametrisation_preserves_exact_scale_covariance():
+    """A frozen map must not smuggle an absolute length into the geometry.
 
-    Conventions §9 holds because the theta nodes are ``rad``-independent. A
-    node set frozen at one radius and reused at another is the obvious way to
-    break that, so it is checked rather than assumed. Binary ratios only, per
-    the file's own split: ``r(theta)`` is linear in ``rad`` in closed form, so
-    a power-of-two rescaling is exact to the last bit while a generic one is
-    not — see ``test_matrix_covariance_survives_a_generic_ratio``.
+    Conventions §9 holds because the nodes are ``rad``-independent. A map
+    frozen at one radius and reused at another is the obvious way to break
+    that, so it is checked rather than assumed. Binary ratios only, per the
+    file's own split: ``r(theta)`` is linear in ``rad`` in closed form, so a
+    power-of-two rescaling is exact to the last bit while a generic one is not.
     """
     shape = {"m": 4, "b": 1.20}
-    base = Geometry.gielis(RAD, N_PTS, arc_length=True, **shape)
+    par = Parametrisation.gielis(
+        rad=RAD, a=1.0, b=1.20, m=4, n1=2.0, n2=2.0, n3=2.0, n_core=QNM_N_CORE
+    )
 
     for s in EXACT_RATIOS:
-        small = Geometry.gielis(RAD, N_PTS, theta=base.theta, **shape)
-        large = Geometry.gielis(s * RAD, N_PTS, theta=base.theta, **shape)
+        small = Geometry.gielis(RAD, N_PTS, **shape, parametrisation=par)
+        large = Geometry.gielis(s * RAD, N_PTS, **shape, parametrisation=par)
 
         # The two premises separately, so a failure says which one broke: the
         # frozen nodes carry no length, and the coordinates they generate are
         # still homogeneous of degree 1 in rad.
         assert np.array_equal(large.theta, small.theta)
-        assert np.array_equal(large.delt, small.delt)
         assert np.array_equal(large.f, s * small.f)
         assert np.array_equal(large.g, s * small.g)
 
@@ -392,52 +384,3 @@ def test_frozen_theta_preserves_exact_scale_covariance():
         m_small = BIESolver(small, mat).assemble(LAM)
         m_large = BIESolver(large, mat).assemble(s * LAM)
         assert np.array_equal(m_small, m_large)
-
-
-def test_reordered_theta_is_rejected_rather_than_silently_integrated():
-    """A mangled node set must raise, not produce a plausible boundary.
-
-    ``delt`` is a bare ``np.diff``, so a reordered set yields negative
-    quadrature weights and a boundary integral that counts part of the curve
-    backwards — a wrong number with nothing raised, which is the failure mode
-    this package treats as worse than a crash.
-    """
-    base = Geometry.gielis(RAD, 200, m=4, b=1.20, arc_length=True)
-
-    shuffled = base.theta.copy()
-    shuffled[[10, 11]] = shuffled[[11, 10]]
-    with pytest.raises(ValueError, match="strictly increasing"):
-        Geometry.gielis(RAD, 200, m=4, b=1.20, theta=shuffled)
-
-    with pytest.raises(ValueError, match="2\\*pi"):
-        Geometry.gielis(RAD, 200, m=4, b=1.20, theta=base.theta * 2.0)
-
-    with pytest.raises(ValueError, match="only meaningful for arc_length"):
-        Geometry.gielis(RAD, 200, m=4, arc_length=False, theta=base.theta)
-
-
-def test_coincident_arc_length_nodes_are_rejected_not_returned_as_nan():
-    """The arc-length inversion must refuse a node set it cannot separate.
-
-    At odd ``m`` away from ``a = b`` the D5 closure condition is violated and
-    the curve doubles back, so ``s_fine`` is not monotone and the ``np.interp``
-    inversion returns *coincident* θ — minimum spacing exactly 0.0 at
-    ``m = 3, b = 1.20, n_pts = 200``, four duplicated nodes. ``_der_real_3``
-    then divides by a zero spacing and ``ddf``/``ddg`` come back NaN with
-    nothing raised: a boundary object that looks constructed and poisons every
-    assembly downstream.
-
-    The prescribed-θ path already rejects exactly this (a non-strictly-
-    increasing set), so the two entry points to a node set disagreed. Zero
-    tolerance and no rtol here: the spacing is *identically* zero, and there is
-    no separation at which coincident nodes become acceptable.
-    """
-    with pytest.raises(ValueError, match="coincident"):
-        Geometry.gielis(RAD, 200, m=3, b=1.20, arc_length=True)
-
-    # The legal region is untouched: odd m at a = b satisfies D5 closure, and
-    # even m is unaffected whatever the aspect ratio.
-    for kwargs in ({"m": 3, "b": 1.0}, {"m": 4, "b": 1.20}):
-        geom = Geometry.gielis(RAD, 200, arc_length=True, **kwargs)
-        assert np.all(np.diff(geom.theta) > 0.0)
-        assert np.isfinite(geom.ddf).all() and np.isfinite(geom.ddg).all()

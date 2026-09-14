@@ -27,6 +27,14 @@ boundary points, converging toward analytic Mie theory (both polarisations):
 
 ![Convergence to Mie theory](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/convergence_study.png)
 
+The same error over size parameter `x = 0.1 … 30` and `nn`, log colour scale.
+The error falls from `10⁻³` to `10⁻¹²` across a narrow front (black contours,
+`10⁻⁶` solid); past it the solver is at round-off. The white line is 6 points
+per interior wavelength `λ/n_core`, which tracks the front's round-off edge
+from `x ≈ 2` up — `10⁻⁶` itself is reached at a median of 4.7:
+
+![Convergence map](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/convergence_map.png)
+
 Near field of a Gielis `m = 6` star under plane-wave illumination (scattered
 field outside the boundary, internal field inside):
 
@@ -62,6 +70,7 @@ Regenerate them with:
 
 ```bash
 uv run python examples/convergence_study.py
+uv run python examples/convergence_map.py
 uv run python examples/nearfield_map.py
 uv run python examples/purcell_map.py
 uv run python examples/qnm_spectrum.py
@@ -101,18 +110,18 @@ implementation uses the closed-surface (particle) form given in
 The physics test suite compares the solver against analytic Mie theory for a
 circular cylinder: scattering / extinction / absorption efficiencies, the
 optical theorem on a lossy particle, energy conservation on a lossless one, the
-convergence rate, and the 2-D `1/√(kr)` far-field decay. At `nn = 300` the
-efficiencies agree with Mie to a few parts in `10³`; the error decreases with
-`nn` until it reaches the fixed angular-quadrature floor of the far-field
-integrator. See `tests/` for the exact tolerances and the reasoning behind them.
+convergence rate, and the 2-D `1/√(kr)` far-field decay. Boundary quadrature is
+Kress–Martensen product quadrature, so convergence is **spectral**: on the circle
+the efficiencies reach double-precision round-off against Mie by `nn ≈ 30`, and
+the tests hold them to `10⁻¹²`. See `tests/` for the exact tolerances and the
+reasoning behind them.
 
 The line-dipole / self-Green machinery (v0.2) is validated the same way:
 reciprocity of the scattered field (to `10⁻⁶`), the free-space limit
 (`LDOS → 1` far from the particle), LDOS positivity, and — the strong anchor —
 the self-Green function of a circular cylinder against its closed-form
-Graf-addition-theorem sum on both `Re S` and `Im S`. That near-field anchor
-converges at first order in `nn`, so it is run at `nn = 1000` to reach `1 %`;
-the resolved scattered-field sign convention is recorded in
+Graf-addition-theorem sum on both `Re S` and `Im S`, which agree to `10⁻¹³`
+at `nn = 240`; the resolved scattered-field sign convention is recorded in
 [docs/conventions.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md).
 
 Quasi-normal-mode extraction (v0.4) is anchored the same way, in three
@@ -120,8 +129,11 @@ independent layers: the analytic Mie poles are located first and their
 completeness checked against a winding-number count; the contour algorithm is
 checked on synthetic matrix pencils with known spectra; and only then is the
 composition tested — that the BIE operator's singularities *are* the Mie poles,
-to within its discretisation error and nothing more. That error converges at
-first order in `nn`, in both `Re λ` and `Im λ`.
+to within its discretisation error and nothing more. That error is spectral too:
+`10⁻¹³` nm by `nn = 40` on the circle, where the contour integral rather than the
+boundary becomes the accuracy floor. On non-circular shapes, modes are
+identified by continuation from the circle
+([conventions](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md) §8).
 
 ## Install / run / test
 
@@ -172,7 +184,7 @@ geom = Geometry.gielis(rad=200, n_pts=200, m=0)
 mat = Material(n_core=3.0, n_clad=1.0, pol=2)             # TE
 res = QNMSolver(geom, mat).modes(745 + 2j, 775 + 15j)     # box corners, vacuum nm
 
-print(res.wavelengths)      # 760.326 + 7.770j, twice — a degenerate pair
+print(res.wavelengths)      # 760.687 + 7.948j, twice — a degenerate pair
 print(res.quality_factors)  # Q = Re λ / (2 Im λ)
 print(res.edge_margin)      # contour-quality diagnostic; near zero is a warning
 ```
@@ -196,21 +208,22 @@ go through one signature and one code path.
 
 ```python
 res = QNMSolver(geom, mat).modes(745 + 2j, 775 + 15j).refine()
-theta = res.geometry.theta                     # the node set must be frozen
+frozen = res.geometry.parametrisation          # the node map must be frozen
 
 def wider(delta):                              # dλ/db, b in its own units
-    return Geometry.gielis(rad=200, n_pts=200, theta=theta,
-                           m=4, b=1.2 + delta), mat
+    return Geometry.gielis(rad=200, n_pts=200, m=4, b=1.0 + delta,
+                           parametrisation=frozen), mat
 
-print(res.sensitivity(wider))
+print(res.sensitivity(wider))                  # ≈ λ/2 for both partners
 ```
 
-The geometry `at` returns must carry `res.geometry.theta` **exactly** — a shape
-derivative holds the node set fixed, and differentiating the arc-length
-parametrisation along with the physics costs two orders of convergence. Degenerate
-poles dispatch to a secular problem rather than raising. `dλ/dp` converges at
-first order in `n_pts`, so `richardson_limit` extrapolates two rungs to the limit
-for less than the cost of one finer one. Conventions
+On the circle, stretching one axis is half of a uniform dilation, so each
+partner moves at `λ/2`. The geometry `at` returns must be built on
+`res.geometry.parametrisation` — a shape derivative holds the node map fixed,
+and `sensitivity` checks the nodes and both map derivatives exactly and raises
+otherwise. Degenerate poles dispatch to a secular problem rather than raising.
+`dλ/dp` converges spectrally in `n_pts`, like λ itself, so no extrapolation is
+needed. Conventions
 [§10](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md),
 §11 and §12 carry the details and the measured anchors.
 
@@ -251,38 +264,48 @@ would be an hour-long sweep takes seconds.
   [conventions](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md) §9.
 - **v0.5.0** — threaded contour integration in `contour_moments`, and
   an adjoint eigenvalue-sensitivity API (`dλ/dp` per mode) on top of the
-  identity already proved in conventions §9. _(latest release)_ **No breaking
-  changes**; every v0.4.x call still means what it meant.
+  identity already proved in conventions §9.
+- **v0.6.0** — spectral convergence: Kress–Martensen product quadrature
+  replaces the first-order diagonal self-patch, and nodes are placed by a smooth
+  `Parametrisation` map. **Breaking** — see below.
 
-### What v0.5 adds to `Geometry`
+### Migrating from v0.5
 
-`Geometry` now records the boundary node angles it was built on, as
-`Geometry.theta`, and `Geometry.gielis` accepts `theta=` to build a shape on
-angles supplied from elsewhere:
+v0.5 converged at first order in `nn`; v0.6 converges spectrally, so **every
+number changes** — for the better, typically by many orders of magnitude at the
+same `nn`. Three calls change:
 
 ```python
-base  = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.2)   # unchanged
+# v0.5
+geom = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.2)   # uniform arc length
 wider = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.3,
-                        theta=base.theta)                 # new: same node set
+                        theta=geom.theta)                # frozen nodes
+
+# v0.6
+geom = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.2)   # uniform θ (new default)
+wider = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.3,
+                        parametrisation=geom.parametrisation)
 ```
 
-Both arguments are optional and both are additions — `Geometry.gielis` places
-nodes by uniform arc length when you omit `theta`, exactly as before, and
-`Geometry(...)` built directly from your own arrays works without one, leaving
-`theta` as `None`. Scattering, fields, LDOS and mode extraction never read it.
+- **`theta=` is now `parametrisation=`.** The new quadrature needs the node
+  map's first and second derivatives at every node, and those cannot be
+  recovered from an array of angles. Accepting a bare array would return a
+  plausible wrong answer, so `theta=` is gone, and an angle array passed as
+  `parametrisation=` raises `TypeError` with the migration in the message.
+- **Nodes are equispaced in θ by default**, not in arc length: under the new
+  quadrature uniform θ converges faster on every star and superellipse measured
+  within the solver's validity envelope, at low resolution as well as high. For uniform arc length pass
+  `parametrisation=Parametrisation.gielis(...)`
+  ([conventions](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md) §13).
+- **`Geometry(...)` built from your own arrays** takes derivatives with respect
+  to the quadrature parameter `t` and no longer takes `delt`; `assemble_matrix`,
+  `assemble_matrix_dwn` and `assemble_matrix_reference` no longer take `delt`
+  either. Odd `m` now requires `a == b` and `n2 == n3`, since the boundary
+  otherwise does not close.
 
-It exists for shape derivatives. `QNMResult.sensitivity` evaluates `M(p₀−h)` and
-`M(p₀+h)` and must do so on the **same** node set; if the nodes are re-placed
-between the two, the difference quotient differentiates the arc-length
-parametrisation along with the physics. That error term is `O(h)` rather than
-`O(h²)`, it is not monotone in `h`, and it **grows** with `n_pts` — the one error
-in this package that refinement makes worse. Freezing the nodes takes the
-measured convergence rate on `∂M/∂b` from 2.7 to 100.1, against an ideal of 100.
-
-So `sensitivity` refuses a geometry with no node set, and names which one is
-missing, rather than falling back to re-inversion — a fallback would return a
-wrong answer that looks exactly like a right one. Conventions
-[§10](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md).
+`richardson_limit` still exists but is deprecated: nothing in the package
+converges at first order any more, and extrapolating a spectrally converged
+pair makes it worse.
 
 ## License
 

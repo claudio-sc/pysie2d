@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 import numpy as np
 
-from .fields import eval_field, far_field
+from .fields import _far_field_at, eval_field, far_field
 from .geometry import Geometry
 from .kernels import assemble_matrix, assemble_matrix_dwn
 from .material import Material
@@ -203,7 +203,7 @@ class ScatterResult:
             self.ei,
         )
 
-    def efficiencies(self, n_angles: int = 3000) -> dict[str, float]:
+    def efficiencies(self, n_angles: int = 500) -> dict[str, float]:
         """Scattering, extinction, and absorption efficiencies.
 
         Efficiencies are normalised by the geometric width ``2·rad``, which
@@ -212,6 +212,10 @@ class ScatterResult:
 
         Args:
             n_angles: Number of far-field angles used in the angular integral.
+                The periodic trapezoid rule is spectral in it: Q_sca reaches
+                round-off by 257 at size parameter 50 (n_core = 3.5), so the
+                default of 500 leaves ~2× headroom. Raise it for larger
+                particles. Q_ext does not depend on it.
 
         Returns:
             dict with keys 'qsca', 'qext', 'qabs'.
@@ -219,7 +223,6 @@ class ScatterResult:
         wnum_bg = self.wnum_bg
         norfac = 8.0 * PI * wnum_bg
         delthe = 2.0 * PI / (n_angles - 1.0)
-        nforw = int((2.0 * PI - np.deg2rad(self.angle)) / delthe)
 
         amp, _ = self.far_field(n_angles)
         i_sc = np.abs(amp) ** 2 / norfac
@@ -231,7 +234,16 @@ class ScatterResult:
         # (not halving both copies) is what makes qsca independent of where
         # that one grid angle happens to fall relative to the forward peak.
         qsca = np.sum(i_sc[:-1]) * delthe / (2.0 * self.geometry.rad)
-        qext = amp[nforw].imag / (wnum_bg * 2.0 * self.geometry.rad)
+        # The forward direction π − angle lies on the far-field grid only for
+        # incidence angles that happen to be grid multiples; reading the nearest
+        # sample instead was 1.5e-7 off at 37° with n_angles = 3000. Evaluate
+        # the amplitude there exactly, so qext does not depend on n_angles.
+        g = self.geometry
+        forward = np.array([PI - np.deg2rad(self.angle)])
+        amp_fwd = _far_field_at(
+            forward, g.n_pts, wnum_bg, g.f, g.g, g.df, g.dg, g.delt, self.ei
+        )[0]
+        qext = amp_fwd.imag / (wnum_bg * 2.0 * g.rad)
         qabs = qext - qsca
         return {"qsca": float(qsca), "qext": float(qext), "qabs": float(qabs)}
 
@@ -295,7 +307,6 @@ class BIESolver:
             g.dg,
             g.ddf,
             g.ddg,
-            g.delt,
             mat.wnum_bg(wavelength),
             mat.nc,
             mat.eps,
@@ -352,7 +363,6 @@ class BIESolver:
             g.dg,
             g.ddf,
             g.ddg,
-            g.delt,
             wnum_bg,
             mat.nc,
             mat.eps,
