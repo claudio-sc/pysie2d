@@ -13,8 +13,10 @@ Conventions specific to these figures:
   auto-scaled diverging colormap that centres on the data mean is wrong here.
 - `nearfield_map` is sequential magnitude data; use a perceptually uniform
   colormap, not `jet`.
-- `convergence_study` is log-log error vs `nn` for both polarisations. If a
-  convergence *order* is being claimed, show the reference slope.
+- `convergence_study` is semi-log error vs a linear `nn` axis for both
+  polarisations: convergence is spectral since v0.6, which is a straight line
+  there and not on log-log. Mark the round-off floor. If an algebraic order is
+  ever claimed instead, go log-log and show the reference slope.
 - Masked regions (the NaNs `relative_ldos_map` returns inside and near the
   particle) must read as "no data", visually distinct from a low value.
 - Axes carry units (nm). Both polarisations should be distinguishable without
