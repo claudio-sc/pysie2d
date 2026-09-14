@@ -1,7 +1,8 @@
 # v0.6 quadrature — preliminary study plan
 
 **Status:** G1 passed, G2 passed (13 Sep 2026, with a caveat — see findings
-below), G0 not run and under review. Kress–Martensen is now **landed in
+below), G3 closed, G4 passed (14 Sep 2026, on uniform θ and adaptive maps;
+`sigma_ratio`, not mode count, is the holomorphy tell), G0 retired, G5 next. Kress–Martensen is now **landed in
 production** (`feat!: Kress-Martensen quadrature on a frozen node map`,
 commit `771bc9b`), not just the `kress_t.py` prototype this status line used to
 point to. Three pieces are now in production from this study's findings:
@@ -713,6 +714,147 @@ parameter (3.3.3), and check whether `dλ/dp` still needs `richardson_limit`.
 
 *Passes when* QNM positions against analytic Mie poles improve in rate, and the
 mode count is stable across the contour.
+
+> **PASSED (2026-09-14), on uniform θ and adaptive maps.** Uniform arc length
+> was not measured: it is disqualified as a default (§13) and kept as legacy.
+> One of this gate's own premises is corrected below — mode count and
+> `edge_margin` are **not** the tells for lost holomorphy; `sigma_ratio` is.
+
+#### G4 findings — holomorphy holds, the tells are not the ones named (2026-09-14)
+
+Script: `g4_holomorphy_qnm.py`, four jobs (`holo`, `circle`, `shape NAME
+MODE`), ~8 min wall on two processes. Production code throughout (`QNMSolver`,
+`refine`, `sensitivity`), except the superellipse adaptive map, which takes G3's
+curvature floor `ε = 1e-3` because production cannot build it. Material is the
+QNM fixture: rad 200, n_core 3.0, TE. Contour 12 nodes per side, every pole
+polished by `refine`.
+
+**1. Invariant 13.2 holds by construction, and more strongly than stated.**
+The adaptive map's nodes are **bit-identical** at `wavelength_ref` = 450, 600
+and 1550 nm on the ellipse and the star; `wavelength_ref` reaches only
+`nn_from_band` (234/176/68 on the ellipse). `_density` has no λ input at all,
+so no choice of reference wavelength can move a node.
+
+**2. `M(λ)` is holomorphic, measured directly.** Central differences of `M`
+along Re λ and along Im λ (Cauchy–Riemann) agree to 2.9e-6 / 2.9e-8 / 3.1e-10
+at h = 0.1 / 0.01 / 0.001 nm — exactly h², i.e. zero in the limit — and match
+`assemble_derivative` at the same rate. Identical on the aspect-2 ellipse, the
+6/12/12 star and the n = 32 superellipse, on both maps, at `nn = 120`.
+
+**3. Negative control — and the correction to this gate's premise.** A circle
+on the graded map `θ = t + ε sin 2t` with `ε = 0.3 + slope·(Re λ − 530)/25`. At
+each fixed λ the map is valid and gives the Mie pole (parametrisation
+invariance, 1e-11), so everything Beyn gets wrong is holomorphy loss alone:
+
+| slope per 25 nm | modes | `edge_margin` | `max_gap` | `sigma_ratio` | \|λ − Mie\| nm |
+|---|---|---|---|---|---|
+| 0 | 1 | 0.433 | 1.8e7 | **8.1e-15** | 1.1e-11 |
+| 1e-4 | 1 | 0.433 | 2.4e4 | **3.0e-7** | 3.9e-4 |
+| 1e-3 | 1 | 0.433 | 2.4e3 | **3.0e-6** | 3.9e-3 |
+| 1e-2, 1e-1 | raises "probe saturated" | | | | |
+
+Mode count and `edge_margin` are **blind** to it — same count, same margin to
+three digits, while the pole moves linearly with the violation. The rank gap
+`max_gap` shrinks but stays far above any threshold. `sigma_ratio` — `σ_min/σ_max`
+of `M` at the returned λ — rises from round-off to 3e-7 at the mildest
+violation: a pole that is not a singular point of `M` is the direct signature,
+since a holomorphic `M` puts Beyn's eigenvalues exactly on its singularities.
+Beyond that the failure is loud (the probe saturates). **So the tell is
+`sigma_ratio`, and any holomorphy guard written into the migration should read
+it, not the mode count.**
+
+**4. Circle against Mie: spectral on both maps, count stable throughout.** Box
+`515+5j … 565+35j` (TE n = 0 simple, TE n = 2 pair), `|λ − Mie|` in nm, worst of
+the three modes:
+
+| nn | 20 | 30 | 40 | 60 | 120 | 160 | 240 | 320 | 480 |
+|---|---|---|---|---|---|---|---|---|---|
+| uniform θ | 1.9e-2 | 1.1e-7 | **2.6e-13** | 1.0e-12 | 5.8e-13 | 8.2e-13 | — | — | — |
+| star-6 adaptive map | 2.1 | 6.5e-2 | 7.1e-1 | 3.8e-2 | 5.2e-4 | 8.0e-5 | 2.5e-7 | 1.1e-9 | 1.0e-12 |
+
+The graded map is the production adaptive map of the star, applied to the
+circle — a genuinely graded, C₄-symmetric node set. Mode count is 3 at **every**
+rung on both maps, including `nn = 20` with a 2 nm error: count stability is
+necessary and says nothing about accuracy. Contour vs Newton agree to ≤ 1.7e-12
+everywhere. On the graded map the n = 2 pair **splits by the error's own size**
+(2.3 nm at 20, 1.1e-9 at 320, 1.2e-12 at 480) and `multiplicity` reads
+`[1, 1, 1]` until 160, `[1, 2, 2]` from 240: C₄ nodes cannot represent the
+`cos 2θ`/`sin 2θ` degeneracy exactly, so the splitting is a free, reference-free
+discretisation estimate. Grading costs the circle 10⁸× at `nn = 160`, the
+analyticity-strip mechanism of the ellipse ladder.
+
+**5. Continuation from the circle: clean on all four paths.** Equal-area paths
+(`rad` rescaled so the area stays `π·200²` — a pure size change is exactly
+`λ → s·λ` by §9, and the first unnormalised step of the star swelled the area
+8 % and moved Re λ ~20 nm out of the box), 40 steps, `nn = 120`, secant
+predictor, ±3 nm box. Every path starts on the Mie pole to ≤ 2.3e-13, **never
+widens, never loses the mode, one mode (the pair: two) per box**, and the
+second difference of the trajectory is largest at the first step and decays
+monotonically — no kink. The n = 3 pair stays degenerate to 2e-13 the whole way
+(C₄v is preserved), while its Q falls 48 → 11. Endpoints: ellipse
+404.741+18.109j, star n = 0 498.467+22.255j, star n = 3 820.988+36.612j,
+superellipse 516.731+24.277j.
+
+**6. Non-circular QNM ladders.** Reference uniform θ at `nn = 480`; its floor,
+from the adaptive map at the same `nn` (a different node set), is 1.4e-14 /
+3.9e-14 / 2.6e-13 / 6.9e-11 nm on the four endpoints. `|λ − ref|` in nm:
+
+| endpoint | map | 40 | 80 | 160 | 240 | 320 |
+|---|---|---|---|---|---|---|
+| ellipse A=2 | uniform θ | 8.0e-5 | 1.0e-10 | floor | floor | floor |
+| | adaptive | 6.2e-4 | **floor** (60: 1.7e-10) | floor | floor | floor |
+| star 6/12/12, n=0 | uniform θ | 1.5 | 3.1e-2 | 3.7e-6 | 3.0e-9 | **2.1e-12** |
+| | adaptive | 1.3 | 4.0e-2 | 4.3e-5 | 2.1e-7 | 1.2e-9 |
+| star, n=3 pair | uniform θ | 2.9 | 3.9e-2 | 1.7e-5 | 1.1e-8 | **8.2e-12** |
+| | adaptive | 1.1 | 4.5e-2 | 1.5e-4 | 7.5e-7 | 4.1e-9 |
+| superellipse n=32 | uniform θ | 5.7e-1 | 3.4e-2 | 5.9e-4 | 1.2e-5 | 2.2e-7 |
+| | adaptive | 2.2e-1 | 6.2e-3 | **3.4e-5** | **2.5e-7** | **2.3e-9** |
+
+**The `qext` map ordering carries over to poles unchanged.** On the star,
+uniform θ wins by 10–570× once converging (G2 part 2's caveat, now on a
+complex-λ observable and a degenerate pair); on the superellipse — G3's
+grading-pays class, `κ_max·rad ≈ 22` — adaptive wins by 17× / 48× / 96× at
+`nn` = 160 / 240 / 320. On the aspect-2 ellipse adaptive reaches the floor one
+rung earlier (`nn = 60`–80), a different verdict from the `kress_pole_ladder`
+table, which compared adaptive against uniform *arc length*, at band 20–80 and
+`n_core = 3`; not investigated further. **Grading neither breaks nor delays the
+QNM path in any way the scatter path does not already show** — its effect is
+the same analyticity-strip trade.
+
+Tells at the endpoints: mode count is stable across `nn` and across
+contours — a shifted, larger box and 16 nodes per side return the same count
+and the same poles to ≤ 1.7e-13 nm on every endpoint and both maps. The ladder
+boxes (±5 nm) on the star and superellipse n = 0 hold a second, neighbouring
+mode at `edge_margin` 0.05–0.12; the tracked pole is unaffected, and this is the
+§8 landscape note in action — the continuation's ±3 nm box never saw it.
+
+**7. `dλ/dp` on the frozen map: spectral, gauge-free, second order in the step,
+and `richardson_limit` makes it worse.** `p = b` on the ellipse, `n1` on the
+star and superellipse, map frozen at `p₀` (conventions §10).
+
+- *Ladder:* relative error vs the reference at `nn = 320` is 1.2e-11 / 2.3e-11
+  / 1.8e-11 / 1.9e-8 on uniform θ, 2.3e-12 / 3.6e-11 / 8.9e-12 / 7.2e-10 on
+  adaptive (ellipse / star n=0 / star n=3 / superellipse), tracking the λ ladder
+  above — including the superellipse, where adaptive is 26× better.
+- *Gauge-free:* `J` on the adaptive map at `nn = 480` agrees with uniform θ to
+  3.7e-11 / 1.7e-11 / 1.4e-11 / 6.8e-11. Two frozen maps are two
+  discretisations of one derivative, as §10 argues.
+- *Adjoint vs re-extracted poles* (§11 Gate 3, `nn = 160`): relative
+  disagreement falls 98.4× / 99.9× / 99.9× / 95.1× (uniform θ) and 98.4× /
+  99.9× / 99.9× / 99.0× (adaptive) per decade of step, 1e-2 → 1e-3 — second
+  order, on both maps and on the degenerate pair's secular branch.
+- *Degenerate pair:* the two `dλ/dn1` of the star n = 3 pair agree to 8.7e-10
+  — `n1` preserves C₄v, so they must not split.
+- *Richardson* on `(J₁₆₀, J₃₂₀)`, exponent pinned at 1: uniform θ 2.3e-11 →
+  4.4e-7 (star), 1.9e-8 → 8.8e-5 (superellipse); adaptive 3.6e-11 → 1.6e-6,
+  7.2e-10 → 8.3e-7. **Four to five orders worse.** The F7 deprecation stands,
+  now measured on non-circular shapes and both maps.
+
+**Not established:** TM; a pole close enough to another to challenge
+`DEGENERACY_RTOL` under grading (the circle's n = 2 split crosses it cleanly
+between `nn` 160 and 240, unexamined in between); a derivative that *breaks*
+the pair's symmetry on a graded map; the superellipse floor's effect on the QNM
+ladder (G3 found up to 200× on `qext`, only `ε = 1e-3` run here).
 
 ### G5 — Far-field angular quadrature
 
