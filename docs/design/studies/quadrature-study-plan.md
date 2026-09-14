@@ -584,6 +584,48 @@ and on a spiky ladder (`m = 6`, n2 = n3 = 8, n1 = 4, 2, 1, 0.5: arm ratio 1.7 �
 is uniform θ; arc length stays available as `parametrisation=
 Parametrisation.gielis(...)`. Recorded as kress-spec D1 and conventions §13.
 
+#### Spiky stars at campaign resolution — no map rescues low `nn` (2026-09-14)
+
+Script: `spiky_low_nn.py`, nine jobs on four cores, 22 s. Asked for
+exploratory campaigns: at `nn` 50–300 and a useful accuracy of **1e-3
+relative**, is uniform arc length the most accurate map on a spiky star?
+Stars `m = 6`, n2 = n3 = 8, arm ratio 4 / 8 / 16 (n1 = 1.5 / 1 / 0.75), tip
+400 nm; `qext`, TE, n_core 1.5, at λ = 450, 600, 900 nm; reference uniform θ
+at `nn = 1600`, self-converged to ≤ 7e-11 against 2000.
+
+Smallest `nn` on the ladder that reaches 1e-3 (at that rung and above), per λ:
+
+| arm ratio | uniform θ | arc length | adaptive |
+|---|---|---|---|
+| 4 | 200 / 200 / 300 | 300 / — / — | 300 / 300 / — |
+| 8 | — / — / — (best 1.3e-3 at 300) | — / 300 / map fails to build | — / — / — |
+| 16 | — (1e-2 – 1e-1 at 300) | fails to build | — |
+
+**The answer is no.** Arc length is not the most accurate map in this regime
+at any arm ratio, for three reasons:
+
+1. **Below ~1e-2, which map wins is noise.** Errors swing 3–10× between
+   adjacent rungs for every map (arm ratio 8, λ 600: uniform θ 2.6e-2 at
+   `nn = 100`, 7.3e-2 at 150). Appendix A's "arc length 7–60× better at `nn`
+   80–120" was read off that noise at one λ; here, at `nn = 100`, the two
+   split one wavelength each (arc length fails to build at the third).
+2. **Where 1e-3 is reachable (arm ratio 4), uniform θ reaches it first**, at
+   `nn = 200` against 300, and is the only map below it at 300 on all three
+   wavelengths.
+3. **Arc length is not usable in production on these shapes.** Newton in
+   `Parametrisation.nodes` fails at `nn` = 50, 75, 150 on arm ratio 8, and
+   the constructor fails outright at arm ratio 8 / λ 900 and on every arm
+   ratio 16 job (adaptive on one of three). Recorded as a defect alongside the
+   G3 flat-point one; not fixed here.
+
+**For campaigns.** Use uniform θ. At arm ratio ≤ 4, `nn = 200` gives 1e-3 and
+300 gives ~1e-4. At arm ratio ≥ 8, no map reaches 1e-3 by `nn = 300`, so the
+remedy is resolution, not node placement: Appendix A has uniform θ at 6.4e-5
+by `nn = 480` on arm ratio 8.
+
+**Not established:** a second observable; TM; arm ratios between 4 and 8,
+where the 1e-3 crossover for `nn ≤ 300` lies.
+
 ### G3 — Near-corner validity envelope
 
 Error versus exponent at fixed `nn`, on the superellipse path (`m = 4, a = b =
