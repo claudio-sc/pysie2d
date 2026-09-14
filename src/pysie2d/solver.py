@@ -219,7 +219,10 @@ class ScatterResult:
         wnum_bg = self.wnum_bg
         norfac = 8.0 * PI * wnum_bg
         delthe = 2.0 * PI / (n_angles - 1.0)
-        nforw = int((2.0 * PI - np.deg2rad(self.angle)) / delthe)
+        # round, not int: the quotient is an integer computed in floating point,
+        # and at n_angles = 3000 it lands just below one, so int() read the
+        # sample one grid step (0.12°) off forward — a fixed 4.5e-6 on qext.
+        nforw = round((2.0 * PI - np.deg2rad(self.angle)) / delthe)
 
         amp, _ = self.far_field(n_angles)
         i_sc = np.abs(amp) ** 2 / norfac

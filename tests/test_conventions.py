@@ -83,7 +83,7 @@ def test_efficiencies_match_mie_in_cladding(circle, pol):
     # which are background-relative, so the same closed form must hold with no
     # extra n_clad factor anywhere. Bounds are test_efficiencies' RTOL_QSCA and
     # RTOL_QEXT, which are properties of the far-field observables and not of
-    # n_clad *(measured here: qsca 2.7e-15, qext 2.8e-6)*.
+    # n_clad *(measured here: qsca 2.7e-15, qext 2.0e-15)*.
     geom = circle(300)
     mat = Material(n_core=SCALED["n_core"], n_clad=SCALED["n_clad"], pol=pol)
     result = BIESolver(geom, mat).scatter(wavelength=SCALED["wavelength"])
@@ -95,7 +95,7 @@ def test_efficiencies_match_mie_in_cladding(circle, pol):
         ref[f"Q_sca_{tag}"], rel=1.0e-12
     )
     assert result.efficiencies()["qext"] == pytest.approx(
-        ref[f"Q_ext_{tag}"], rel=1.0e-5
+        ref[f"Q_ext_{tag}"], rel=1.0e-12
     )
 
 
@@ -105,8 +105,8 @@ def test_absorbing_particle_in_cladding(circle, pol):
     # relative permittivity 2.25 + 0.5j — the case test_efficiencies already
     # validates at n_clad = 1 — takes epsi = 0.5·n_clad². Landing on that same
     # physical case is deliberate: it inherits test_efficiencies' RTOL_QABS =
-    # 3e-5 rather than needing a fresh tolerance argument *(measured here
-    # 1.0e-5)*. Under the *relative* reading of epsi this call would instead
+    # 1e-12 rather than needing a fresh tolerance argument *(measured here
+    # 5.6e-16)*. Under the *relative* reading of epsi this call would instead
     # model 2.25 + 0.845j and miss the reference by ~30 %, far outside it.
     geom = circle(300)
     epsi_abs = 0.5 * SCALED["n_clad"] ** 2
@@ -121,7 +121,7 @@ def test_absorbing_particle_in_cladding(circle, pol):
 
     assert result.efficiencies()["qabs"] > 0.0
     assert result.efficiencies()["qabs"] == pytest.approx(
-        ref[f"Q_abs_{tag}"], rel=3.0e-5
+        ref[f"Q_abs_{tag}"], rel=1.0e-12
     )
 
 

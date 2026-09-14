@@ -14,19 +14,17 @@ from pysie2d.reference import mie
 # both polarisations and both circle branches. 1e-12 leaves ~400× for BLAS and
 # libm differences and is still nine decades below the first-order v0.5 error.
 RTOL_QSCA = 1e-12
-# qext reads one sample, amp[nforw], and `efficiencies` computes nforw with
-# int() on a float that lands just below an integer at the default
-# n_angles = 3000: the sample is one grid step (0.12°) off forward. That offset,
-# not the solver, is the whole error — measured ≤ 4.5e-6 here, identical at
-# nn = 40, 60 and 300. Bound 1e-5. Fixing the index belongs to the far-field
-# work (v0.6 architecture item 5); tighten this when it lands.
-RTOL_QEXT = 1e-5
-# qabs = qext − qsca inherits the qext offset against a smaller quantity:
-# measured ≤ 1.0e-5 relative. Bound 3e-5.
-RTOL_QABS = 3e-5
-# Lossless energy conservation |qext − qsca|/qext is the same qext offset:
-# measured ≤ 2.8e-6. Bound 1e-5.
-RTOL_ENERGY = 1e-5
+# qext reads one sample, amp[nforw]. The index is an integer computed in floating
+# point, and at the default n_angles = 3000 it lands just below one: under int()
+# the sample was one grid step (0.12°) off forward, a fixed 4.5e-6 error at every
+# nn. With round() qext is at round-off — measured ≤ 2.4e-15 over 500/600/800 nm,
+# both polarisations, both circle branches, n_angles 1000/2001/3000. Same 1e-12
+# bound as qsca, so the truncated index (4.5e-6) cannot pass.
+RTOL_QEXT = 1e-12
+# qabs = qext − qsca on the lossy particle: measured ≤ 5.6e-16. Bound 1e-12.
+RTOL_QABS = 1e-12
+# Lossless energy conservation |qext − qsca|/qext: measured ≤ 1.0e-15. Bound 1e-12.
+RTOL_ENERGY = 1e-12
 
 
 #  m=0 is the trivial superformula branch (fact_n2 = fact_n3 = 0, so the
