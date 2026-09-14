@@ -97,7 +97,7 @@ the disagreement rather than choosing between them.
 
 | # | Decision | Evidence / reason |
 |---|---|---|
-| **D1** | **Default node map is uniform θ** (`Parametrisation.uniform_theta()`), not uniform arc length. | Study `studies/kress_default_map.py`, Appendix A. Once resolved, uniform θ is the most accurate map on every shape measured (rounded squares to `n = 20/50`, spiky stars to arm ratio 8). Arc length is ahead only at the coarsest resolutions: 2–7× at `nn = 40` on the rounded squares, and up to 30× at `nn = 120` on the arm-ratio-8 spike, where uniform θ's worst node has `R ≈ 4`. From `nn = 320` there uniform θ is spectral (5.8e-9 at 960) while arc length stalls near 3e-4. The arc-length map is **not** at fault: it matches an independent `scipy.quad` inversion to 2.7e-15. Composing with `w` narrows the analyticity strip (doc A §4.1). Uniform θ also needs no construction and no `n_core`, accepts non-analytic shapes that `Parametrisation.gielis` refuses (F4, F5), and is shape-independent, so every geometry is on a frozen map automatically. |
+| **D1** | **Default node map is uniform θ** (`Parametrisation.uniform_theta()`), not uniform arc length. | Study `studies/kress_default_map.py`, Appendix A. Once resolved, uniform θ is the most accurate map on every shape measured (rounded squares to `n = 20/50`, spiky stars to arm ratio 8). Arc length is ahead only at the coarsest resolutions: 2–7× at `nn = 40` on the rounded squares, and up to 30× at `nn = 120` on the arm-ratio-8 spike, where uniform θ's worst node has `R ≈ 4`. From `nn = 320` there uniform θ is spectral (5.8e-9 at 960) while arc length stalls near 3e-4. The arc-length map is **not** at fault: it matches an independent `scipy.quad` inversion to 2.7e-15. Composing with `w` narrows the analyticity strip (doc A §4.1). Uniform θ also needs no construction and no `n_core`, accepts non-analytic shapes that `Parametrisation.gielis` refuses (F4, F5), and is shape-independent, so every geometry is on a frozen map automatically. **Corrected 14 Sep 2026:** the low-`nn` arc-length advantage above is single-λ noise; at `nn` 50–300 on arm ratios 4–16 and three wavelengths no map is reliably better, and uniform θ reaches 1e-3 first where any map does (study plan, "Spiky stars at campaign resolution"). |
 | **D2** | Keyword `parametrisation=`, not `theta=` with a new type. | Owner's answer. An old call fails loudly (`TypeError: unexpected keyword`), and the name says what is frozen. |
 | **D3** | `delt` removed from `assemble_matrix`, `assemble_matrix_dwn`, `assemble_matrix_reference` and `Geometry.__init__`; `Geometry.delt` becomes a read-only property `2π/n_pts`. `far_field`/`eval_field` keep `delt: float`. | Owner's answer. Kress's weights presume `h = 2π/nn` exactly, so a free parameter could only be passed wrong. Keeping the field primitives' parameter keeps their call sites unchanged. |
 | **D4** | `assemble_matrix_reference` rewritten as a Kress loop, not deleted. | Owner's answer. CLAUDE.md keeps it as a deliberate second implementation. It is made independent where vectorisation bugs hide: explicit pair loop, `W` rebuilt inline from `R`, Bessel functions always at complex argument. It caught a block-indexing error while this spec was being verified. |
@@ -680,6 +680,12 @@ under-resolved: `R ≲ 8` on the arm-ratio-8 spike, where arc length sits near
 If adaptive grading earns a place anywhere, it is that pre-asymptotic spiky
 regime, and even there it is not better than plain arc length. This is G3's
 question, not this spec's.
+
+**Correction (14 Sep 2026).** The pre-asymptotic arc-length win read above
+does not survive more wavelengths: below ~1e-2 every map's error swings 3–10×
+between neighbouring `nn`, so the winner at one rung is noise. Uniform θ is the
+recommendation at every resolution; see `studies/spiky_low_nn.py` and the study
+plan. G3 found grading's shape class elsewhere: flat-sided near-corners.
 
 ## Appendix B — Where each number came from
 

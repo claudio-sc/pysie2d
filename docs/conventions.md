@@ -502,16 +502,26 @@ superellipses to near-corner ones and spiky stars *(measured, `qext` at
 `nn = 640` on the `m = 4`, `n = 20/50/50` near-corner shape: uniform θ 2.2e-6,
 adaptive 6.8e-6, uniform arc length 1.8e-4)*: composing the boundary with a
 graded `w` narrows the analyticity strip the trapezoid rule's rate is set by.
-Uniform arc length wins only **pre-asymptotically on spiky shapes**, where
-uniform θ spaces long arm flanks widely *(measured on `m = 6`, `n = 1/8/8`, arm
-ratio 8: 30× better at `nn = 120`; overtaken by `nn = 320`)*. Pass
-`Parametrisation.gielis(...)` for that regime.
+**Uniform arc length is not the better choice at low resolution either.** On
+spiky stars at campaign resolutions, below ~1e-2 relative error no map is
+consistently ahead: every map's error swings 3–10× between neighbouring `nn`,
+so a single-rung comparison picks a winner by noise. Where 1e-3 is reachable
+by `nn = 300`, uniform θ reaches it first; where it is not, the remedy is more
+nodes, not another map *(measured, `qext`, TE, λ = 450/600/900 nm, `m = 6`,
+n2 = n3 = 8, `nn` 50–300: arm ratio 4, uniform θ at 1e-3 by `nn` = 200/200/300
+against 300/—/— for arc length; arm ratio 8 and 16, no map at 1e-3 by 300;
+uniform θ 6.4e-5 at `nn = 480` on arm ratio 8)*. `Parametrisation.gielis` is
+also not robust there: Newton fails at some `nn` from arm ratio 8, and the map
+cannot be built at arm ratio 16. Pass a non-default map only to freeze one
+across a shape derivative (§10) or for a study.
 
 **Scale covariance (§9) is preserved.** `R`, `W` and `h` depend only on `nn`;
 nothing in the map construction carries an absolute length.
 
-**Still tentative:** the curvature-adaptive density (architecture item 4) is held
-pending the near-corner gate G3; nothing in this section depends on it.
+**Still tentative:** the curvature-adaptive density (architecture item 4). G3
+found the one shape class where it pays — flat-sided, near-corner shapes with
+`κ_max·rad ≳ 20` — but it cannot yet be built on them (`ln|κ|` at flat points),
+so nothing in this section depends on it.
 
 ## Formulation and validation references
 

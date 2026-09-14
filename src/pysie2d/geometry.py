@@ -512,10 +512,10 @@ class Geometry:
             parametrisation: The node map ``θ = w(t)``. ``None`` (default) is
                 :meth:`Parametrisation.uniform_theta`, nodes equispaced in θ.
                 Pass another geometry's ``parametrisation`` to hold the map
-                fixed across a shape derivative (conventions §10), or
-                ``Parametrisation.gielis(...)`` for uniform arc length, which
-                is more accurate only on spiky shapes at low resolution
-                (``docs/design/kress-spec.md`` §2, D1).
+                fixed across a shape derivative (conventions §10).
+                ``Parametrisation.gielis(...)`` gives uniform arc length, which
+                is not more accurate on any shape measured, spiky stars at low
+                resolution included (conventions §13).
 
         Raises:
             TypeError: If ``parametrisation`` is not a Parametrisation — in

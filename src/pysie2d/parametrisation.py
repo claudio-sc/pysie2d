@@ -433,9 +433,9 @@ class Parametrisation:
         depends on no shape parameter, so every geometry built on it shares one
         frozen map automatically (conventions §13.3), it needs no construction
         and no ``n_core``, and it accepts shapes :meth:`gielis` cannot resolve
-        (non-analytic exponents). Under Kress it also converges fastest on every
-        star measured once resolved — see ``docs/design/kress-spec.md`` §2, D1,
-        for where uniform arc length wins instead.
+        (non-analytic exponents). Under Kress it is also the most accurate map
+        on every star measured, both once resolved and at low resolution, where
+        no map is reliably better (conventions §13).
 
         It goes through the same :meth:`nodes` code as every other map: an
         empty series makes ``T(θ) = θ`` exactly, and one Newton step lands on
