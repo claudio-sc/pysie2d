@@ -533,10 +533,12 @@ across a shape derivative (§10) or for a study.
 **Scale covariance (§9) is preserved.** `R`, `W` and `h` depend only on `nn`;
 nothing in the map construction carries an absolute length.
 
-**Still tentative:** the curvature-adaptive density (architecture item 4). G3
-found the one shape class where it pays — flat-sided, near-corner shapes with
-`κ_max·rad ≳ 20` — but it cannot yet be built on them (`ln|κ|` at flat points),
-so nothing in this section depends on it.
+**The curvature-adaptive density ships as a non-default map** (architecture
+item 4), `Parametrisation.gielis` with a non-degenerate `r_band`. G3 found the
+one shape class where it pays — flat-sided, near-corner shapes with
+`κ_max·rad ≳ 20` — but it cannot be built on them (`ln|κ|` is infinite at flat
+points), and very spiky stars can fail its Newton inversion. Both limits are
+stated in its docstring; nothing in this section depends on it.
 
 ## Formulation and validation references
 
