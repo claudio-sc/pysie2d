@@ -14,12 +14,11 @@ from pysie2d.reference import mie
 # both polarisations and both circle branches. 1e-12 leaves ~400× for BLAS and
 # libm differences and is still nine decades below the first-order v0.5 error.
 RTOL_QSCA = 1e-12
-# qext reads one sample, amp[nforw]. The index is an integer computed in floating
-# point, and at the default n_angles = 3000 it lands just below one: under int()
-# the sample was one grid step (0.12°) off forward, a fixed 4.5e-6 error at every
-# nn. With round() qext is at round-off — measured ≤ 2.4e-15 over 500/600/800 nm,
-# both polarisations, both circle branches, n_angles 1000/2001/3000. Same 1e-12
-# bound as qsca, so the truncated index (4.5e-6) cannot pass.
+# qext evaluates the amplitude at the exact forward angle, off the grid. It used
+# to read a grid sample: one step off under int() (4.5e-6), and off forward for
+# any incidence not on the grid (1.5e-7 at 37°). Measured ≤ 2.4e-15 over
+# 500/600/800 nm, both polarisations, both circle branches. Same 1e-12 bound as
+# qsca, so either grid read cannot pass.
 RTOL_QEXT = 1e-12
 # qabs = qext − qsca on the lossy particle: measured ≤ 5.6e-16. Bound 1e-12.
 RTOL_QABS = 1e-12
@@ -116,3 +115,24 @@ def test_qsca_is_independent_of_incidence_angle_on_the_circle(pol):
     ]
     qscas = np.array(qscas)
     assert (qscas.max() - qscas.min()) / qscas.mean() < 1.0e-10
+
+
+@pytest.mark.parametrize("pol", [1, 2])
+def test_qext_is_exact_at_off_grid_incidence(pol):
+    """qext must read the forward amplitude, not the nearest grid sample to it.
+
+    A circle's Q_ext is isotropic, so Mie is the reference at any incidence.
+    37° and 123.456° fall between far-field grid angles at every n_angles
+    used: reading the nearest sample was 1.5e-7 off at n_angles = 3000 and
+    8.3e-6 at 500, so the 1e-12 bar (RTOL_QEXT) cannot pass on a grid sample.
+    n_angles = 17 is far below the grid any nearest-sample read could survive.
+    """
+    geom = Geometry.gielis(rad=200.0, n_pts=300, m=0)
+    mat = Material(n_core=N_CORE, n_clad=N_CLAD, pol=pol)
+    ref = mie.efficiencies(size_parameter(600.0), complex(mat.nc))
+    for angle in (37.0, 123.456):
+        result = BIESolver(geom, mat).scatter(wavelength=600.0, angle=angle)
+        for n_angles in (17, 500):
+            assert result.efficiencies(n_angles)["qext"] == pytest.approx(
+                ref[f"Q_ext_{POL_TAG[pol]}"], rel=RTOL_QEXT
+            )

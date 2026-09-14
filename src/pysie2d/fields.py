@@ -45,6 +45,22 @@ def far_field(
         angles: float (nff,) observation angles (rad), from −π to π.
     """
     angles = -PI + np.arange(nff) * 2.0 * PI / (nff - 1.0)
+    amp = _far_field_at(angles, nn, wnum_bg, f, g, df, dg, delt, ei)
+    return amp, angles
+
+
+def _far_field_at(
+    angles: np.ndarray,
+    nn: int,
+    wnum_bg: complex,
+    f: np.ndarray,
+    g: np.ndarray,
+    df: np.ndarray,
+    dg: np.ndarray,
+    delt: float,
+    ei: np.ndarray,
+) -> np.ndarray:
+    """Far-field amplitude at arbitrary observation angles; see :func:`far_field`."""
     se = np.sin(angles)
     co = np.cos(angles)
 
@@ -53,9 +69,7 @@ def far_field(
     phi_j = ei[:nn, None]
     chi_j = ei[nn:, None]
     puto = 1j * wnum_bg * (dg[:, None] * se - df[:, None] * co) * phi_j - chi_j
-    amp = np.sum(np.exp(arg) * puto * delt, axis=0)
-
-    return amp, angles
+    return np.sum(np.exp(arg) * puto * delt, axis=0)
 
 
 # ---------------------------------------------------------------------------
