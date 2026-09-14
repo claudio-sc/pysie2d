@@ -2,7 +2,8 @@
 
 **Status:** G1 passed, G2 passed (13 Sep 2026, with a caveat — see findings
 below), G3 closed, G4 passed (14 Sep 2026, on uniform θ and adaptive maps;
-`sigma_ratio`, not mode count, is the holomorphy tell), G0 retired, G5 next. Kress–Martensen is now **landed in
+`sigma_ratio`, not mode count, is the holomorphy tell), G0 retired, G5 passed
+(14 Sep 2026, by measurement, no code change). Kress–Martensen is now **landed in
 production** (`feat!: Kress-Martensen quadrature on a frozen node map`,
 commit `771bc9b`), not just the `kress_t.py` prototype this status line used to
 point to. Three pieces are now in production from this study's findings:
@@ -67,9 +68,10 @@ on; fixing those is the first thing G0 does.
 
 **Probe: the forward-direction amplitude `qext`, throughout.** Not `qsca`.
 `ScatterResult.efficiencies` integrates the far field over a fixed `n_angles`
-grid and carries a ~1e-4 angular floor that masks convergence — and that floor
-is not fixed until G5, the last gate. `qext` is a single amplitude and has no
-such floor (handoff §3).
+grid and was believed to carry a ~1e-4 angular floor that masks convergence
+(handoff §3). `qext` is a single amplitude and has no such floor. G5 found that
+floor already gone — it was the closing-angle double count `dc9da93` fixed — so
+`qsca` is an equally good probe from here on.
 
 **Reference:**
 
@@ -866,6 +868,28 @@ Note `dc9da93` already fixed a closing-angle double-count on this grid; check
 the fix interacts correctly with whatever replaces the grid.
 
 *Passes when* `Q_sca` against Mie tracks `qext` instead of stalling at 1e-4.
+
+**Passed, 14 Sep 2026, with no code change.** The floor was not an angular
+quadrature error: `far_field` samples `[-π, π]` inclusive, and summing both
+copies of the closing angle was the whole of it. `dc9da93` dropped the
+duplicate, which leaves the periodic trapezoid rule — spectral on the far field,
+which is a trigonometric polynomial to round-off. Measured (circle, TE, 600 nm,
+`n_core = 1.5`; relative error against Mie):
+
+| nn | n_angles | Q_sca | Q_ext |
+|---|---|---|---|
+| 20 | 17–3000 | 1.19e-9 | 3.42e-9 |
+| 30 | 9 | 6.37e-6 | 1.22e-15 |
+| 30 | 17–3000 | 1.7e-15 – 1.9e-15 | 1.22e-15 |
+| 80 | 17–3000 | 2.0e-15 – 2.3e-15 | 1.67e-15 |
+
+`Q_sca` tracks `Q_ext` at every `nn` once `n_angles ≥ 17`. On a non-circular
+shape (`m = 4, n1 = n2 = n3 = 6, b = 1.2, nn = 200`), self-convergence against
+`n_angles = 20001` is 2.4e-3 at 9, 3.1e-9 at 17 and ≤ 4.4e-16 from 33 on —
+spectral, not stalled. The existing `test_efficiencies_match_mie` already pins
+`Q_sca` against Mie at `rtol = 1e-12` (measured ≤ 2.7e-15), so the gate's
+guard is in place. The default `n_angles = 3000` is roughly 100× more than
+needed; left as is (a cost question, not an accuracy one).
 
 ---
 
