@@ -1,26 +1,30 @@
 """BIE matrix assembly and Hankel-function helpers — the numerical core.
 
 Implements the boundary integral equation (BIE) for 2-D electromagnetic
-scattering from a cylinder in a homogeneous background. All functions accept
-complex wavenumbers, making this module usable for both driven (real λ) and
-quasi-normal-mode (complex λ) problems.
+scattering from a cylinder in a homogeneous background, discretised with
+Kress–Martensen product quadrature on nodes equispaced in the quadrature
+parameter t. All functions accept complex wavenumbers, making this module
+usable for both driven (real λ) and quasi-normal-mode (complex λ) problems.
 
 Convention:
     The BIE solution vector ``ei`` has shape (2*nn,):
         ei[:nn]  — φ  : electric-field values on the boundary
-        ei[nn:]  — χ  : normal-derivative values on the boundary
+        ei[nn:]  — χ  : normal-derivative values on the boundary, carrying the
+                        Jacobian |dx/dt| of the quadrature parameter
 
 Public API:
     hank0, hank1, cbesh: Hankel-function wrappers.
     assemble_matrix: fast vectorised 2nn × 2nn BIE system matrix M(λ).
     assemble_matrix_dwn: the same matrix and its analytic derivative with
-        respect to the background wavenumber, sharing the Hankel evaluations.
+        respect to the background wavenumber, sharing the Bessel evaluations.
     assemble_matrix_reference: slow loop-based assembly, kept only as the
         rounding-accurate truth anchor for the parity test.
 """
 
+import functools
+
 import numpy as np
-from scipy.special import hankel1, j0, j1, y0, y1
+from scipy.special import hankel1, j0, j1, jv, y0, y1
 
 PI = np.pi
 
@@ -94,12 +98,97 @@ def cbesh(z: complex | np.ndarray, order: int) -> complex | np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# BIE matrix  (verbatim translation of subroutine matm)
+# Kress–Martensen product quadrature
 #
-# WARNING: every coefficient, sign, and diagonal term below is fixed by the
-# original Fortran source.  Do not alter any expression without verifying
-# against the Fortran or the published derivation.
+# The log singularity of H₀ at r → 0 is split off as J₀(kr)·ln(4 sin²((t−τ)/2))
+# and integrated exactly against the trigonometric interpolant through the
+# nodes (Kress, Linear Integral Equations, ch. 12); everything left over is
+# smooth and periodic, so the trapezoid rule is spectral on it. See
+# docs/design/kress-spec.md §3 for the derivation of every expression below.
 # ---------------------------------------------------------------------------
+
+
+@functools.lru_cache(maxsize=64)
+def _kress_log_weights(nn: int) -> np.ndarray:
+    """Kress's weights ``R_d`` for the singular factor ``ln(4 sin²((t−τ)/2))``.
+
+    With nodes equispaced in the quadrature parameter,
+
+        ∫₀^{2π} ln(4 sin²((t_i − τ)/2)) φ(τ) dτ ≈ Σ_j R_{(j−i) mod nn} φ(t_j)
+
+    exactly whenever φ is a trigonometric polynomial the nodes interpolate.
+    ``R`` is circulant — it depends only on the node offset ``d`` — and
+    independent of geometry, wavelength and material, which is why it is
+    cached per ``nn`` for the life of the process.
+
+    The formula holds for **both parities** of ``nn``. The textbook form
+    (``nn = 2n``) carries a half-weighted Nyquist term that does not exist for
+    odd ``nn``; using it there returns a plausible, wrong matrix *(measured: a
+    QNM displaced by 1.1 nm at ``nn = 115`` with nothing raised)*.
+
+    Args:
+        nn: Number of boundary nodes.
+
+    Returns:
+        Read-only (nn,) array ``R_d``, ``d = 0 … nn−1``.
+    """
+    d = 2.0 * PI * np.arange(nn) / nn
+    orders = np.arange(1, (nn - 1) // 2 + 1)
+    weights = -(4.0 * PI / nn) * (np.cos(np.outer(d, orders)) / orders).sum(axis=1)
+    if nn % 2 == 0:
+        weights = weights - (4.0 * PI / nn**2) * np.cos(0.5 * nn * d)
+    weights.flags.writeable = False
+    return weights
+
+
+@functools.lru_cache(maxsize=64)
+def _kress_weights(nn: int) -> np.ndarray:
+    """Circulant correction ``W_d = R_d − h·ln(4 sin²(πd/nn))``, ``W_0 = R_0``.
+
+    Kress writes each off-diagonal entry as ``K₁·R + (K − K₁·L)·h`` with
+    ``L = ln(4 sin²(πd/nn))``. Collecting the ``K₁`` terms gives
+    ``h·K + K₁·W``: the plain trapezoid entry plus a correction proportional
+    to ``W``. That is the form assembled here, so ``L`` never needs its own
+    O(nn²) array. On the diagonal ``L`` is undefined and only ``R_0`` enters.
+
+    The array is shared between every assembly at this ``nn`` and between
+    threads (``beyn.contour_moments``), so it is returned read-only: an
+    in-place edit would corrupt every later matrix silently.
+
+    Args:
+        nn: Number of boundary nodes.
+
+    Returns:
+        Read-only (nn,) array ``W_d``, ``d = 0 … nn−1``.
+    """
+    w = np.array(_kress_log_weights(nn))
+    d = np.arange(1, nn)
+    w[1:] -= (2.0 * PI / nn) * np.log(4.0 * np.sin(PI * d / nn) ** 2)
+    w.flags.writeable = False
+    return w
+
+
+def _j0_h0(z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """``J₀(z)`` and ``H₀^{(1)}(z)`` from one pass, real or complex ``z``.
+
+    Real arguments reuse the Cephes ``J₀`` inside ``H₀ = J₀ + i·Y₀``, so the
+    extra Bessel array Kress needs costs nothing there. Complex arguments —
+    every QNM assembly — need a separate ``jv`` call; that is the real cost of
+    the scheme *(measured 1.45× one shipped assembly at nn = 200, complex λ)*.
+    The complex branch must stay: it is what makes ``M(λ)`` holomorphic.
+    """
+    if np.iscomplexobj(z):
+        return jv(0, z), hankel1(0, z)
+    j = j0(z)
+    return j, j + 1j * y0(z)
+
+
+def _j1_h1(z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """``J₁(z)`` and ``H₁^{(1)}(z)``; see :func:`_j0_h0`."""
+    if np.iscomplexobj(z):
+        return jv(1, z), hankel1(1, z)
+    j = j1(z)
+    return j, j + 1j * y1(z)
 
 
 def assemble_matrix_reference(
@@ -111,32 +200,29 @@ def assemble_matrix_reference(
     dg: np.ndarray,
     ddf: np.ndarray,
     ddg: np.ndarray,
-    delt: float | np.ndarray,
     wnum_bg: complex,
     ri: complex,
     kd: complex,
 ) -> np.ndarray:
-    """Assemble the 2nn × 2nn BIE system matrix (slow reference loop).
+    """Assemble the 2nn × 2nn BIE system matrix, one entry at a time.
 
-    Verbatim translation of subroutine matm from the original Fortran source.
-    Accepts complex *wnum_bg* for quasi-normal-mode (complex-λ) computations.
-
-    This slow, loop-based routine is kept **only** as the truth anchor for the
-    parity test against :func:`assemble_matrix`: the two implement identical
-    arithmetic in a different loop order, so they must agree to rounding. It is
-    not used on any hot path.
+    Kept **only** as the truth anchor for the parity test against
+    :func:`assemble_matrix`. It is independent of the fast path in the three
+    places a vectorisation bug hides: it indexes node pairs in an explicit
+    double loop rather than through ``triu_indices``, it builds ``W`` from
+    ``R`` and the logarithm inline rather than from the cached
+    :func:`_kress_weights`, and it always evaluates Bessel functions at a
+    **complex** argument, so the real Cephes branch is checked too.
 
     Args:
         pol: Polarisation: 1 = p (TM), 2 = s (TE).
-        nn: Number of boundary quadrature points.
+        nn: Number of boundary nodes, equispaced in the quadrature parameter t.
         f: (nn,) boundary x coordinates (nm).
         g: (nn,) boundary z coordinates (nm).
-        df: (nn,) first derivative of f w.r.t. the parameterisation variable θ.
-        dg: (nn,) first derivative of g w.r.t. θ.
-        ddf: (nn,) second derivative of f w.r.t. θ.
-        ddg: (nn,) second derivative of g w.r.t. θ.
-        delt: Quadrature θ-step. Scalar for uniform-theta; per-point array for
-            arc-length sampling.
+        df: (nn,) df/dt.
+        dg: (nn,) dg/dt.
+        ddf: (nn,) d²f/dt².
+        ddg: (nn,) d²g/dt².
         wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), where
             λ_vac is the public **vacuum** wavelength. Build it with
             :meth:`pysie2d.material.Material.wnum_bg`; this function takes no
@@ -147,85 +233,46 @@ def assemble_matrix_reference(
 
     Returns:
         me: complex (2nn, 2nn) BIE system matrix.
-
-    Matrix block structure:
-        The 2nn × 2nn matrix is partitioned into four nn × nn blocks:
-            M1  (rows 0:nn,    cols 0:nn)    φ–φ coupling,  background wnum_bg
-            M2  (rows 0:nn,    cols nn:2nn)  φ–χ coupling,  background wnum_bg
-            M3  (rows nn:2nn,  cols 0:nn)    χ–φ coupling,  particle wnum_core
-            M4  (rows nn:2nn,  cols nn:2nn)  χ–χ coupling,  particle wnum_core
     """
     nt = 2 * nn
     me = np.zeros((nt, nt), dtype=complex)
-    e = np.e
-    wnum_core = ri * wnum_bg
-    eta = kd if pol == 1 else complex(1.0)
+    wnum_core = complex(ri * wnum_bg)
+    wnum_bg = complex(wnum_bg)
+    eta = complex(kd if pol == 1 else 1.0)
+    h = 2.0 * PI / nn
+    r_log = _kress_log_weights(nn)
 
-    # Allow delt to be a scalar (uniform theta) or a per-point array (arc-length).
-    # All quadrature weights are indexed by the source column j.
-    delt = np.full(nn, delt) if np.isscalar(delt) else np.asarray(delt)
-    c1 = 0.25j * wnum_bg**2 * delt  # (nn,)
-    c2 = 0.25j * delt  # (nn,)
-    c3 = 0.25j * wnum_core**2 * delt  # (nn,)
-    depi4 = delt / (4.0 * PI)  # (nn,)
+    for i in range(nn):
+        for j in range(i + 1, nn):
+            d = j - i
+            w_d = r_log[d] - h * np.log(4.0 * np.sin(PI * d / nn) ** 2)
+            dx = f[i] - f[j]
+            dz = g[i] - g[j]
+            r = np.sqrt(dx**2 + dz**2)
+            c_ij = dx * dg[j] - dz * df[j]
+            c_ji = -dx * dg[i] + dz * df[i]
+            # Row offset 0: M1 (φ columns) and M2 (χ columns) at k_bg.
+            # Row offset nn: M3 and M4 at k_core, M4 carrying eta.
+            for k, row, scale in ((wnum_bg, 0, 1.0), (wnum_core, nn, eta)):
+                z = k * r
+                single = 0.25j * h * hankel1(0, z) - w_d * jv(0, z) / (4.0 * PI)
+                ratio = 0.25j * h * hankel1(1, z) / z - w_d * jv(1, z) / z / (4.0 * PI)
+                me[i + row, j] = k**2 * ratio * c_ij
+                me[j + row, i] = k**2 * ratio * c_ji
+                me[i + row, j + nn] = scale * single
+                me[j + row, i + nn] = scale * single
 
     gamma = np.sqrt(df**2 + dg**2)
-    deriv = df * ddg - ddf * dg
-
-    # ---- Block M1 (φ–φ) -----------------------------------------------
+    curv = (df * ddg - ddf * dg) * h / (4.0 * PI) / gamma**2
     for i in range(nn):
-        for j in range(i + 1, nn):
-            r2 = (f[i] - f[j]) ** 2 + (g[i] - g[j]) ** 2
-            arg1 = wnum_bg * np.sqrt(r2)
-            arg2 = (f[i] - f[j]) * dg[j] - (g[i] - g[j]) * df[j]
-            arg2p = (f[j] - f[i]) * dg[i] - (g[j] - g[i]) * df[i]
-            h1a1 = hank1(arg1) / arg1
-            me[i, j] = c1[j] * arg2 * h1a1
-            me[j, i] = c1[i] * arg2p * h1a1
-    for i in range(nn):
-        me[i, i] = 0.5 - deriv[i] * depi4[i] / gamma[i] ** 2
-
-    # ---- Block M2 (φ–χ) -----------------------------------------------
-    for i in range(nn):
-        for j in range(i + 1, nn):
-            r2 = (f[i] - f[j]) ** 2 + (g[i] - g[j]) ** 2
-            h0 = hank0(wnum_bg * np.sqrt(r2))
-            me[i, j + nn] = c2[j] * h0
-            me[j, i + nn] = c2[i] * h0
-    for i in range(nn):
-        me[i, i + nn] = c2[i] * hank0(wnum_bg * delt[i] / (2.0 * e) * gamma[i])
-
-    # ---- Block M3 (χ–φ) -----------------------------------------------
-    for i in range(nn):
-        for j in range(i + 1, nn):
-            r2 = (f[i] - f[j]) ** 2 + (g[i] - g[j]) ** 2
-            arg1c = wnum_core * np.sqrt(r2)
-            arg2 = (f[i] - f[j]) * dg[j] - (g[i] - g[j]) * df[j]
-            arg2p = (f[j] - f[i]) * dg[i] - (g[j] - g[i]) * df[i]
-            h1c = cbesh(arg1c, 1) / arg1c
-            me[i + nn, j] = c3[j] * arg2 * h1c
-            me[j + nn, i] = c3[i] * arg2p * h1c
-    for i in range(nn):
-        me[i + nn, i] = -(0.5 + deriv[i] * depi4[i] / gamma[i] ** 2)
-
-    # ---- Block M4 (χ–χ) -----------------------------------------------
-    for i in range(nn):
-        for j in range(i + 1, nn):
-            r2 = (f[i] - f[j]) ** 2 + (g[i] - g[j]) ** 2
-            h0c = cbesh(wnum_core * np.sqrt(r2), 0)
-            me[i + nn, j + nn] = eta * c2[j] * h0c
-            me[j + nn, i + nn] = eta * c2[i] * h0c
-    for i in range(nn):
-        me[i + nn, i + nn] = (
-            c2[i] * eta * cbesh(wnum_core * delt[i] / (2.0 * e) * gamma[i], 0)
-        )
-
+        me[i, i] = 0.5 - curv[i]
+        me[i + nn, i] = -(0.5 + curv[i])
+        for k, row, scale in ((wnum_bg, 0, 1.0), (wnum_core, nn, eta)):
+            log_term = np.euler_gamma + np.log(k * gamma[i] / 2.0)
+            me[i + row, i + nn] = scale * (
+                -r_log[0] / (4.0 * PI) + h * (0.25j - log_term / (2.0 * PI))
+            )
     return me
-
-
-# ---------------------------------------------------------------------------
-# Fast vectorised BIE matrix assembly
-# ---------------------------------------------------------------------------
 
 
 def assemble_matrix(
@@ -237,38 +284,35 @@ def assemble_matrix(
     dg: np.ndarray,
     ddf: np.ndarray,
     ddg: np.ndarray,
-    delt: float | np.ndarray,
     wnum_bg: complex,
     ri: complex,
     kd: complex,
 ) -> np.ndarray:
-    """Vectorised BIE system matrix assembly (drop-in for the reference loop).
+    """Vectorised Kress–Martensen BIE system matrix M(λ).
 
-    Key optimisations vs the original Python double-loop:
+    Nodes must be **equispaced in the quadrature parameter t** and ``df`` …
+    ``ddg`` must be derivatives with respect to that same ``t``
+    (``docs/conventions.md`` §13.1); the step is ``h = 2π/nn`` and is not an
+    argument. Anything else — nodes graded in t, derivatives in θ on a graded
+    map — returns a plausible matrix with first-order error and raises nothing.
+    :meth:`pysie2d.geometry.Geometry.gielis` builds conforming arrays.
 
-    1. Upper-triangle Hankel evaluation: r[i,j] = r[j,i], so Hankel
-       functions are evaluated on only nn*(nn-1)/2 unique distances instead
-       of nn², halving the dominant cost for complex wnum_bg (QNM mode).
-    2. Vectorised scipy.special.hankel1: a single C-level call per Hankel
-       order replaces nn*(nn-1)/2 scalar Python calls per block.
-    3. Both (i,j) and (j,i) matrix entries are filled from the same Hankel
-       value, mirroring the original Fortran loop exactly.
-
-    At nn ≤ 400 this pure-NumPy path solves in milliseconds. Parameters and
-    return value are identical to :func:`assemble_matrix_reference`, against
-    which it is validated to rounding by the parity test.
+    Each off-diagonal entry is the trapezoid term ``h·K`` plus the Kress
+    correction ``K₁·W_d`` (:func:`_kress_weights`); Hankel and Bessel functions
+    are evaluated on the ``nn(nn−1)/2`` unique distances and fill both ``(i, j)``
+    and ``(j, i)``. Parameters and return value are identical to
+    :func:`assemble_matrix_reference`, against which it is validated to
+    rounding by the parity test.
 
     Args:
         pol: Polarisation: 1 = p (TM), 2 = s (TE).
-        nn: Number of boundary quadrature points.
+        nn: Number of boundary nodes, equispaced in the quadrature parameter t.
         f: (nn,) boundary x coordinates (nm).
         g: (nn,) boundary z coordinates (nm).
-        df: (nn,) first derivative of f w.r.t. θ.
-        dg: (nn,) first derivative of g w.r.t. θ.
-        ddf: (nn,) second derivative of f w.r.t. θ.
-        ddg: (nn,) second derivative of g w.r.t. θ.
-        delt: Quadrature θ-step. Scalar for uniform-theta; per-point array for
-            arc-length sampling.
+        df: (nn,) df/dt.
+        dg: (nn,) dg/dt.
+        ddf: (nn,) d²f/dt².
+        ddg: (nn,) d²g/dt².
         wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), where
             λ_vac is the public **vacuum** wavelength. Build it with
             :meth:`pysie2d.material.Material.wnum_bg`; this function takes no
@@ -280,67 +324,76 @@ def assemble_matrix(
     Returns:
         me: complex (2nn, 2nn) BIE system matrix.
     """
-    e = np.e
-    # Demote exactly-real wavenumbers so the Hankel arguments stay real dtype
-    # and hank0/hank1 can take their Cephes branch. Complex wnum_bg / complex ri
+    # Demote exactly-real wavenumbers so the Bessel arguments stay real dtype
+    # and _j0_h0/_j1_h1 take their Cephes branch. Complex wnum_bg / complex ri
     # (QNM searches, absorbing particles) pass through untouched -- see
     # docs/conventions.md section 6.
     wnum_bg = _real_if_real(wnum_bg)
     wnum_core = _real_if_real(ri * wnum_bg)
     eta = np.complex128(kd if pol == 1 else 1.0)
-
-    delt = np.full(nn, delt) if np.isscalar(delt) else np.asarray(delt)
-    c1 = 0.25j * wnum_bg**2 * delt  # (nn,)
-    c2 = 0.25j * delt  # (nn,)
-    c3 = 0.25j * wnum_core**2 * delt  # (nn,)
-    depi4 = delt / (4.0 * PI)  # (nn,)
+    h = 2.0 * PI / nn
+    w = _kress_weights(nn)
 
     gamma = np.sqrt(df**2 + dg**2)
     deriv = df * ddg - ddf * dg
 
-    # ── Upper-triangle index pairs (i < j) ───────────────────────────────────
-    ui, uj = np.triu_indices(nn, k=1)  # each shape (nn*(nn-1)//2,)
-    fi_fj = f[ui] - f[uj]  # f[i] - f[j]  for each pair
-    gi_gj = g[ui] - g[uj]  # g[i] - g[j]
+    # ── Upper-triangle index pairs (i < j), offset d = j − i ─────────────────
+    ui, uj = np.triu_indices(nn, k=1)
+    w_tri = w[uj - ui]
+    fi_fj = f[ui] - f[uj]
+    gi_gj = g[ui] - g[uj]
 
     # cross products: cij[k] = (f[i]-f[j])*dg[j] - (g[i]-g[j])*df[j]
     #                cji[k] = (f[j]-f[i])*dg[i] - (g[j]-g[i])*df[i]
     cij = fi_fj * dg[uj] - gi_gj * df[uj]
     cji = -fi_fj * dg[ui] + gi_gj * df[ui]
 
-    # ── Vectorised Hankel on the unique distances (half the nn² evaluations) ─
-    r_tri = np.sqrt(fi_fj**2 + gi_gj**2)  # (n_pairs,)
-    arg_wnum = wnum_bg * r_tri
-    arg_wnum_core = wnum_core * r_tri
-    h0w = hank0(arg_wnum)
-    h1w = hank1(arg_wnum) / arg_wnum  # H_1(z)/z
-    h0w1 = hank0(arg_wnum_core)
-    h1w1 = hank1(arg_wnum_core) / arg_wnum_core
+    # ── Bessel/Hankel pairs on the unique distances ──────────────────────────
+    r_tri = np.sqrt(fi_fj**2 + gi_gj**2)
+    z_bg = wnum_bg * r_tri
+    z_core = wnum_core * r_tri
+    j0_bg, h0_bg = _j0_h0(z_bg)
+    j1_bg, h1_bg = _j1_h1(z_bg)
+    j0_core, h0_core = _j0_h0(z_core)
+    j1_core, h1_core = _j1_h1(z_core)
 
-    # ── Exact diagonal entries ────────────────────────────────────────────────
-    # The hankel1(0, wnum_bg*delt/(2e)*gamma) terms (e = np.e, Euler's number) are
-    # the
-    # analytic handling of the logarithmic Green-function singularity — not a
-    # typo. Do not "clean up".
+    # ── Kress kernels: trapezoid term h·K plus correction K₁·W ───────────────
+    single_bg = 0.25j * h * h0_bg - w_tri * j0_bg / (4.0 * PI)
+    single_core = 0.25j * h * h0_core - w_tri * j0_core / (4.0 * PI)
+    ratio_bg = 0.25j * h * (h1_bg / z_bg) - w_tri * (j1_bg / z_bg) / (4.0 * PI)
+    ratio_core = 0.25j * h * (h1_core / z_core) - w_tri * (j1_core / z_core) / (
+        4.0 * PI
+    )
+    double_bg = wnum_bg**2 * ratio_bg
+    double_core = wnum_core**2 * ratio_core
+
+    # ── Diagonals ────────────────────────────────────────────────────────────
+    # M1/M3: the double layer's K₁ vanishes on the diagonal, so only the
+    # curvature limit of K₂ survives — unchanged from the Maradudin scheme.
+    # M2/M4: K₁(t,t) = −1/4π against R_0, plus the regular part of H₀ at r → 0
+    # with r ≈ γ·|t − τ| (handoff §6.3). γ_E is Euler's constant, not γ.
     diag_idx = np.arange(nn)
-    d_m1 = (0.5 - deriv * depi4 / gamma**2).astype(complex)
-    d_m2 = c2 * hank0(wnum_bg * delt / (2.0 * e) * gamma)
-    d_m3 = -(0.5 + deriv * depi4 / gamma**2).astype(complex)
-    d_m4 = c2 * eta * hank0(wnum_core * delt / (2.0 * e) * gamma)
+    d_m1 = (0.5 - deriv * h / (4.0 * PI) / gamma**2).astype(complex)
+    d_m3 = -(0.5 + deriv * h / (4.0 * PI) / gamma**2).astype(complex)
+    d_m2 = -w[0] / (4.0 * PI) + h * (
+        0.25j - (np.euler_gamma + np.log(wnum_bg * gamma / 2.0)) / (2.0 * PI)
+    )
+    d_m4 = eta * (
+        -w[0] / (4.0 * PI)
+        + h * (0.25j - (np.euler_gamma + np.log(wnum_core * gamma / 2.0)) / (2.0 * PI))
+    )
 
-    # ── Assemble ──────────────────────────────────────────────────────────────
+    # ── Assemble ─────────────────────────────────────────────────────────────
     nt = 2 * nn
     me = np.zeros((nt, nt), dtype=complex)
-    # Off-diagonal: fill both (i,j) and (j,i) from the same Hankel value
-    me[ui, uj] = c1[uj] * cij * h1w
-    me[uj, ui] = c1[ui] * cji * h1w
-    me[ui, uj + nn] = c2[uj] * h0w
-    me[uj, ui + nn] = c2[ui] * h0w
-    me[ui + nn, uj] = c3[uj] * cij * h1w1
-    me[uj + nn, ui] = c3[ui] * cji * h1w1
-    me[ui + nn, uj + nn] = eta * c2[uj] * h0w1
-    me[uj + nn, ui + nn] = eta * c2[ui] * h0w1
-    # Diagonal
+    me[ui, uj] = double_bg * cij
+    me[uj, ui] = double_bg * cji
+    me[ui, uj + nn] = single_bg
+    me[uj, ui + nn] = single_bg
+    me[ui + nn, uj] = double_core * cij
+    me[uj + nn, ui] = double_core * cji
+    me[ui + nn, uj + nn] = eta * single_core
+    me[uj + nn, ui + nn] = eta * single_core
     me[diag_idx, diag_idx] = d_m1
     me[diag_idx, diag_idx + nn] = d_m2
     me[diag_idx + nn, diag_idx] = d_m3
@@ -368,7 +421,6 @@ def assemble_matrix_dwn(
     dg: np.ndarray,
     ddf: np.ndarray,
     ddg: np.ndarray,
-    delt: float | np.ndarray,
     wnum_bg: complex,
     ri: complex,
     kd: complex,
@@ -385,25 +437,18 @@ def assemble_matrix_dwn(
     The derivative is what bordered Newton refinement of a quasi-normal mode
     needs (:func:`pysie2d.beyn.newton_refine`).
 
-    Derivative identities, one per block, using ``z = k·r``::
+    Derivative identities, with ``z = k·r`` and each holding for ``J`` and
+    ``H^{(1)}`` alike::
 
-        d/dk[k²·H₁(z)/z] = k·H₀(z)   exactly     → dM1, dM3 reuse h0w, h0w1
-        d/dk[H₀(z)]      = −r·H₁(z)              → dM2, dM4 reuse h1w, h1w1
-                         = −k·r²·(H₁(z)/z)
+        d/dk[k²·C₁(z)/z] = k·C₀(z)          → double layer: k · (single kernel)
+        d/dk[C₀(z)]      = −k·r²·(C₁(z)/z)  → single layer: −k·r² · (ratio kernel)
 
-    so both derivative blocks read off Hankel arrays the matrix already needs:
-    the fused form shares all four of ``h0w``/``h1w``/``h0w1``/``h1w1`` and no
-    O(nn²) special-function evaluation is repeated. The M3/M4 blocks pick up a
-    factor ``nc`` from ``d k_core/d k_bg``.
-
-    The exception is the diagonal, where the analytic treatment of the
-    logarithmic Green-function singularity needs ``H₁`` at arguments the
-    assembly only ever evaluates ``H₀`` at. That is ``nn`` extra evaluations
-    against ``nn²``, which is why the pair costs only **1.05×** one assembly
-    *(measured: 97.2 ms against 92.9 ms, nn = 200, complex λ)* — this is a
-    special-function-bound code and the derivative adds no O(nn²) Hankel work.
-    The M1 and M3 diagonals carry no wavenumber at all, so their derivative is
-    exactly zero.
+    so both derivative blocks are the matrix's own kernel arrays times a
+    scalar, and no O(nn²) special-function evaluation is repeated. ``W`` and
+    ``h`` carry no wavenumber. The M3/M4 blocks pick up a factor ``nc`` from
+    ``d k_core/d k_bg``. On the diagonal, M1 and M3 carry no wavenumber (their
+    derivative is exactly zero) and the M2/M4 diagonals depend on ``k`` only
+    through ``ln k``, giving ``−h/(2π k)``.
 
     Exact only for a **non-dispersive** material: ``ri`` and ``kd`` are held
     constant through the differentiation, which is true of
@@ -413,15 +458,13 @@ def assemble_matrix_dwn(
 
     Args:
         pol: Polarisation: 1 = p (TM), 2 = s (TE).
-        nn: Number of boundary quadrature points.
+        nn: Number of boundary nodes, equispaced in the quadrature parameter t.
         f: (nn,) boundary x coordinates (nm).
         g: (nn,) boundary z coordinates (nm).
-        df: (nn,) first derivative of f w.r.t. θ.
-        dg: (nn,) first derivative of g w.r.t. θ.
-        ddf: (nn,) second derivative of f w.r.t. θ.
-        ddg: (nn,) second derivative of g w.r.t. θ.
-        delt: Quadrature θ-step. Scalar for uniform-theta; per-point array for
-            arc-length sampling.
+        df: (nn,) df/dt.
+        dg: (nn,) dg/dt.
+        ddf: (nn,) d²f/dt².
+        ddg: (nn,) d²g/dt².
         wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), where
             λ_vac is the public **vacuum** wavelength. Build it with
             :meth:`pysie2d.material.Material.wnum_bg`; this function takes no
@@ -435,97 +478,93 @@ def assemble_matrix_dwn(
             :func:`assemble_matrix` on the same arguments.
         dme: complex (2nn, 2nn) derivative dM/dk_bg.
     """
-    e = np.e
-    # Demote exactly-real wavenumbers so the Hankel arguments stay real dtype
-    # and hank0/hank1 can take their Cephes branch. Complex wnum_bg / complex ri
+    # Demote exactly-real wavenumbers so the Bessel arguments stay real dtype
+    # and _j0_h0/_j1_h1 take their Cephes branch. Complex wnum_bg / complex ri
     # (QNM searches, absorbing particles) pass through untouched -- see
     # docs/conventions.md section 6.
     wnum_bg = _real_if_real(wnum_bg)
     wnum_core = _real_if_real(ri * wnum_bg)
     eta = np.complex128(kd if pol == 1 else 1.0)
-
-    delt = np.full(nn, delt) if np.isscalar(delt) else np.asarray(delt)
-    c1 = 0.25j * wnum_bg**2 * delt  # (nn,)
-    c2 = 0.25j * delt  # (nn,)
-    c3 = 0.25j * wnum_core**2 * delt  # (nn,)
-    depi4 = delt / (4.0 * PI)  # (nn,)
-
-    # Derivative coefficients. dc1 = c1/k and dc3 = nc·c3/k_core, written out
-    # rather than divided so a real-dtype k stays exact.
-    dc1 = 0.25j * wnum_bg * delt  # (nn,)
-    dc3 = 0.25j * ri * wnum_core * delt  # (nn,)  the nc is d k_core/d k_bg
+    h = 2.0 * PI / nn
+    w = _kress_weights(nn)
 
     gamma = np.sqrt(df**2 + dg**2)
     deriv = df * ddg - ddf * dg
 
-    # ── Upper-triangle index pairs (i < j) ───────────────────────────────────
-    ui, uj = np.triu_indices(nn, k=1)  # each shape (nn*(nn-1)//2,)
-    fi_fj = f[ui] - f[uj]  # f[i] - f[j]  for each pair
-    gi_gj = g[ui] - g[uj]  # g[i] - g[j]
+    # ── Upper-triangle index pairs (i < j), offset d = j − i ─────────────────
+    ui, uj = np.triu_indices(nn, k=1)
+    w_tri = w[uj - ui]
+    fi_fj = f[ui] - f[uj]
+    gi_gj = g[ui] - g[uj]
 
     # cross products: cij[k] = (f[i]-f[j])*dg[j] - (g[i]-g[j])*df[j]
     #                cji[k] = (f[j]-f[i])*dg[i] - (g[j]-g[i])*df[i]
     cij = fi_fj * dg[uj] - gi_gj * df[uj]
     cji = -fi_fj * dg[ui] + gi_gj * df[ui]
 
-    # ── Vectorised Hankel on the unique distances (half the nn² evaluations) ─
-    # All four arrays are used by both halves: this sharing is the whole point
-    # of returning the pair.
-    r_tri = np.sqrt(fi_fj**2 + gi_gj**2)  # (n_pairs,)
-    r2_tri = r_tri**2
-    arg_wnum = wnum_bg * r_tri
-    arg_wnum_core = wnum_core * r_tri
-    h0w = hank0(arg_wnum)
-    h1w = hank1(arg_wnum) / arg_wnum  # H_1(z)/z
-    h0w1 = hank0(arg_wnum_core)
-    h1w1 = hank1(arg_wnum_core) / arg_wnum_core
+    # ── Bessel/Hankel pairs on the unique distances ──────────────────────────
+    r_tri = np.sqrt(fi_fj**2 + gi_gj**2)
+    z_bg = wnum_bg * r_tri
+    z_core = wnum_core * r_tri
+    j0_bg, h0_bg = _j0_h0(z_bg)
+    j1_bg, h1_bg = _j1_h1(z_bg)
+    j0_core, h0_core = _j0_h0(z_core)
+    j1_core, h1_core = _j1_h1(z_core)
 
-    # ── Exact diagonal entries ────────────────────────────────────────────────
-    # The hankel1(0, wnum_bg*delt/(2e)*gamma) terms (e = np.e, Euler's number) are
-    # the
-    # analytic handling of the logarithmic Green-function singularity — not a
-    # typo. Do not "clean up".
+    # ── Kress kernels: trapezoid term h·K plus correction K₁·W ───────────────
+    single_bg = 0.25j * h * h0_bg - w_tri * j0_bg / (4.0 * PI)
+    single_core = 0.25j * h * h0_core - w_tri * j0_core / (4.0 * PI)
+    ratio_bg = 0.25j * h * (h1_bg / z_bg) - w_tri * (j1_bg / z_bg) / (4.0 * PI)
+    ratio_core = 0.25j * h * (h1_core / z_core) - w_tri * (j1_core / z_core) / (
+        4.0 * PI
+    )
+    double_bg = wnum_bg**2 * ratio_bg
+    double_core = wnum_core**2 * ratio_core
+
+    # ── Diagonals ────────────────────────────────────────────────────────────
     diag_idx = np.arange(nn)
-    arg_d = wnum_bg * delt / (2.0 * e) * gamma
-    arg_d_core = wnum_core * delt / (2.0 * e) * gamma
-    d_m1 = (0.5 - deriv * depi4 / gamma**2).astype(complex)
-    d_m2 = c2 * hank0(arg_d)
-    d_m3 = -(0.5 + deriv * depi4 / gamma**2).astype(complex)
-    d_m4 = c2 * eta * hank0(arg_d_core)
+    d_m1 = (0.5 - deriv * h / (4.0 * PI) / gamma**2).astype(complex)
+    d_m3 = -(0.5 + deriv * h / (4.0 * PI) / gamma**2).astype(complex)
+    d_m2 = -w[0] / (4.0 * PI) + h * (
+        0.25j - (np.euler_gamma + np.log(wnum_bg * gamma / 2.0)) / (2.0 * PI)
+    )
+    d_m4 = eta * (
+        -w[0] / (4.0 * PI)
+        + h * (0.25j - (np.euler_gamma + np.log(wnum_core * gamma / 2.0)) / (2.0 * PI))
+    )
 
-    # d(arg)/dk at the singularity argument, and the two H₁ evaluations that
-    # assembly never makes. d_m1 and d_m3 are wavenumber-free, so their
-    # derivative is exactly zero and dme keeps its initialised zeros there.
-    rho = delt / (2.0 * e) * gamma
-    d_dm2 = -c2 * rho * hank1(arg_d)
-    d_dm4 = -eta * ri * c2 * rho * hank1(arg_d_core)
+    # ── Derivative kernels: scalars times the arrays above ───────────────────
+    r2_tri = r_tri**2
+    d_single_bg = -wnum_bg * r2_tri * ratio_bg
+    d_single_core = -wnum_core * r2_tri * ratio_core
+    d_double_bg = wnum_bg * single_bg
+    d_double_core = wnum_core * single_core
 
-    # ── Assemble ──────────────────────────────────────────────────────────────
+    # ── Assemble ─────────────────────────────────────────────────────────────
     nt = 2 * nn
     me = np.zeros((nt, nt), dtype=complex)
     dme = np.zeros((nt, nt), dtype=complex)
-    # Off-diagonal: fill both (i,j) and (j,i) from the same Hankel value
-    me[ui, uj] = c1[uj] * cij * h1w
-    me[uj, ui] = c1[ui] * cji * h1w
-    me[ui, uj + nn] = c2[uj] * h0w
-    me[uj, ui + nn] = c2[ui] * h0w
-    me[ui + nn, uj] = c3[uj] * cij * h1w1
-    me[uj + nn, ui] = c3[ui] * cji * h1w1
-    me[ui + nn, uj + nn] = eta * c2[uj] * h0w1
-    me[uj + nn, ui + nn] = eta * c2[ui] * h0w1
-    dme[ui, uj] = dc1[uj] * cij * h0w
-    dme[uj, ui] = dc1[ui] * cji * h0w
-    dme[ui, uj + nn] = -c2[uj] * wnum_bg * r2_tri * h1w
-    dme[uj, ui + nn] = -c2[ui] * wnum_bg * r2_tri * h1w
-    dme[ui + nn, uj] = dc3[uj] * cij * h0w1
-    dme[uj + nn, ui] = dc3[ui] * cji * h0w1
-    dme[ui + nn, uj + nn] = -eta * ri * c2[uj] * wnum_core * r2_tri * h1w1
-    dme[uj + nn, ui + nn] = -eta * ri * c2[ui] * wnum_core * r2_tri * h1w1
-    # Diagonal
+    me[ui, uj] = double_bg * cij
+    me[uj, ui] = double_bg * cji
+    me[ui, uj + nn] = single_bg
+    me[uj, ui + nn] = single_bg
+    me[ui + nn, uj] = double_core * cij
+    me[uj + nn, ui] = double_core * cji
+    me[ui + nn, uj + nn] = eta * single_core
+    me[uj + nn, ui + nn] = eta * single_core
     me[diag_idx, diag_idx] = d_m1
     me[diag_idx, diag_idx + nn] = d_m2
     me[diag_idx + nn, diag_idx] = d_m3
     me[diag_idx + nn, diag_idx + nn] = d_m4
-    dme[diag_idx, diag_idx + nn] = d_dm2
-    dme[diag_idx + nn, diag_idx + nn] = d_dm4
+    dme[ui, uj] = d_double_bg * cij
+    dme[uj, ui] = d_double_bg * cji
+    dme[ui, uj + nn] = d_single_bg
+    dme[uj, ui + nn] = d_single_bg
+    dme[ui + nn, uj] = ri * d_double_core * cij
+    dme[uj + nn, ui] = ri * d_double_core * cji
+    dme[ui + nn, uj + nn] = eta * ri * d_single_core
+    dme[uj + nn, ui + nn] = eta * ri * d_single_core
+    # d_m1 and d_m3 are wavenumber-free, so dme keeps its zeros there.
+    dme[diag_idx, diag_idx + nn] = -h / (2.0 * PI * wnum_bg)
+    dme[diag_idx + nn, diag_idx + nn] = -eta * ri * h / (2.0 * PI * wnum_core)
     return me, dme

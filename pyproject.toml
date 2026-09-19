@@ -20,6 +20,11 @@ dev = ["pytest>=8", "ruff>=0.8", "matplotlib>=3.9"]
 [tool.ruff]
 line-length = 88
 src = ["src", "tests"]
+# The seven inherited handoff scripts here are committed byte-identical to what
+# produced the September 2026 measurements, which is the whole reason they are
+# in the tree; reformatting them would cost that provenance. The v0.6 study
+# scripts alongside them are kept lint-clean by habit rather than by CI.
+extend-exclude = ["docs/design/studies"]
 
 [tool.ruff.lint]
 select = ["E", "F", "D", "N", "B", "I", "C4", "A"]

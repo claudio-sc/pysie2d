@@ -124,7 +124,6 @@ def relative_ldos_map(
     nn = geom.n_pts
     f, g, df, dg = geom.f, geom.g, geom.df, geom.dg
     delt = geom.delt
-    dl = np.full(nn, delt) if np.isscalar(delt) else np.asarray(delt)
 
     x_arr = np.asarray(x_pts, dtype=float)
     z_arr = np.asarray(z_pts, dtype=float)
@@ -181,7 +180,7 @@ def relative_ldos_map(
         arg2 = (-dg[None, :] * xmf + df[None, :] * zmg)[valid]
         integrand = (
             wnum_bg**2 * arg2 * (h1 / arg) * eis[:nn, :].T - h0 * eis[nn:, :].T
-        ) * dl[None, :]
+        ) * delt
         field = (1j / 4.0) * integrand.sum(axis=1)
         out[np.flatnonzero(valid) + lo] = 1.0 + 4.0 * field.imag
 
