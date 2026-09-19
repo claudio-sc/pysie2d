@@ -303,6 +303,11 @@ wider = Geometry.gielis(rad=200, n_pts=200, m=4, b=1.3,
   either. Odd `m` now requires `a == b` and `n2 == n3`, since the boundary
   otherwise does not close.
 
+- **`n_pts` defaults to 100**, was 200. The circle anchors reach round-off
+  by `nn ≈ 30–40` under the new quadrature, so the old default was sized
+  for a first-order scheme that no longer exists. Pass `n_pts` explicitly
+  to keep a v0.5 resolution.
+
 `richardson_limit` still exists but is deprecated: nothing in the package
 converges at first order any more, and extrapolating a spectrally converged
 pair makes it worse.

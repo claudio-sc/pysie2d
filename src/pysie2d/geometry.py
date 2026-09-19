@@ -475,7 +475,7 @@ class Geometry:
     def gielis(
         cls,
         rad: float,
-        n_pts: int = 200,
+        n_pts: int = 100,
         *,
         m: int = 4,
         n1: float = 2.0,
@@ -500,7 +500,10 @@ class Geometry:
 
         Args:
             rad: Scale radius (nm).
-            n_pts: Number of boundary quadrature points.
+            n_pts: Number of boundary quadrature points. The default of
+                100 is comfortably past the ``nn ≈ 30–40`` where the
+                circle anchors reach round-off under Kress quadrature;
+                the first-order scheme it replaced needed 200.
             m: Rotational symmetry order.
             n1: Shape exponent.
             n2: Shape exponent.

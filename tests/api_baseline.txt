@@ -8,7 +8,7 @@ DEGENERATE_COND: float = 1000000000000.0
 class Geometry
 Geometry.__init__(self, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, *, rad: float, x0: float = 0.0, z0: float = 0.0, parametrisation: pysie2d.parametrisation.Parametrisation | None = None) -> None
 Geometry.delt -> property
-Geometry.gielis(rad: float, n_pts: int = 200, *, m: int = 4, n1: float = 2.0, n2: float = 2.0, n3: float = 2.0, a: float = 1.0, b: float = 1.0, x0: float = 0.0, z0: float = 0.0, parametrisation: pysie2d.parametrisation.Parametrisation | None = None) -> 'Geometry'
+Geometry.gielis(rad: float, n_pts: int = 100, *, m: int = 4, n1: float = 2.0, n2: float = 2.0, n3: float = 2.0, a: float = 1.0, b: float = 1.0, x0: float = 0.0, z0: float = 0.0, parametrisation: pysie2d.parametrisation.Parametrisation | None = None) -> 'Geometry'
 Geometry.is_circle -> property
 Geometry.n_pts -> property
 Geometry.theta -> property
