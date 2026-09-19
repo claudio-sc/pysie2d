@@ -2,6 +2,153 @@
 
 <!-- version list -->
 
+## v0.6.0 (2026-09-19)
+
+### Bug Fixes
+
+- Evaluate qext at the exact forward angle
+  ([`1938c86`](https://github.com/claudio-sc/pysie2d/commit/1938c868c72f74a1bda1cc16776f734db76fe3ab))
+
+- Read qext at the forward angle
+  ([`d7770c1`](https://github.com/claudio-sc/pysie2d/commit/d7770c1db2c7c46d0efb73207c4953e592a8f63c))
+
+### Code Style
+
+- Ruff format the two v0.6 study scripts
+  ([`2e37ef7`](https://github.com/claudio-sc/pysie2d/commit/2e37ef783a5131737835f0c5899182c27a9b96fa))
+
+### Documentation
+
+- Add convergence map example
+  ([`5c9abba`](https://github.com/claudio-sc/pysie2d/commit/5c9abbaf13abc299d594e308b4d416547527df1e))
+
+- Band 20-100 and the near-corner cost curve
+  ([`1f6ba6e`](https://github.com/claudio-sc/pysie2d/commit/1f6ba6e6961dea96cb0664c7192b913afae4de73))
+
+- Close G5 by measurement
+  ([`22de249`](https://github.com/claudio-sc/pysie2d/commit/22de2497883b2b9191e252662a47bb46dda9d37f))
+
+- Code-spec for Kress quadrature and the frozen-map API
+  ([`e33ba86`](https://github.com/claudio-sc/pysie2d/commit/e33ba86d7af457c9c2f0173ee73af6dd23b69520))
+
+- Code-spec for the smooth Parametrisation
+  ([`ea2f955`](https://github.com/claudio-sc/pysie2d/commit/ea2f955d4edb9a9079e18c192e6c5b74e45df1b1))
+
+- Correct stale 'nothing implemented' status lines
+  ([`e74c10f`](https://github.com/claudio-sc/pysie2d/commit/e74c10f8fb0eb527ed4ede0d2c2c42cd1b5e7361))
+
+- De-duplicate the G2 record in the study plan
+  ([`4222158`](https://github.com/claudio-sc/pysie2d/commit/42221586a0a8e6b49230715148b2979913c29d41))
+
+- Derivation and Mie validation for analytic ddf/ddg
+  ([`daf4777`](https://github.com/claudio-sc/pysie2d/commit/daf4777ec61ce9d7ed9ec447b1a0dad81cf14337))
+
+- Document the convergence map
+  ([`bc7ace1`](https://github.com/claudio-sc/pysie2d/commit/bc7ace1fd3b0311bd9da210956d136b9dfeb9e0f))
+
+- G2 solution-error rate now that Kress is landed — gate passes with a caveat
+  ([`1bd6577`](https://github.com/claudio-sc/pysie2d/commit/1bd6577a3e1b365b6744e31b8fec7ab8ec761eb9))
+
+- G3 corner-envelope sweep script
+  ([`202280d`](https://github.com/claudio-sc/pysie2d/commit/202280d5808c5e6b70c054da5e65937f9f39076c))
+
+- G4 holomorphy and QNM-path study script
+  ([`ce08250`](https://github.com/claudio-sc/pysie2d/commit/ce0825057feb2635061eedc9e4bc2afc646d9bb3))
+
+- Mark the architecture doc implemented
+  ([`8ade555`](https://github.com/claudio-sc/pysie2d/commit/8ade555e6a0f39d716b2ac84ce86d3f781f9975b))
+
+- Name the shape property that sets the smoothing bandwidth
+  ([`59f669f`](https://github.com/claudio-sc/pysie2d/commit/59f669f6462ea068bf0398b4c69455ada8692683))
+
+- Orientation ladder shows grading cannot pay before Kress
+  ([`d52e8a6`](https://github.com/claudio-sc/pysie2d/commit/d52e8a68db2d8f9a788af89253b362579d7a4668))
+
+- Performance and roadmap under Kress
+  ([`dcd78f2`](https://github.com/claudio-sc/pysie2d/commit/dcd78f2b05e85da8a02dba24595393df342611f6))
+
+- Propose the v0.6 curvature-adaptive node density
+  ([`840bf50`](https://github.com/claudio-sc/pysie2d/commit/840bf50fc7ba421a2304b55486d077ed20bdf359))
+
+- QNM guide for spectral accuracy
+  ([`bc87f70`](https://github.com/claudio-sc/pysie2d/commit/bc87f70d3112cf64e0266faf5a7e5f277c2e0878))
+
+- README for v0.6
+  ([`bf814bb`](https://github.com/claudio-sc/pysie2d/commit/bf814bb8a36bc5944c1e48a33d5dce9954887fe5))
+
+- Record continuation-from-the-circle as a convergence check
+  ([`b4c6115`](https://github.com/claudio-sc/pysie2d/commit/b4c611564491a006d84f2a6d1c387517f927c6af))
+
+- Record G2 partial and correct the density spec it refutes
+  ([`abcc3ed`](https://github.com/claudio-sc/pysie2d/commit/abcc3ed07454394756f8d56661f6fe1d481c2be9))
+
+- Record G3 envelope and the flat-point density defect
+  ([`214fc34`](https://github.com/claudio-sc/pysie2d/commit/214fc34f619cb8a27c6cb2cd16356737df93ea56))
+
+- Record G4 — holomorphy holds, sigma_ratio is the tell
+  ([`7d97501`](https://github.com/claudio-sc/pysie2d/commit/7d9750194cf2fd8796e9aa64885c23a16d02bb8b))
+
+- Record gate outcomes and the scope question they raise
+  ([`e26197f`](https://github.com/claudio-sc/pysie2d/commit/e26197fbd8f47633cd185277f743ffc7b28c76fb))
+
+- Record that no map rescues spiky stars at low nn
+  ([`099257c`](https://github.com/claudio-sc/pysie2d/commit/099257cec479ce91f91ab59f5ae32fdb4a1bae95))
+
+- Record the study's running artifact URL
+  ([`2daa221`](https://github.com/claudio-sc/pysie2d/commit/2daa2211bb9748c5038e2a3ca8f9cad676fb7383))
+
+- Regenerate figures under Kress
+  ([`20cffad`](https://github.com/claudio-sc/pysie2d/commit/20cffad4a77a8365d0104fb19cde73a9b5676c9d))
+
+- Repeat the pole ladder under Kress
+  ([`e228b25`](https://github.com/claudio-sc/pysie2d/commit/e228b251401623cbe26ee12c25b06a7012cb5028))
+
+- Scope v0.6 spectral quadrature and its preliminary study
+  ([`5718936`](https://github.com/claudio-sc/pysie2d/commit/57189368d2f9b098cb2e1b1a9c2ba692894c562e))
+
+- Settle the adaptive density as a non-default map
+  ([`b466e08`](https://github.com/claudio-sc/pysie2d/commit/b466e08e4f5c9240098f74b2409e5ea399d68c1a))
+
+- Sigma_ratio is the holomorphy tell, not the mode count
+  ([`7c2746c`](https://github.com/claudio-sc/pysie2d/commit/7c2746cfaa5791ecf5eedbd8d97893ca9e806c61))
+
+- Spiky-star low-nn map comparison script
+  ([`67a534e`](https://github.com/claudio-sc/pysie2d/commit/67a534e82060ca30c2e363232add083437fdbd0a))
+
+- State the adaptive map's limits
+  ([`157e2e3`](https://github.com/claudio-sc/pysie2d/commit/157e2e3cc7114900a52ac1b3e4d8e8d0ad562098))
+
+- Uniform theta is the default at every resolution
+  ([`a547653`](https://github.com/claudio-sc/pysie2d/commit/a5476535f3e25dbc5ee89b206d48e8820e475286))
+
+### Features
+
+- Add Parametrisation for smooth arc-length inversion
+  ([`7970ba1`](https://github.com/claudio-sc/pysie2d/commit/7970ba13d00201a610923088ad566cc3e1ab79cd))
+
+- Analytic second derivatives for the Gielis boundary
+  ([`c2ed599`](https://github.com/claudio-sc/pysie2d/commit/c2ed59940d7e2d82b910a6f16acb2719b9b836a3))
+
+- Default n_pts to 100
+  ([`b1327c8`](https://github.com/claudio-sc/pysie2d/commit/b1327c8cd07aa27e94b7d01f95bd9bf6943615cb))
+
+- Kress-Martensen quadrature on a frozen node map
+  ([`771bc9b`](https://github.com/claudio-sc/pysie2d/commit/771bc9bd47feadeec46e6515602a0c9606a6a6ae))
+
+- **parametrisation**: Add the uniform-theta identity map
+  ([`ed70e51`](https://github.com/claudio-sc/pysie2d/commit/ed70e51908a0a94abcf5641e4e2d148261bb4794))
+
+### Performance Improvements
+
+- Lower the default efficiencies angular grid to 500
+  ([`fcc0c69`](https://github.com/claudio-sc/pysie2d/commit/fcc0c6923d63c464a2c9edce9e22123e147f83c1))
+
+### Breaking Changes
+
+- Geometry.gielis defaults n_pts to 100 instead of 200. Results at the default resolution change;
+  pass n_pts=200 to keep the v0.5 value.
+
+
 ## v0.5.0 (2026-09-02)
 
 ### Bug Fixes
