@@ -17,6 +17,11 @@ Public API:
     eval_field, far_field: field-evaluation primitives.
     self_green, relative_ldos, relative_ldos_map: self-Green function and
         LDOS / Purcell-effect analysis (line-dipole excitation).
+    multipole_decompose, multipole_reconstruct: cylindrical-harmonic
+        decomposition of the scattered field outside the circumscribing
+        circle, and its inverse. ``ScatterResult.multipoles`` is the façade.
+    Multipoles: the signed-order coefficients c_m, with the symmetric /
+        antisymmetric pair ``c_plus``/``c_minus`` derived from them.
     QNMSolver: quasi-normal-mode façade; call ``modes`` to obtain a
         ``QNMResult``.
     QNMResult: mode wavelengths, vectors, and extraction diagnostics; call
@@ -43,6 +48,9 @@ from .geometry import Geometry
 from .green import relative_ldos, relative_ldos_map, self_green
 from .kernels import assemble_matrix, assemble_matrix_reference
 from .material import Material
+from .multipole import Multipoles
+from .multipole import decompose as multipole_decompose
+from .multipole import reconstruct as multipole_reconstruct
 from .parametrisation import Parametrisation
 from .qnm import (
     DEGENERATE_COND,
@@ -66,6 +74,7 @@ __all__ = [
     "DEGENERATE_COND",
     "Geometry",
     "Material",
+    "Multipoles",
     "Parametrisation",
     "QNMResult",
     "QNMSolver",
@@ -77,6 +86,8 @@ __all__ = [
     "eval_field",
     "far_field",
     "line_dipole_rhs",
+    "multipole_decompose",
+    "multipole_reconstruct",
     "plane_wave_rhs",
     "relative_ldos",
     "relative_ldos_map",

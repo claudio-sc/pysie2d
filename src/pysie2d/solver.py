@@ -17,6 +17,7 @@ from .fields import _far_field_at, eval_field, far_field
 from .geometry import Geometry
 from .kernels import assemble_matrix, assemble_matrix_dwn
 from .material import Material
+from .multipole import Multipoles, decompose
 from .sources import line_dipole_rhs, plane_wave_rhs
 
 PI = np.pi
@@ -178,6 +179,62 @@ class ScatterResult:
             np.asarray(x, dtype=float),
             np.asarray(z, dtype=float),
             ri=self.material.nc,
+        )
+
+    def multipoles(
+        self,
+        mmax: int = 8,
+        *,
+        r0: float | None = None,
+        ntheta: int | None = None,
+    ) -> Multipoles:
+        """Cylindrical-harmonic decomposition of the scattered field.
+
+        Args:
+            mmax: Highest order retained. The default of 8 resolves the
+                electric quadrupole and two orders beyond it.
+            r0: Radius of the evaluation circle (nm), about the particle
+                centre. Default ``3.0 × the circumscribing radius`` — which is
+                **not** 3.0 × ``Geometry.rad``: on a rounded square the
+                circumscribing radius is 2.29 × ``rad``.
+            ntheta: Angular samples. Default resolves both the field and the
+                retained orders; see ``pysie2d.multipole``.
+
+        Returns:
+            Multipoles, about the particle centre ``(geometry.x0,
+            geometry.z0)``.
+
+        Raises:
+            ValueError: If ``r0`` does not exceed the circumscribing radius of
+                the boundary — inside it the expansion does not converge and
+                the coefficients are meaningless (measured: 58 % error at
+                0.9 × the circumscribing radius, with nothing else to warn you).
+        """
+        geo = self.geometry
+        r_circ = float(np.hypot(geo.f - geo.x0, geo.g - geo.z0).max())
+        if r0 is None:
+            r0 = 3.0 * r_circ
+        elif r0 <= r_circ:
+            raise ValueError(
+                f"r0 = {r0:.6g} nm does not exceed the circumscribing radius "
+                f"{r_circ:.6g} nm of this boundary; the multipole expansion "
+                f"does not converge inside it. Note that the circumscribing "
+                f"radius is not Geometry.rad = {geo.rad:.6g} nm."
+            )
+        return decompose(
+            self.ei,
+            geo.n_pts,
+            geo.f,
+            geo.df,
+            geo.g,
+            geo.dg,
+            geo.delt,
+            self.wnum_bg,
+            r0,
+            mmax=mmax,
+            ntheta=ntheta,
+            x0=geo.x0,
+            z0=geo.z0,
         )
 
     def far_field(self, n_angles: int = 3000) -> tuple[np.ndarray, np.ndarray]:

@@ -1,10 +1,21 @@
-# Multipole decomposition of the scattered field — code-spec (draft 1)
+# Multipole decomposition of the scattered field — code-spec (draft 2)
 
-**Status:** draft 1, 20 Sep 2026. Not implemented. Ported from
+**Status:** draft 2, 20 Sep 2026. Not implemented. Ported from
 `~/Documents/sie-legacy-0726/sie/multipole.py` (262 lines, written against the
 pre-v0.6 solver). Every number in this document was measured on this machine
 against `main` at `9224127` with pysie2d 0.6.0 — the measurement scripts are
 described in §9 so you can reproduce any of them.
+
+**Draft 2 change:** implementation of draft 1 found that D2's original default
+`r0 = 1.5·r_circ`, combined with D3's own default `ntheta` rule (not a fine
+grid), under-resolves spiky non-circular shapes at the default `mmax = 8` —
+measured coefficient error 5.9e-10 against a 4× finer grid on the star, six
+decades worse than draft 1's claimed round-off, and a `RuntimeWarning` on
+every default call on that shape. D2's default is revised to `3.0·r_circ`,
+the smallest multiplier where the star reaches round-off *and* clears D5's
+warning screen at the default `ntheta`. See D2 and D3 below for the full
+measurement. §5.4's tolerance needs re-measurement against the new radii
+(flagged inline) before this draft is executed.
 
 **Who it is for:** the worker who lands the multipole decomposition. You do not
 need to derive anything and you do not need to read the legacy code. Every
@@ -136,10 +147,10 @@ number, §9 says how to reproduce it.
 | # | Decision | Evidence / reason |
 |---|---|---|
 | **D1** | **Signed-order `c_m` is the primary output**; `c_plus`/`c_minus` are derived properties. | Owner's answer, 20 Sep 2026. `c_m` maps onto the Mie coefficients with no reindexing (§3.4), and the ± split is a two-line transform of it (§3.3). The legacy file returned only the ± pair, from which `c_m` is not recoverable without redoing the algebra. The two routes were checked head to head and agree to **5.7e-16**, at real and at complex wavenumber. |
-| **D2** | **`r0` defaults to `1.5·r_circ`**, where `r_circ = max hypot(f − x0, g − z0)` is the **circumscribing radius** — *not* a multiple of `Geometry.rad`. `r0 ≤ r_circ` raises. | `Geometry.rad` is a scale parameter, not a radius (conventions §2.4). Measured `r_circ/rad`: circle 1.000, star (`m=5, n1=3, n2=n3=6`) **1.587**, rounded square (`m=4, n1=20, n2=n3=50`) **2.289**, ellipse (`b=2`) 2.000. The legacy caller's "typically 1.5 × rad_ref is sufficient" is therefore **wrong for every non-circular shape**: on the star, `r0 = 1.5·rad = 0.945·r_circ` gives a reconstruction error of **8.7e-1** against a field of amplitude 1.4 — 60 % wrong, silently. Convergence in `r0/r_circ`, star, `mmax = 20`: `0.90 → 5.8e-1`, `1.00 → 3.1e-2`, `1.02 → 1.4e-5`, `1.05 → 6.1e-7`, `1.10 → 4.1e-10`, `1.20 → 1.0e-13`, `1.50 → 5.2e-15`, `3.00 → 5.1e-15`. 1.5 is the first factor that is at round-off with a decade of margin. |
-| **D3** | **`ntheta` defaults to `2·(mmax + ceil|k_bg·r0|) + 16`.** | The angular grid must resolve *the field*, whose Fourier content runs to roughly `|k·r0|`, **and** separate the `2·mmax + 1` retained orders. A fixed default (the legacy's 512) resolves neither claim: it is 10× waste on a small particle and silently insufficient once `|k·r0| ≳ 250`. Measured at this default on four cases spanning `|k·r0| = 3.1 … 10.8` and `mmax = 8 … 30`: self-consistency against a 4× finer grid is **2.5e-16 … 6.6e-16** throughout, at `ntheta = 40 … 96`. |
+| **D2** | **`r0` defaults to `3.0·r_circ`**, where `r_circ = max hypot(f − x0, g − z0)` is the **circumscribing radius** — *not* a multiple of `Geometry.rad`. `r0 ≤ r_circ` raises. | `Geometry.rad` is a scale parameter, not a radius (conventions §2.4). Measured `r_circ/rad`: circle 1.000, star (`m=5, n1=3, n2=n3=6`) **1.587**, rounded square (`m=4, n1=20, n2=n3=50`) **2.289**, ellipse (`b=2`) 2.000. The legacy caller's "typically 1.5 × rad_ref is sufficient" is therefore **wrong for every non-circular shape**: on the star, `r0 = 1.5·rad = 0.945·r_circ` gives a reconstruction error of **8.7e-1** against a field of amplitude 1.4 — 60 % wrong, silently. Convergence in `r0/r_circ`, star, `mmax = 20` (fine `ntheta`, isolating truncation): `0.90 → 5.8e-1`, `1.00 → 3.1e-2`, `1.02 → 1.4e-5`, `1.05 → 6.1e-7`, `1.10 → 4.1e-10`, `1.20 → 1.0e-13`, `1.50 → 5.2e-15`, `3.00 → 5.1e-15`. **Revised from an original `1.5` (draft 1) after implementation surfaced a second constraint D3 alone does not resolve**: at the default `mmax = 8` and D3's own `ntheta` rule (not a fine grid), the star's angular spectrum decays too slowly at `1.5·r_circ` for that `ntheta` to resolve — measured coefficient error **5.9e-10** against a 4× finer grid (spec claims round-off), and `spectrum_tail` **4.7e-7**, both because `|k·r0|` in the D3 rule does not see how much of a spiky boundary still sits near the evaluation circle. `r0 = 2.0·r_circ` fixes the coefficient error (max Δc `5.68e-15`, at round-off) but not D5's screen: `spectrum_tail = 2.31e-10`, just over `SPECTRUM_TAIL_WARN`, so a default call would still warn despite being correct. Only `3.0·r_circ` clears both: max Δc `3.33e-16`, tail `2.15e-15` — consistent with the `mmax = 20` fine-grid sweep above, which was already at round-off there. 3.0 is the smallest tested multiplier where the default (`mmax = 8`, D3's own `ntheta`) reaches round-off *and* stays below the warning screen on the worst-case shape measured. |
+| **D3** | **`ntheta` defaults to `2·(mmax + ceil|k_bg·r0|) + 16`.** | The angular grid must resolve *the field*, whose Fourier content runs to roughly `|k·r0|`, **and** separate the `2·mmax + 1` retained orders. A fixed default (the legacy's 512) resolves neither claim: it is 10× waste on a small particle and silently insufficient once `|k·r0| ≳ 250`. Measured at this default, **at the D2 default `r0 = 3.0·r_circ`**, on four cases spanning `|k·r0| = 3.1 … 10.8` and `mmax = 8 … 30`: self-consistency against a 4× finer grid is **2.5e-16 … 6.6e-16** throughout, at `ntheta = 40 … 96`. **`|k·r0|` alone does not see shape**: at the smaller `r0 = 1.5·r_circ` originally proposed for D2, this same rule gave `5.9e-10` on the star at `mmax = 8` — D2's revision, not this rule, is what fixes it; see D2. |
 | **D4** | **`ntheta < 2·mmax + 1` raises.** | Below it the retained basis functions are not orthogonal on the grid and the result is catastrophically, silently wrong. Measured at `mmax = 8`: `ntheta = 16` → coefficient error **2.4e+12**; `ntheta = 17` → **7.1e-12**; `ntheta = 24` → **2.1e-15**. **The spectrum-tail diagnostic of D5 does not catch this case** (its tail at `ntheta = 16` is a healthy 1.2e-6), so the explicit inequality is the only thing standing between the user and a 12-decade error. |
-| **D5** | **A `spectrum_tail` diagnostic is computed and returned**; above `1e-10` it emits `RuntimeWarning`. It **warns, it does not raise**. | The tail is the largest of the three angular-DFT coefficients nearest Nyquist, relative to the largest overall — i.e. "did the grid exhaust the field's angular content". It orders the failures correctly: tail `1e-16` → error 5e-15; tail `1.1e-4` → error 1.1e-12; tail `8.5e-1` → error 1.2. It is a reliable **screen**, not a calibrated error bar (the middle and last rows differ by 4 decades in tail and 12 in error), which is why it warns rather than raising, and why the number is put on the result for a test to assert on. At the D3 default the tail is ~1e-16, six decades below the screen, so a default call never warns. |
+| **D5** | **A `spectrum_tail` diagnostic is computed and returned**; above `1e-10` it emits `RuntimeWarning`. It **warns, it does not raise**. | The tail is the largest of the three angular-DFT coefficients nearest Nyquist, relative to the largest overall — i.e. "did the grid exhaust the field's angular content". It orders the failures correctly: tail `1e-16` → error 5e-15; tail `1.1e-4` → error 1.1e-12; tail `8.5e-1` → error 1.2. It is a reliable **screen**, not a calibrated error bar (the middle and last rows differ by 4 decades in tail and 12 in error), which is why it warns rather than raising, and why the number is put on the result for a test to assert on. At the D2/D3 defaults the tail is round-off on a circle and ~2e-15 on the star (the worst shape measured), both well below the screen, so a default call never warns — this is what forced D2's `r0` up from `1.5·r_circ` to `3.0·r_circ`: at `1.5`, the star's tail was `4.7e-7`, and it stayed above the screen even at `2.0·r_circ` (`2.31e-10`). |
 | **D6** | **Non-finite `H_m^{(1)}(k·r0)` raises**, checked once before the projection. | `scipy.special.hankel1` overflows to `inf` at high order and small argument: first non-finite order is **m = 133** at `k·r0 = 0.5`, **170** at 2.0, **217** at 6.28, **295** at 20.0. Beyond it every coefficient silently becomes `0` or `nan`. Not reachable at sane `mmax`, cheap to exclude, and the message can say the useful thing (raise `r0`, or lower `mmax`). |
 | **D7** | **Call `fields.eval_field` with `ri=None`**, and trip on any observation point that comes back exactly `0+0j`. | `ri=None` makes a point that `_is_outside` misclassifies as interior return exactly `0+0j` rather than an interior field value, converting a wrong number into a detectable one. `_is_outside` is documented as "unreliable for extreme concave superformula shapes". Measured: **0 misclassifications out of 720 angles** on each of three shapes (the `m=5` star, a cusped `m=6, n1=0.5` star, the rounded square) at `r0/r_circ ∈ {1.05, 1.2, 1.5}` — so the tripwire is not expected ever to fire. It costs one `np.any` and it removes the last way this function can return a plausible wrong answer. |
 | **D8** | Evaluate `hankel1` only at orders `0 … mmax`; get negative orders from `H_{−m}^{(1)} = (−1)^m H_m^{(1)}`. | Halves the special-function work — which is 99 % of the runtime of anything in this package (CLAUDE.md, *Performance shape*) — and avoids depending on scipy's negative-order handling. |
@@ -311,7 +322,9 @@ PI = np.pi
 # Above this, the angular grid has not exhausted the field's angular content
 # and the coefficients are suspect. A screen, not an error bar: at a tail of
 # 1.1e-4 the measured coefficient error was 1.1e-12, at 8.5e-1 it was 1.2.
-# The default ntheta (`_default_ntheta`) lands at ~1e-16, six decades below.
+# The default ntheta (`_default_ntheta`) at the D2 default r0 lands at
+# round-off on a circle and ~2e-15 on the worst shape measured (the star) —
+# both several decades below this screen.
 SPECTRUM_TAIL_WARN = 1e-10
 
 
@@ -532,8 +545,8 @@ caller can pass a `c_plus` array by mistake and get a plausible wrong answer.
             mmax: Highest order retained. The default of 8 resolves the
                 electric quadrupole and two orders beyond it.
             r0: Radius of the evaluation circle (nm), about the particle
-                centre. Default ``1.5 × the circumscribing radius`` — which is
-                **not** 1.5 × ``Geometry.rad``: on a rounded square the
+                centre. Default ``3.0 × the circumscribing radius`` — which is
+                **not** 3.0 × ``Geometry.rad``: on a rounded square the
                 circumscribing radius is 2.29 × ``rad``.
             ntheta: Angular samples. Default resolves both the field and the
                 retained orders; see ``pysie2d.multipole``.
@@ -551,7 +564,7 @@ caller can pass a `c_plus` array by mistake and get a plausible wrong answer.
         geo = self.geometry
         r_circ = float(np.hypot(geo.f - geo.x0, geo.g - geo.z0).max())
         if r0 is None:
-            r0 = 1.5 * r_circ
+            r0 = 3.0 * r_circ
         elif r0 <= r_circ:
             raise ValueError(
                 f"r0 = {r0:.6g} nm does not exceed the circumscribing radius "
@@ -595,6 +608,20 @@ Fixtures: `rad = 200.0`, `λ = 600.0`, `n_core = 1.5`, `n_clad = 1.0`,
 `n_pts = 100`. The star is `Geometry.gielis(200.0, 200, m=5, n1=3.0, n2=6.0,
 n3=6.0)`, whose circumscribing radius is `1.587 × rad`.
 
+**§5.1–§5.3 evaluate at `r0 = 1.5·r_circ`, not the D2 default.** The Mie
+relation is independent of the evaluation radius — the radial factor
+`i^m·H_m^{(1)}(k·r0)` is divided out — but the residual is a handful of ulp of a
+coefficient of magnitude ~1.9 and it jitters across the whole
+`2.4e-15 … 3.1e-15` band with a **one-ulp** change of `r0` (measured: at
+`r0 = 600.0` exactly, 2.58e-15; at the next float up, 3.12e-15). The `3e-15`
+below sits inside that band, so it is pinned to the radius the number was
+measured at — at the draft-2 default of `3.0·r_circ` the worst case is
+`3.117e-15` (pol = 1, `α = 0`) and the assertion fails by 4 %. Widening the
+constant was declined (non-negotiable 4); **that `3e-15` is a ~10-ulp bound with
+no headroom for a different BLAS or libm is an open item for the owner**, not a
+defect in the implementation. The default radius is exercised by §5.4, §5.7 and
+§5.9.
+
 ### 5.1 `test_mie_coefficients_TE_and_TM_normal_incidence`
 Both polarisations, `α = 0`. Assert `c_plus` against §3.4 and that `c_minus` is
 identically zero. **tol: `atol = 3e-15`** (measured worst 2.795e-15 against
@@ -617,14 +644,20 @@ non-negotiable 1: the complex path is what makes QNM work and it is never to be
 simplified away.
 
 ### 5.4 `test_reconstruction_matches_the_solver_field_on_a_second_circle`
-The star, `mmax = 20`, decompose at `1.5·r_circ`, reconstruct at `3.0·r_circ`,
-compare against `ScatterResult.eval_field` there. **tol: `atol = 1e-11`**
-(measured 1.28e-13 at `mmax = 20`). Docstring must be explicit that this is a
-**self-consistency** check, not an independent validation — it shows the
-expansion reproduces the solver's own field, and nothing more. Note in the
-docstring that the residual here measures **truncation** (`mmax`), whereas §5.7
-measures **quadrature** (`ntheta`): they are different knobs, and the looser
-tolerance here is the truncation floor of `mmax = 20`, measured.
+The star, `mmax = 20`, decompose at `3.0·r_circ` (the D2 default), reconstruct
+at `6.0·r_circ`, compare against `ScatterResult.eval_field` there. **tol:
+`atol = 1e-13`** (re-measured against the draft-2 radii: **1.644e-15** at
+`mmax = 20`, against a field of amplitude 0.90 — 78× *better* than draft 1's
+`1.28e-13`, because doubling the reconstruction radius with the decompose
+radius leaves far less truncated content there). The convergence in `mmax` at
+these radii: `8 → 3.7e-06`, `12 → 1.3e-09`, `16 → 1.3e-13`, `20 → 1.6e-15`,
+`24 → 1.1e-15`, so `mmax = 20` has just reached the round-off floor and the
+`1e-13` bound still fails if four retained orders are dropped. Docstring must be
+explicit that this is a **self-consistency** check, not an independent
+validation — it shows the expansion reproduces the solver's own field, and
+nothing more. Note in the docstring that the residual here is set by
+**truncation** (`mmax`), whereas §5.7 is set by **quadrature** (`ntheta`): they
+are different knobs.
 
 ### 5.5 `test_expansion_centre_follows_the_particle`
 Star at `(0,0)` vs at `(500, −300)`, `α = 30°`. Assert the phase relation of
