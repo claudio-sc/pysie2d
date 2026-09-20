@@ -2,6 +2,30 @@
 
 <!-- version list -->
 
+## v0.7.0 (2026-09-20)
+
+### Bug Fixes
+
+- Widen the expansion-centre phase tolerance to CI's measured round-off floor
+  ([`526a8fb`](https://github.com/claudio-sc/pysie2d/commit/526a8fb964b3b8d516b789e5fcb0ec6e5d7df00c))
+
+### Documentation
+
+- Document the multipole decomposition in the README
+  ([`9d6e288`](https://github.com/claudio-sc/pysie2d/commit/9d6e2883c4eb9db156f2f0a152fb321bd46f125a))
+
+- Renumber external validation to v0.8, add v0.7 multipole spec
+  ([`8f21b3e`](https://github.com/claudio-sc/pysie2d/commit/8f21b3ee90447f15e0a447399b20cc82fe2df3e1))
+
+- Scope v0.7 external validation
+  ([`9224127`](https://github.com/claudio-sc/pysie2d/commit/9224127efdb1b8370f72eee4e316de6b27864e7c))
+
+### Features
+
+- Multipole decomposition of the scattered field
+  ([`e250661`](https://github.com/claudio-sc/pysie2d/commit/e2506618d54649b70bf26625b0f1cdddce9a8e39))
+
+
 ## v0.6.0 (2026-09-19)
 
 ### Bug Fixes
