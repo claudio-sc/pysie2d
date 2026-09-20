@@ -19,6 +19,12 @@ Material.epsi_rel -> property
 Material.epsr -> property
 Material.nc -> property
 Material.wnum_bg(self, wavelength: float | complex) -> float | complex
+class Multipoles
+Multipoles.__init__(self, c: numpy.ndarray, mmax: int, r0: float, wnum_bg: complex, x0: float, z0: float, ntheta: int, spectrum_tail: float) -> None
+Multipoles.c_minus -> property
+Multipoles.c_plus -> property
+Multipoles.orders -> property
+Multipoles.reconstruct(self, r: float, theta: numpy.ndarray) -> numpy.ndarray
 class Parametrisation
 Parametrisation.__init__(self, a0: float, coef: numpy.ndarray, theta_fine: numpy.ndarray, t_fine: numpy.ndarray, nn_from_band: int | None, contrast_realised: float, alpha_eff: float, n_fine: int, n_terms: int) -> None
 Parametrisation.gielis(*, rad: float, a: float, b: float, m: int, n1: float, n2: float, n3: float, r_band: tuple[float, float] = (15.0, 15.0), n_core: float, wavelength_ref: float = 1550.0, alpha: float = 0.5) -> 'Parametrisation'
@@ -40,6 +46,7 @@ ScatterResult.__init__(self, ei: numpy.ndarray, geometry: pysie2d.geometry.Geome
 ScatterResult.efficiencies(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
 ScatterResult.far_field(self, n_angles: int = 3000) -> tuple[numpy.ndarray, numpy.ndarray]
+ScatterResult.multipoles(self, mmax: int = 8, *, r0: float | None = None, ntheta: int | None = None) -> pysie2d.multipole.Multipoles
 ScatterResult.size_parameter -> property
 ScatterResult.wnum_bg -> property
 assemble_matrix(pol: int, nn: int, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, wnum_bg: complex, ri: complex, kd: complex) -> numpy.ndarray
@@ -47,6 +54,8 @@ assemble_matrix_reference(pol: int, nn: int, f: numpy.ndarray, g: numpy.ndarray,
 eval_field(ei: numpy.ndarray, nn: int, f: numpy.ndarray, df: numpy.ndarray, g: numpy.ndarray, dg: numpy.ndarray, delt: float, wnum_bg: complex, x_pts: numpy.ndarray, z_pts: numpy.ndarray, ri: complex | None = None) -> numpy.ndarray
 far_field(nn: int, nff: int, wnum_bg: complex, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, delt: float, ei: numpy.ndarray) -> tuple[numpy.ndarray, numpy.ndarray]
 line_dipole_rhs(nn: int, wnum_bg: complex, f: numpy.ndarray, g: numpy.ndarray, x_s: float, z_s: float) -> numpy.ndarray
+multipole_decompose(ei: numpy.ndarray, nn: int, f: numpy.ndarray, df: numpy.ndarray, g: numpy.ndarray, dg: numpy.ndarray, delt: float, wnum_bg: complex, r0: float, *, mmax: int = 8, ntheta: int | None = None, x0: float = 0.0, z0: float = 0.0) -> pysie2d.multipole.Multipoles
+multipole_reconstruct(c: numpy.ndarray, wnum_bg: complex, r: float, theta: numpy.ndarray) -> numpy.ndarray
 plane_wave_rhs(nn: int, titad: float, wnum_bg: complex, f: numpy.ndarray, g: numpy.ndarray) -> numpy.ndarray
 relative_ldos(solver: pysie2d.solver.BIESolver, wavelength: float, x_s: float, z_s: float) -> float
 relative_ldos_map(solver: pysie2d.solver.BIESolver, wavelength: float, x_pts: numpy.ndarray, z_pts: numpy.ndarray) -> numpy.ndarray

@@ -227,6 +227,51 @@ needed. Conventions
 [§10](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md),
 §11 and §12 carry the details and the measured anchors.
 
+## Multipole decomposition
+
+Outside the circumscribing circle of the particle the scattered field is a sum
+of outgoing cylindrical harmonics about the particle centre,
+
+```text
+ψ_sc(r, θ) = Σ_m c_m · i^m · H_m^(1)(k_bg·r) · e^{imθ}
+```
+
+with `θ` measured from `+z` toward `+x`, as everywhere else in this package.
+`ScatterResult.multipoles()` returns those coefficients:
+
+```python
+mp = BIESolver(geom, mat).scatter(wavelength=600.0, angle=30.0).multipoles(mmax=8)
+
+mp.c          # signed orders m = −mmax … mmax
+mp.c_plus     # symmetric   c_m + c_{−m}  (c_0⁺ = c_0)
+mp.c_minus    # antisymmetric c_m − c_{−m}
+mp.reconstruct(r, theta)     # the field back, on any larger circle
+```
+
+For `pol = 1` (TM) the symmetric coefficients read as magnetic dipole (`m = 0`),
+electric dipole (`m = 1`) and electric quadrupole (`m = 2`). On a circle the
+coefficients are the analytic Mie cylinder coefficients exactly —
+`c_m = −(−1)^m·χ_m·e^{imα}`, with `χ = b_n` for TE and `a_n` for TM — and the
+tests hold both polarisations to `3·10⁻¹⁵` at normal and oblique incidence and
+at complex wavelength.
+
+The defaults are the substance: the evaluation circle sits at **3 × the
+circumscribing radius** (which is *not* `Geometry.rad` — on a rounded square the
+circumscribing radius is 2.29 × `rad`), and the angular grid is sized from both
+`mmax` and `|k_bg·r0|`. Evaluating inside the circumscribing circle is rejected,
+an angular grid too coarse to separate the retained orders is rejected, and an
+under-resolved angular spectrum raises `RuntimeWarning` through the
+`spectrum_tail` diagnostic on the result. Each guard stands in front of a
+measured silent failure — the first is 58 % error at 0.9 × the circumscribing
+radius.
+
+What it does not give you: the expansion says nothing about the field *between*
+the circumscribing circle and the boundary, the coefficients are referred to the
+particle centre and no translation theorem is implemented, and the only
+closed-form anchor is Mie on a circle — on a non-circular shape the available
+check is self-consistency between two circles, which validates the expansion
+against the solver's own field and not the field itself.
+
 ## Performance
 
 The system is a dense `2nn × 2nn` complex matrix; at `nn = 300` (a `600 × 600`
@@ -268,6 +313,9 @@ would be an hour-long sweep takes seconds.
 - **v0.6.0** — spectral convergence: Kress–Martensen product quadrature
   replaces the first-order diagonal self-patch, and nodes are placed by a smooth
   `Parametrisation` map. **Breaking** — see below.
+- **v0.7.0** — multipole decomposition of the scattered field into cylindrical
+  harmonics about the particle centre, anchored on analytic Mie in both
+  polarisations. Purely additive.
 
 ### Migrating from v0.5
 
