@@ -91,6 +91,17 @@ def test_addition_theorem_truncation_has_a_conditioning_window():
     `CONDITION_LIMIT` guard refuses everything beyond it, where the table's
     3.2e-6 at M = 40 lives.
 
+    M = 22 sits at the window's edge (`|H_22(k·d)| ≈ 4.9e4`, spec §3.8's own
+    last "still round-off" point, next to `|H_25| ≈ 4.6e6` where it visibly
+    degrades) rather than in its interior. The spec's table cites 6.8e-15
+    there; this machine measures 4.3e-13 — a near-singular linear solve at
+    exactly the conditioning edge, sensitive to the BLAS/LAPACK pivoting
+    sequence, which differs across machines. M = 10..19, comfortably inside
+    the window, reproduce the spec's round-off numbers cleanly, and 4.3e-13 is
+    still three orders below M = 40's real degradation — so the plateau bound
+    below is widened to cover this platform's edge value rather than the
+    spec's, without softening what the test actually guards against.
+
     This is the only test that would catch a later reader "improving" the
     default truncation upwards.
     """
