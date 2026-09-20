@@ -44,6 +44,9 @@ convention = "google"
 # Keep the Bessel/Hankel math notation (J_n, H_n) that maps directly onto the
 # cited Bohren & Huffman equations; snake_case would obscure the reference.
 "src/pysie2d/reference/mie.py" = ["N806"]
+# Same: R, PI and the Graf translation block keep the notation of the addition
+# theorem as written in spec §3.8.
+"src/pysie2d/reference/two_cylinder.py" = ["N806"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
