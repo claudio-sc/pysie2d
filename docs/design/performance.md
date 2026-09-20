@@ -490,3 +490,63 @@ Recorded, not proposed.
 **Rejected: complex64.** It would halve memory, but `M(λ)` is deliberately
 near-singular along the contour and it would break the rounding-level parity
 test against `assemble_matrix_reference`. Wrong knob.
+
+---
+
+## 6. Multiparticle: the `Np` ceiling of the dense cluster solve
+
+Measured 2026-09-20 on the same machine as §§1–5 (Apple silicon, **4
+performance cores** — size any future threading to those, not to the 8 logical
+cores), at `30a3ddf` on branch `v0.8-multiparticle`. This is measurement M1 of
+[multiparticle-spec.md](multiparticle-spec.md) §5.1: it fixes the `Np` above
+which the premise of that spec's D8 — "assembly dominates, so serial assembly
+with a threading seam is the right first shape" — stops holding.
+
+Setup: `Np` identical circles, `rad` 200 nm, `nn = 200` each, pitch 1400 nm
+along a line, TE, λ_vac = 633 nm, real `k_bg` (so the Cephes path of
+`_real_if_real`, §2). `ClusterBIESolver._assemble` and the `np.linalg.solve`
+step of `scatter` timed separately, best of three; matrix memory is the exact
+`N²·16` bytes of the dense complex128 system, `N = cluster.n_dof = 2·Σ nn_p`.
+
+| `Np` | `N` | assemble | solve | matrix | assembly % |
+|---|---|---|---|---|---|
+| 1 | 400 | 0.002 s | 0.001 s | 2.4 MiB | 61.2 % |
+| 2 | 800 | 0.007 s | 0.007 s | 9.8 MiB | 47.7 % |
+| 3 | 1200 | 0.015 s | 0.022 s | 22.0 MiB | 39.6 % |
+| 5 | 2000 | 0.039 s | 0.099 s | 61.0 MiB | 28.3 % |
+| 8 | 3200 | 0.100 s | 0.318 s | 156.2 MiB | 23.9 % |
+| 12 | 4800 | 0.223 s | 0.951 s | 351.6 MiB | 19.0 % |
+| 16 | 6400 | 0.398 s | 2.262 s | 625.0 MiB | 15.0 % |
+| 20 | 8000 | 0.631 s | 4.004 s | 976.6 MiB | 13.6 % |
+| 24 | 9600 | 0.910 s | 10.241 s | 1406.2 MiB | 8.2 % |
+| 32 | 12800 | 1.627 s | 22.233 s | 2500.0 MiB | 6.8 % |
+
+**The answer: the dense solve is never the 2 % it is for one particle at
+complex λ. It is at parity with assembly at `Np = 2` and dominant from
+`Np = 3`.** Both scalings are visible in the table — assembly is O(Np²) Hankel
+work and solve is O(Np³) BLAS — but the crossover is already behind us at the
+smallest cluster that exists, so the exponents only widen a gap that opens
+immediately. At `Np = 24` and above the solve also leaves the cache-friendly
+regime (10.2 s at `N = 9600` against 4.0 s at 8000, well above the N³ ratio of
+1.7), which is the memory column asserting itself: 1.4 GiB of matrix plus LAPACK's
+working copy.
+
+**The spec's pilot table in §5.1 is stale, and this one supersedes it.** That
+pilot's prototype called `scipy.special.hankel1` directly in the cross-blocks
+instead of `kernels.hank0`/`hank1`, so at real `k` it took the Amos path where
+the shipped `assemble_cross_block` takes Cephes (§2's 23× on a full assembly;
+conventions §6 quotes ~11× on the scalar function). Shipped assembly is 4–6×
+cheaper than the pilot at every `Np` (0.398 s vs 3.061 s at `Np = 16`) while the
+solve column is unchanged to within noise — dense linear algebra does not care
+which Hankel you called. The correction therefore moves the crossover **down**,
+from the pilot's ≈ 16 to 2–3, exactly the direction §5.1 predicted.
+
+**What this does and does not authorise.** It does *not* retire dense: `Np = 16`
+is 2.7 s and 625 MiB, which is a usable working point, and `Np = 8` is well
+under half a second. It does mean **threading `_assemble` is not the lever it
+was for the contour loop** — at `Np = 8` the 4-core ceiling on a 24 %-of-runtime
+term is a 1.2× overall, and at `Np = 16` a 1.1×. The D8 seam stays (it costs one
+list comprehension), but the honest ranking above `Np ≈ 8` puts the solve first.
+An iterative solver, an FMM or a block preconditioner remain **unimplemented and
+speculative** (handoff §4.7); this measurement says where they would have to be
+aimed — at `np.linalg.solve`, not at the kernel — not that they are warranted.
