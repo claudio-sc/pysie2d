@@ -72,6 +72,37 @@ def _far_field_at(
     return np.sum(np.exp(arg) * puto * delt, axis=0)
 
 
+def _cross_sections(
+    amp: np.ndarray, amp_fwd: complex, wnum_bg: complex
+) -> dict[str, float]:
+    """Absolute cross-sections (nm) from a far-field amplitude.
+
+    Implements dσ/dθ = |amp(θ)|²/(8π·k_bg), C_ext = Im[amp(π−α)]/k_bg and
+    C_abs = C_ext − C_sca. Shared by the single- and multi-particle result
+    classes so the two paths cannot disagree. C_ext presumes a unit-amplitude
+    incident **plane wave**.
+
+    Args:
+        amp: complex (nff,) far-field amplitude on the ``[−π, π]`` inclusive
+            grid of :func:`far_field`.
+        amp_fwd: Amplitude at the exact forward direction π − α, evaluated off
+            the grid with :func:`_far_field_at`.
+        wnum_bg: Background wavenumber k_bg (rad/nm).
+
+    Returns:
+        dict with keys 'c_sca', 'c_ext', 'c_abs', in nm.
+    """
+    nff = len(amp)
+    delthe = 2.0 * PI / (nff - 1.0)
+    # amp spans [-pi, pi] inclusive, so index 0 and nff-1 are the same physical
+    # direction; summing both double-counts it. Dropping the duplicate (not
+    # halving both) is what makes C_sca independent of where that one grid
+    # angle falls relative to the forward peak.
+    c_sca = float(np.sum(np.abs(amp[:-1]) ** 2) / (8.0 * PI * wnum_bg) * delthe)
+    c_ext = float(amp_fwd.imag / wnum_bg)
+    return {"c_sca": c_sca, "c_ext": c_ext, "c_abs": c_ext - c_sca}
+
+
 # ---------------------------------------------------------------------------
 # Inside/outside test  (subroutine eicero)
 # ---------------------------------------------------------------------------
@@ -187,3 +218,58 @@ def eval_field(
         field[j] = (1j / 4.0) * sum_h
 
     return field
+
+
+def _representation_at(
+    ei_p: np.ndarray,
+    nn: int,
+    f: np.ndarray,
+    df: np.ndarray,
+    g: np.ndarray,
+    dg: np.ndarray,
+    delt: float,
+    wnum: complex,
+    x_pts: np.ndarray,
+    z_pts: np.ndarray,
+) -> np.ndarray:
+    """BIE representation integral over one boundary, at every point.
+
+    The vectorised twin of the body of :func:`eval_field`'s point loop, with
+    the inside/outside test removed so a caller can sum it over several
+    boundaries at one wavenumber (docs/design/multiparticle-spec.md §3.5) —
+    which is what a cluster's exterior field is. Classification is the
+    caller's business here, and :class:`pysie2d.cluster.ClusterScatterResult`
+    does it with ray casting rather than the nearest-point normal.
+
+    :func:`eval_field` is deliberately **not** refactored onto this helper: its
+    point loop keeps its memory at O(nn) where this one is O(M·nn). The
+    duplication is a single four-line formula and the two are measured
+    bit-identical, which the Np = 1 cluster test asserts with
+    ``np.array_equal`` — so if they ever drift, a test fails.
+
+    Args:
+        ei_p: complex (2nn,) BIE solution vector for this boundary
+            (φ = ``ei_p[:nn]``, χ = ``ei_p[nn:]``).
+        nn: Number of boundary points.
+        f: (nn,) boundary x coordinates (nm).
+        df: (nn,) df/dt.
+        g: (nn,) boundary z coordinates (nm).
+        dg: (nn,) dg/dt.
+        delt: Trapezoid step 2π/nn in t.
+        wnum: Wavenumber to evaluate at (rad/nm) — k_bg outside the particle,
+            k_core = nc·k_bg inside it. May be complex.
+        x_pts: (M,) observation x-coordinates (nm).
+        z_pts: (M,) observation z-coordinates (nm).
+
+    Returns:
+        complex (M,) contribution of this boundary at each observation point.
+    """
+    xmf = x_pts[:, None] - f[None, :]
+    zmg = z_pts[:, None] - g[None, :]
+    arg1 = wnum * np.sqrt(xmf**2 + zmg**2)
+    arg2 = -dg[None, :] * xmf + df[None, :] * zmg
+    integrand = (
+        wnum**2 * arg2 * hank1(arg1) / arg1 * ei_p[None, :nn]
+        - hank0(arg1) * ei_p[None, nn:]
+    )
+    return (1j / 4.0) * np.sum(integrand * delt, axis=1)

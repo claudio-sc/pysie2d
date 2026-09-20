@@ -4,6 +4,27 @@ BIESolver.assemble(self, wavelength: float | complex) -> numpy.ndarray
 BIESolver.assemble_derivative(self, wavelength: float | complex) -> numpy.ndarray
 BIESolver.scatter(self, wavelength: float, angle: float = 0.0, incident_rhs: collections.abc.Callable[[int, complex, numpy.ndarray, numpy.ndarray], numpy.ndarray] | None = None) -> pysie2d.solver.ScatterResult
 BIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float) -> pysie2d.solver.ScatterResult
+class Cluster
+Cluster.__init__(self, geometries: collections.abc.Sequence[pysie2d.geometry.Geometry]) -> None
+Cluster.slice(self, p: int) -> slice
+class ClusterBIESolver
+ClusterBIESolver.__init__(self, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int = 2) -> None
+ClusterBIESolver.scatter(self, wavelength: float, angle: float = 0.0) -> 'ClusterScatterResult'
+ClusterBIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float) -> 'ClusterScatterResult'
+class ClusterGapWarning
+ClusterGapWarning.__init__(self, /, *args, **kwargs)
+class ClusterOverlapError
+ClusterOverlapError.__init__(self, /, *args, **kwargs)
+class ClusterResolutionWarning
+ClusterResolutionWarning.__init__(self, /, *args, **kwargs)
+class ClusterScatterResult
+ClusterScatterResult.__init__(self, ei: numpy.ndarray, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int, wavelength: float, angle: float, excitation: str) -> None
+ClusterScatterResult.cross_sections(self, n_angles: int = 500) -> dict[str, float]
+ClusterScatterResult.ei_particle(self, p: int) -> numpy.ndarray
+ClusterScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
+ClusterScatterResult.far_field(self, n_angles: int = 3000) -> tuple[numpy.ndarray, numpy.ndarray]
+ClusterScatterResult.resolution(self) -> tuple[float, ...]
+ClusterScatterResult.wnum_bg -> property
 DEGENERATE_COND: float = 1000000000000.0
 class Geometry
 Geometry.__init__(self, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, *, rad: float, x0: float = 0.0, z0: float = 0.0, parametrisation: pysie2d.parametrisation.Parametrisation | None = None) -> None
@@ -43,12 +64,14 @@ QNMSolver.modes(self, z_lo: complex, z_hi: complex, *, n_quad_per_side: int = 12
 SHAPE_STEP: float = 1e-05
 class ScatterResult
 ScatterResult.__init__(self, ei: numpy.ndarray, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float, angle: float = 0.0) -> None
+ScatterResult.cross_sections(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.efficiencies(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
 ScatterResult.far_field(self, n_angles: int = 3000) -> tuple[numpy.ndarray, numpy.ndarray]
 ScatterResult.multipoles(self, mmax: int = 8, *, r0: float | None = None, ntheta: int | None = None) -> pysie2d.multipole.Multipoles
 ScatterResult.size_parameter -> property
 ScatterResult.wnum_bg -> property
+assemble_cross_block(wnum_bg: complex, nn_p: int, f_p: numpy.ndarray, g_p: numpy.ndarray, df_p: numpy.ndarray, dg_p: numpy.ndarray, f_q: numpy.ndarray, g_q: numpy.ndarray) -> tuple[numpy.ndarray, numpy.ndarray]
 assemble_matrix(pol: int, nn: int, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, wnum_bg: complex, ri: complex, kd: complex) -> numpy.ndarray
 assemble_matrix_reference(pol: int, nn: int, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, wnum_bg: complex, ri: complex, kd: complex) -> numpy.ndarray
 eval_field(ei: numpy.ndarray, nn: int, f: numpy.ndarray, df: numpy.ndarray, g: numpy.ndarray, dg: numpy.ndarray, delt: float, wnum_bg: complex, x_pts: numpy.ndarray, z_pts: numpy.ndarray, ri: complex | None = None) -> numpy.ndarray

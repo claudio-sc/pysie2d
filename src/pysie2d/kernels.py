@@ -568,3 +568,61 @@ def assemble_matrix_dwn(
     dme[diag_idx, diag_idx + nn] = -h / (2.0 * PI * wnum_bg)
     dme[diag_idx + nn, diag_idx + nn] = -eta * ri * h / (2.0 * PI * wnum_core)
     return me, dme
+
+
+def assemble_cross_block(
+    wnum_bg: complex,
+    nn_p: int,
+    f_p: np.ndarray,
+    g_p: np.ndarray,
+    df_p: np.ndarray,
+    dg_p: np.ndarray,
+    f_q: np.ndarray,
+    g_q: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """M1 and M2 coupling blocks between two non-overlapping boundaries.
+
+    The exterior-equation coupling of the multiparticle system
+    (docs/design/multiparticle-spec.md §3.2): field node ``i`` on particle
+    ``q``, source node ``j`` on particle ``p``. These are
+    :func:`assemble_matrix`'s ``double_bg`` and ``single_bg`` with the
+    circulant Kress weight ``W`` set to zero — **no Kress correction appears
+    here**, because the two boundaries never touch, so the integrand has no
+    singularity and the plain periodic trapezoid rule is already spectrally
+    accurate on an analytic boundary.
+
+    There is no M3/M4 counterpart: the interior Green function of particle
+    ``p`` is confined to ``p``'s own volume, so the lower half of a cross
+    block is exactly zero (§3.1). That is also why no ``eta`` is needed —
+    ``eta = eps`` at ``pol = 1`` multiplies M4 alone.
+
+    ``nn_p``, ``df_p`` and ``dg_p`` belong to the **source** particle: the
+    integral is over ``p``'s boundary, so the quadrature step is
+    ``h_p = 2π/nn_p`` and the normal is ``p``'s. Using the field particle's
+    step instead is invisible at equal ``nn`` and a wrong answer that raises
+    nothing the moment the resolutions differ.
+
+    Args:
+        wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm), common
+            to the whole cluster. Like every primitive here this takes no
+            wavelength. May be complex.
+        nn_p: Number of boundary nodes of the **source** particle.
+        f_p: (nn_p,) source boundary x coordinates (nm).
+        g_p: (nn_p,) source boundary z coordinates (nm).
+        df_p: (nn_p,) source df/dt.
+        dg_p: (nn_p,) source dg/dt.
+        f_q: (nn_q,) field boundary x coordinates (nm).
+        g_q: (nn_q,) field boundary z coordinates (nm).
+
+    Returns:
+        ``(m1, m2)``, each complex ``(nn_q, nn_p)``: the double-layer and
+        single-layer background blocks acting on φ_p and χ_p respectively.
+    """
+    h_p = 2.0 * PI / nn_p
+    dx = f_q[:, None] - f_p[None, :]
+    dz = g_q[:, None] - g_p[None, :]
+    z = wnum_bg * np.sqrt(dx**2 + dz**2)
+    c = dx * dg_p[None, :] - dz * df_p[None, :]
+    m1 = wnum_bg**2 * (0.25j * h_p * hank1(z) / z) * c
+    m2 = 0.25j * h_p * hank0(z)
+    return m1, m2

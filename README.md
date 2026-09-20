@@ -13,12 +13,14 @@ against analytic Mie theory, with a typed public API and CI.
 ## Scope and non-goals
 
 This package is distilled from a larger private research code; it deliberately
-covers only the **homogeneous-background, single-particle core** — the part
-that can be validated end-to-end against a closed-form reference. That core now
-includes quasi-normal-mode extraction from the surface-integral operator
-(see [Quasi-normal modes](#quasi-normal-modes)). Potential extensions in the
-mid/long-term include slab waveguide backgrounds and multiple-particle
-simulations.
+covers only the **homogeneous-background core** — the part that can be
+validated end-to-end against a closed-form reference. That core includes
+quasi-normal-mode extraction from the surface-integral operator (see
+[Quasi-normal modes](#quasi-normal-modes)) and finite clusters of particles
+(see [Clusters of particles](#clusters-of-particles)), validated against an
+independent two-cylinder addition-theorem anchor. Potential extensions in the
+mid/long-term include slab waveguide backgrounds and non-circular external
+validation against independent solvers (MEEP, dolfinx).
 
 ## Figures
 
@@ -272,6 +274,70 @@ closed-form anchor is Mie on a circle — on a non-circular shape the available
 check is self-consistency between two circles, which validates the expansion
 against the solver's own field and not the field itself.
 
+## Clusters of particles
+
+A `Cluster` is a finite arrangement of non-overlapping particles sharing one
+background. The feature is purely additive: nothing in the single-particle
+`BIESolver` / `ScatterResult` API changes. Each particle keeps its own
+`Geometry`, its own `n_pts` and its own `Material`; the polarisation and the
+background index `n_clad` belong to the *problem* and must agree across the
+cluster.
+
+```python
+from pysie2d import Cluster, ClusterBIESolver, Geometry, Material
+
+left = Geometry.gielis(rad=200, n_pts=200, m=0, x0=-350.0)    # circle, nm
+right = Geometry.gielis(rad=150, n_pts=200, m=4, b=1.0, x0=350.0)
+cluster = Cluster([left, right])
+
+mats = [Material(n_core=1.5, n_clad=1.0, pol=2),              # TE, one background
+        Material(n_core=2.0, n_clad=1.0, pol=2)]
+res = ClusterBIESolver(cluster, mats, pol=2).scatter(wavelength=633.0, angle=30.0)
+
+amp, angles = res.far_field()                # total amplitude of the cluster
+print(res.cross_sections())                  # {'c_sca', 'c_ext', 'c_abs'}, nm
+print(res.resolution())                      # points per interior wavelength
+```
+
+`scatter_dipole(wavelength, x_s, z_s)` drives the same cluster with a line
+dipole, `eval_field(x, z)` gives the field at arbitrary points inside or
+outside, and `ei_particle(p)` hands back one particle's `(φ_p, χ_p)` sub-vector.
+
+What you need to know before using it:
+
+- **Overlapping boundaries raise `ClusterOverlapError`.** The coupled
+  formulation represents a region exterior to every particle and interior to
+  exactly one; where two boundaries cross, that partition does not exist and no
+  resolution repairs it.
+- **A too-small gap warns, it does not raise.** Two nearly touching boundaries
+  put a near-singularity of the cross-block integrand a conformal half-width
+  `~√(2·gap/a)` off the real axis, so the quadrature needs about
+  `GAP_ENVELOPE_C·√(a/gap)` nodes per particle; below that the solution degrades
+  *silently*, with a well-conditioned matrix and clean single-particle
+  diagnostics. `ClusterGapWarning` says so. The constant is a **measured**
+  envelope, not a guess — BIE self-convergence over `gap/a ∈ [0.032, 5.06]`, two
+  polarisations and three size parameters, written up in
+  [docs/design/studies/cluster-gap-envelope.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/design/studies/cluster-gap-envelope.md).
+  It was measured on circles; for non-circular facing boundaries the warning is
+  diagnostic only, and says so in its text.
+- **Ragged resolution warns too.** The coupled system is only as accurate as its
+  worst block, and an under-resolved particle is invisible from any other one,
+  so a spread wider than 4× in points per interior wavelength raises
+  `ClusterResolutionWarning`.
+- **`cross_sections()` (absolute, in nm) exists on both** the single-particle
+  `ScatterResult` and the cluster result, which is what makes the two paths
+  comparable. `efficiencies()` and `multipoles()` are single-particle only: a
+  cluster has no `rad` to normalise by and no single centre to expand about.
+
+The validation anchor is the analytic addition-theorem solution for two parallel
+circular cylinders, `pysie2d.reference.two_cylinder` — the same role
+`reference.mie` plays for the single-particle solver. Like `reference.mie` it is
+not exported at top level; import it explicitly to reproduce the validation.
+
+On scale: the dense solve, not assembly, is the cost here — it reaches parity
+with assembly at `Np = 2` and dominates from `Np = 3`, with `Np = 16` still a
+usable 2.7 s and 625 MiB ([performance](https://github.com/claudio-sc/pysie2d/blob/main/docs/design/performance.md) §6).
+
 ## Performance
 
 The system is a dense `2nn × 2nn` complex matrix; at `nn = 300` (a `600 × 600`
@@ -316,6 +382,9 @@ would be an hour-long sweep takes seconds.
 - **v0.7.0** — multipole decomposition of the scattered field into cylindrical
   harmonics about the particle centre, anchored on analytic Mie in both
   polarisations. Purely additive.
+- **v0.8.0** — finite clusters of arbitrary particles: coupled assembly, dense
+  solve, and absolute cross-sections, anchored on an independent two-cylinder
+  addition-theorem reference. Purely additive.
 
 ### Migrating from v0.5
 

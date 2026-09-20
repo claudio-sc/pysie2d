@@ -13,6 +13,8 @@ Public API:
     assemble_matrix, assemble_matrix_reference: the vectorised BIE
         system-matrix assembly and its loop-order reference implementation,
         kept as a validation anchor.
+    assemble_cross_block: the M1/M2 coupling blocks between two
+        non-overlapping boundaries (conventions §14).
     plane_wave_rhs, line_dipole_rhs: excitation right-hand sides.
     eval_field, far_field: field-evaluation primitives.
     self_green, relative_ldos, relative_ldos_map: self-Green function and
@@ -22,6 +24,18 @@ Public API:
         circle, and its inverse. ``ScatterResult.multipoles`` is the façade.
     Multipoles: the signed-order coefficients c_m, with the symmetric /
         antisymmetric pair ``c_plus``/``c_minus`` derived from them.
+    Cluster: an arrangement of non-overlapping particle boundaries sharing one
+        background (conventions §14). Construction raises
+        ``ClusterOverlapError`` when two boundaries intersect.
+    ClusterBIESolver: coupled cluster solver; call ``scatter``/
+        ``scatter_dipole`` to obtain a ``ClusterScatterResult``. ``pol`` and
+        ``n_clad`` are validated equal across the materials.
+    ClusterScatterResult: the coupled solution, with the total far field,
+        absolute cross-sections and near fields. Deliberately no
+        ``efficiencies()`` (a cluster has no ``rad``) and no ``multipoles()``.
+    ClusterOverlapError, ClusterGapWarning, ClusterResolutionWarning: the
+        cluster geometry guards — overlapping boundaries, a gap too small for
+        the resolution in use, and a particle far coarser than its neighbours.
     QNMSolver: quasi-normal-mode façade; call ``modes`` to obtain a
         ``QNMResult``.
     QNMResult: mode wavelengths, vectors, and extraction diagnostics; call
@@ -43,10 +57,22 @@ take a background wavenumber
 ``wnum_bg = 2π·n_clad/λ_vac`` instead. See ``docs/conventions.md`` §2.
 """
 
+from .cluster import (
+    Cluster,
+    ClusterBIESolver,
+    ClusterGapWarning,
+    ClusterOverlapError,
+    ClusterResolutionWarning,
+    ClusterScatterResult,
+)
 from .fields import eval_field, far_field
 from .geometry import Geometry
 from .green import relative_ldos, relative_ldos_map, self_green
-from .kernels import assemble_matrix, assemble_matrix_reference
+from .kernels import (
+    assemble_cross_block,
+    assemble_matrix,
+    assemble_matrix_reference,
+)
 from .material import Material
 from .multipole import Multipoles
 from .multipole import decompose as multipole_decompose
@@ -71,6 +97,12 @@ __version__ = "0.7.0"
 
 __all__ = [
     "BIESolver",
+    "Cluster",
+    "ClusterBIESolver",
+    "ClusterGapWarning",
+    "ClusterOverlapError",
+    "ClusterResolutionWarning",
+    "ClusterScatterResult",
     "DEGENERATE_COND",
     "Geometry",
     "Material",
@@ -81,6 +113,7 @@ __all__ = [
     "SHAPE_STEP",
     "richardson_limit",
     "ScatterResult",
+    "assemble_cross_block",
     "assemble_matrix",
     "assemble_matrix_reference",
     "eval_field",
