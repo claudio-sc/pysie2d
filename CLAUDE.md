@@ -194,8 +194,8 @@ study in
 [docs/design/studies/quadrature-study-plan.md](docs/design/studies/quadrature-study-plan.md),
 the invariants in `docs/conventions.md` §13.
 
-**v0.7 — multipole decomposition of the scattered field.** Specced, not
-implemented: [multipole-spec.md](docs/design/multipole-spec.md). Cylindrical-
+**v0.7 — multipole decomposition of the scattered field.** Implemented; the
+spec is [multipole-spec.md](docs/design/multipole-spec.md). Cylindrical-
 harmonic expansion of the exterior field about the particle centre, ported from
 the pre-v0.6 research code, anchored on analytic Mie in both polarisations. It
 is purely additive — no signature on the existing surface changes — which is
