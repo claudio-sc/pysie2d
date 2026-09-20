@@ -13,8 +13,8 @@ separation is deliberate.
 |---|---|
 | `spectrum.py` | The frozen-file format: schema, writer, reader. One definition, shared by the drivers here and by `tests/test_external_validation.py`. |
 | `mie_bootstrap.py` | Freezes the repo's own analytic Mie series. **Not an external anchor** — it exists to prove the format and its consumer. |
-| `dolfinx/` | FEM frequency-domain driver. Not yet written. |
-| `meep/` | FDTD time-domain driver. Not yet written. |
+| `dolfinx/` | FEM frequency-domain driver. Carries the lossy cases: it represents a constant `Im ε` exactly. |
+| `meep/` | FDTD time-domain driver. Lossless only — MEEP has no frequency-independent `Im ε`, so a broadband run would make the material dispersive. |
 
 ## The three layers
 
