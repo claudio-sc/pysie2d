@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 from pysie2d import (
+    BIESolver,
     Cluster,
     ClusterBIESolver,
     ClusterOverlapError,
@@ -315,3 +316,88 @@ def test_dipole_source_inside_one_particle_of_a_cluster_raises():
     solver = ClusterBIESolver(cluster, mats, pol=2)
     with pytest.raises(ValueError, match="inside the particle"):
         solver.scatter_dipole(633.0, 520.0, 0.0)
+
+
+# ---------------------------------------------------------------------------
+# G1 — the Np = 1 reduction, and G5 — far-field reciprocity
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("m", [0, 5], ids=["circle", "star"])
+@pytest.mark.parametrize("pol", [1, 2], ids=["TM", "TE"])
+def test_one_particle_cluster_is_bit_identical_to_BIESolver(m: int, pol: int):
+    """A one-particle cluster reproduces `BIESolver` to the last bit.
+
+    With `Np = 1` there is no cross-block, so the coupled matrix *is* the
+    single-particle matrix — but only because conventions §14 lays the
+    unknowns out contiguously per particle (`[φ_0, χ_0, …]`), so each
+    particle's `2·nn_p` sub-vector goes straight into the existing
+    single-particle primitives with no gather or reorder. Every comparison
+    here is `np.array_equal`, deliberately: **if this degrades to merely
+    "close", the DOF layout has been changed and conventions §14 has silently
+    broken.** That, not the number, is what the test guards.
+
+    `eval_field` is compared too, because the cluster evaluates the
+    representation through a different helper than the single-particle point
+    loop; equality is what pins the two against drift.
+
+    The particle is awkward on purpose — off-centre, `n_clad ≠ 1`, lossy,
+    oblique incidence — so that a convention that happens to cancel at the
+    origin, in vacuum, at normal incidence cannot hide.
+    """
+    geom = Geometry.gielis(rad=200.0, n_pts=180, m=m, n1=4.0, x0=13.0, z0=-7.0)
+    mat = Material(n_core=2.1, n_clad=1.3, pol=pol, epsi=0.4)
+
+    single = BIESolver(geom, mat).scatter(wavelength=700.0, angle=23.0)
+    cl = ClusterBIESolver(Cluster([geom]), [mat], pol=pol)
+    multi = cl.scatter(wavelength=700.0, angle=23.0)
+
+    assert np.array_equal(cl._assemble(700.0), BIESolver(geom, mat).assemble(700.0))
+    assert np.array_equal(multi.ei, single.ei)
+    assert np.array_equal(multi.far_field(401)[0], single.far_field(401)[0])
+
+    # Mixed interior/exterior points: the interior branch uses k_core and the
+    # exterior one k_bg, so both sides of the representation are exercised.
+    x = np.array([13.0, 100.0, 13.0, 900.0, -700.0])
+    z = np.array([-7.0, -7.0, 120.0, 400.0, -250.0])
+    assert np.array_equal(multi.eval_field(x, z), single.eval_field(x, z))
+
+
+def _lossy_dimer_materials() -> list[Material]:
+    """The §6.4 dimer's materials with particle 1 lossy, for G5."""
+    return [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2, epsi=0.3)]
+
+
+def test_far_field_reciprocity_on_an_asymmetric_cluster():
+    """Colton & Kress Thm 3.13: `u_∞(x̂, d̂) = u_∞(−d̂, −x̂)`.
+
+    In the solver's angles, with incidence α and observation θ in degrees,
+    that reads `amp(θ = θ₁; angle = α₁) == amp(θ = −α₁; angle = −θ₁)`: two
+    entirely separate coupled solves, related only through the symmetry of the
+    operator. It is a property of the operator, so it holds for any number of
+    particles of any shape — including the absorbing one used here, since the
+    reciprocity relation needs a symmetric, not a lossless, medium.
+
+    **The cluster must be asymmetric or the test is vacuous**: on a mirror-
+    symmetric pair at normal incidence the two amplitudes coincide for
+    geometric reasons and the identity says nothing. The dimer here has
+    unequal radii, unequal indices and only one lossy particle, which is what
+    makes the check sensitive to exactly the block-transposition and
+    cross-block index errors that the `Np = 1` reduction of §6.1 cannot see.
+
+    Measured deviation 8.8e-16 at nn = 300; `rtol = 5e-15` is that round-off
+    floor with headroom, not a convergence order.
+    """
+    cluster = _dimer(300, 300)
+    mats = _lossy_dimer_materials()
+    solver = ClusterBIESolver(cluster, mats, pol=2)
+
+    alpha1, theta1 = 20.0, 75.0
+    direct = solver.scatter(wavelength=633.0, angle=alpha1)._amp_at(
+        np.array([np.deg2rad(theta1)])
+    )
+    reciprocal = solver.scatter(wavelength=633.0, angle=-theta1)._amp_at(
+        np.array([np.deg2rad(-alpha1)])
+    )
+
+    assert direct[0] == pytest.approx(reciprocal[0], rel=5e-15)
