@@ -149,7 +149,7 @@ def test_reconstruction_matches_the_solver_field_on_a_second_circle():
     This is **not** an independent validation. It shows the expansion
     reproduces the solver's own field at a radius it was never fitted at, and
     nothing more — for a non-circular shape no closed form exists, and the
-    external anchor is the v0.8 milestone. What it does catch is any error in
+    external anchor is the v0.9 milestone. What it does catch is any error in
     the radial basis (the i^m and H_m^(1) factors), which a fit on a single
     circle would absorb into the coefficients.
 

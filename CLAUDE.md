@@ -194,24 +194,36 @@ study in
 [docs/design/studies/quadrature-study-plan.md](docs/design/studies/quadrature-study-plan.md),
 the invariants in `docs/conventions.md` §13.
 
-**v0.7 — multipole decomposition of the scattered field.** Implemented; the
+**v0.7 — multipole decomposition of the scattered field.** Shipped; the
 spec is [multipole-spec.md](docs/design/multipole-spec.md). Cylindrical-
 harmonic expansion of the exterior field about the particle centre, ported from
 the pre-v0.6 research code, anchored on analytic Mie in both polarisations. It
 is purely additive — no signature on the existing surface changes — which is
-why it ships ahead of the slower v0.8 work.
+why it ships ahead of the slower external-validation work.
 
-**v0.8 — external validation for non-circular shapes.** Scoping:
-[v0.8-external-validation.md](docs/design/v0.8-external-validation.md). Every
+**v0.8, on `v0.8-multiparticle`: finite clusters of arbitrary particles.**
+Code-spec: [multiparticle-spec.md](docs/design/multiparticle-spec.md); the
+earlier high-level guide it supersedes section by section is
+[multiparticle-handoff.md](docs/design/multiparticle-handoff.md). Coupled
+assembly and dense solve over different shapes, sizes, materials and `nn` per
+particle, anchored on a two-cylinder addition-theorem reference. **Additive**
+(spec D1): `Cluster`, `ClusterBIESolver` and `ClusterScatterResult` land
+*beside* `BIESolver`/`ScatterResult`, whose signatures do not change — the
+one API-breaking design the handoff assumed was rejected.
+
+**v0.9 — external validation for non-circular shapes.** Scoping:
+[v0.9-external-validation.md](docs/design/v0.9-external-validation.md). Every
 anchor in the repo is circular; this is the first independent check of a Gielis
-star, against MEEP and dolfinx. Renumbered from v0.7 on 20 Sep 2026 — the
-external tools are conda-first and CI will never run them, so a finished
-additive feature is not held behind them.
+star, against MEEP and dolfinx. Renumbered twice, from v0.7 and then from v0.8
+(spec D11), on the same rule both times — the external tools are conda-first and
+CI will never run them, so a finished additive feature is not held behind them.
 
-Longer term: multiple particles
-([multiparticle-handoff.md](docs/design/multiparticle-handoff.md)), which is the
-last API-breaking item on the roadmap and therefore the gate on **v1.0**
-alongside v0.8; then slab-waveguide backgrounds.
+Multiple particles *was* the last API-breaking item and therefore a gate on
+v1.0; under D1 it is additive, so **it no longer gates v1.0**. The existing
+surface provably cannot change, which leaves **v0.9 external validation as the
+sole v1.0 gate**: a 1.0 promises a stable surface *and* answers that have been
+checked against something that is neither circular nor ours. Longer term:
+slab-waveguide backgrounds.
 
 ## How to work here
 

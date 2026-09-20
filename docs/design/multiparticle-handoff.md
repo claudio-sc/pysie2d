@@ -186,7 +186,7 @@ approximate for a non-circular shape and is outright meaningless for a cluster �
 whose `rad` is not defined at all. **Absolute cross-sections `C_sca`, `C_ext`,
 `C_abs` in nm** are the right multiparticle observable, and the v0.8 comparison
 contract has already fixed exactly that choice for exactly that reason
-([v0.8-external-validation.md](v0.8-external-validation.md) §2). Adopt it;
+([v0.9-external-validation.md](v0.9-external-validation.md) §2). Adopt it;
 do not re-derive it.
 
 ### 4.7 Cost, and what not to optimise

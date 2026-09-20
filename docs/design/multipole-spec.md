@@ -61,8 +61,8 @@ tells you *why*, which is what you need when a number does not match.
 
 **The roadmap renumbering of §6.1 has already been done** (20 Sep 2026), so it
 is not one of your commits. Confirm before you start that `CLAUDE.md`'s roadmap
-carries a v0.7 multipole entry and a v0.8 external-validation entry, and that
-`docs/design/v0.8-external-validation.md` exists. If it does not, you are on the
+carries a v0.7 multipole entry and a v0.9 external-validation entry, and that
+`docs/design/v0.9-external-validation.md` exists. If it does not, you are on the
 wrong commit — **stop and report**.
 
 ### 0.2 Rules that are not negotiable
@@ -130,7 +130,7 @@ evidence does not reach.
   available is internal self-consistency (§5.4) — decompose on one circle,
   reconstruct on another. That proves the expansion is consistent with the
   solver's own field; it does **not** independently validate that field. The
-  external anchor for non-circular shapes is the v0.8 milestone.
+  external anchor for non-circular shapes is the v0.9 milestone.
 - The coefficients describe the field **outside the circumscribing circle
   only**. Nothing about the field between that circle and the boundary.
 - The expansion centre is the **particle centre** `(x0, z0)`. Coefficients about
