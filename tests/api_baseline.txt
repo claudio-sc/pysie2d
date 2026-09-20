@@ -4,6 +4,15 @@ BIESolver.assemble(self, wavelength: float | complex) -> numpy.ndarray
 BIESolver.assemble_derivative(self, wavelength: float | complex) -> numpy.ndarray
 BIESolver.scatter(self, wavelength: float, angle: float = 0.0, incident_rhs: collections.abc.Callable[[int, complex, numpy.ndarray, numpy.ndarray], numpy.ndarray] | None = None) -> pysie2d.solver.ScatterResult
 BIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float) -> pysie2d.solver.ScatterResult
+class Cluster
+Cluster.__init__(self, geometries: collections.abc.Sequence[pysie2d.geometry.Geometry]) -> None
+Cluster.slice(self, p: int) -> slice
+class ClusterGapWarning
+ClusterGapWarning.__init__(self, /, *args, **kwargs)
+class ClusterOverlapError
+ClusterOverlapError.__init__(self, /, *args, **kwargs)
+class ClusterResolutionWarning
+ClusterResolutionWarning.__init__(self, /, *args, **kwargs)
 DEGENERATE_COND: float = 1000000000000.0
 class Geometry
 Geometry.__init__(self, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, *, rad: float, x0: float = 0.0, z0: float = 0.0, parametrisation: pysie2d.parametrisation.Parametrisation | None = None) -> None

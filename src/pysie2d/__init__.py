@@ -22,6 +22,12 @@ Public API:
         circle, and its inverse. ``ScatterResult.multipoles`` is the façade.
     Multipoles: the signed-order coefficients c_m, with the symmetric /
         antisymmetric pair ``c_plus``/``c_minus`` derived from them.
+    Cluster: an arrangement of non-overlapping particle boundaries sharing one
+        background (conventions §14). Construction raises
+        ``ClusterOverlapError`` when two boundaries intersect.
+    ClusterOverlapError, ClusterGapWarning, ClusterResolutionWarning: the
+        cluster geometry guards — overlapping boundaries, a gap too small for
+        the resolution in use, and a particle far coarser than its neighbours.
     QNMSolver: quasi-normal-mode façade; call ``modes`` to obtain a
         ``QNMResult``.
     QNMResult: mode wavelengths, vectors, and extraction diagnostics; call
@@ -43,6 +49,12 @@ take a background wavenumber
 ``wnum_bg = 2π·n_clad/λ_vac`` instead. See ``docs/conventions.md`` §2.
 """
 
+from .cluster import (
+    Cluster,
+    ClusterGapWarning,
+    ClusterOverlapError,
+    ClusterResolutionWarning,
+)
 from .fields import eval_field, far_field
 from .geometry import Geometry
 from .green import relative_ldos, relative_ldos_map, self_green
@@ -71,6 +83,10 @@ __version__ = "0.6.0"
 
 __all__ = [
     "BIESolver",
+    "Cluster",
+    "ClusterGapWarning",
+    "ClusterOverlapError",
+    "ClusterResolutionWarning",
     "DEGENERATE_COND",
     "Geometry",
     "Material",

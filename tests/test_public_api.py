@@ -41,6 +41,13 @@ def _surface() -> list[str]:
                 if attr.startswith("_") and attr != "__init__":
                     continue
                 member = inspect.getattr_static(obj, attr)
+                # Exception and warning classes (ClusterOverlapError and the
+                # cluster warnings) inherit BaseException's C-level members,
+                # several of which have no introspectable signature at all.
+                # They are Python's contract, not this package's, so the
+                # surface of such a class is its name plus whatever it adds.
+                if getattr(BaseException, attr, None) is member:
+                    continue
                 if isinstance(member, property):
                     lines.append(f"{name}.{attr} -> property")
                     continue
