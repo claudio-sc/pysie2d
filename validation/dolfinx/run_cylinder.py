@@ -55,6 +55,8 @@ sign error cannot survive.
 
 from __future__ import annotations
 
+import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -382,17 +384,33 @@ def _assemble(form) -> float:
 # Discretisation. Gate 2 sets these by refining until the spectrum stops
 # moving; the numbers below are the converged settings, and the drift measured
 # on the way to them travels in every file this script writes.
+#
+# They stay module globals rather than becoming arguments because
+# ``build_mesh`` and ``_pml_tensor`` read them directly, and the command line
+# rebinds them before anything is built. That is what lets
+# ``validation/study.py`` sweep one knob without editing this file — and it is
+# what keeps a sweep honest, because a study that edits the driver between
+# levels is comparing two drivers.
 H_PARTICLE = 12.0  # nm, ≈ λ_min/(22·n_core) at the shortest wavelength
 H_OUTER = 40.0
 DEGREE = 3
 GEOM_ORDER = 2
 
-CASES = [
-    ("dolfinx-circle-lossless-te", 2, 1.0, 0.0),
-    ("dolfinx-circle-lossless-tm", 1, 1.0, 0.0),
-    ("dolfinx-circle-lossy-te", 2, 1.33, 0.5),
-    ("dolfinx-circle-lossy-tm", 1, 1.33, 0.5),
-]
+GRID = WAVELENGTHS
+"""The wavelengths actually swept.
+
+``--grid study`` replaces this with every fourth point of ``WAVELENGTHS``.
+That subsampling is a *subset* of the frozen grid rather than a coarser
+linspace of its own: a drift measured at wavelengths that do not appear in the
+final file could not be attributed to any point in it.
+"""
+
+CASES = {
+    "lossless-te": ("dolfinx-circle-lossless-te", 2, 1.0, 0.0),
+    "lossless-tm": ("dolfinx-circle-lossless-tm", 1, 1.0, 0.0),
+    "lossy-te": ("dolfinx-circle-lossy-te", 2, 1.33, 0.5),
+    "lossy-tm": ("dolfinx-circle-lossy-tm", 1, 1.33, 0.5),
+}
 
 POL_MAPPING = {
     2: (
@@ -420,12 +438,10 @@ def sweep(domain, cell_tags, facet_tags, pol, n_clad, epsi, degree):
     point instead of drifting with a remeshing.
 
     Returns:
-        dict of arrays 'c_sca_nm', 'c_ext_nm', 'c_abs_nm', 'residual'.
+        dict of arrays 'c_sca', 'c_ext', 'c_abs', 'residual'.
     """
-    out = {
-        k: np.empty(WAVELENGTHS.size) for k in ("c_sca", "c_ext", "c_abs", "residual")
-    }
-    for i, lam in enumerate(WAVELENGTHS):
+    out = {k: np.empty(GRID.size) for k in ("c_sca", "c_ext", "c_abs", "residual")}
+    for i, lam in enumerate(GRID):
         res = solve_one(
             domain, cell_tags, facet_tags, float(lam), pol, n_clad, epsi, degree
         )
@@ -441,66 +457,132 @@ def sweep(domain, cell_tags, facet_tags, pol, n_clad, epsi, degree):
     return out
 
 
+def _knobs() -> dict[str, float | int | str]:
+    """Every setting a result depends on, for the record written beside it.
+
+    A refinement study is only evidence if each level says what it was. These
+    go into the ``.npz`` next to the arrays so that a result file found later
+    is self-describing, exactly as a frozen spectrum is.
+    """
+    return {
+        "h_particle": H_PARTICLE,
+        "h_outer": H_OUTER,
+        "degree": DEGREE,
+        "geom_order": GEOM_ORDER,
+        "pml_order": PML_ORDER,
+        "pml_reflection": PML_REFLECTION,
+        "r_meas": R_MEAS,
+        "r_phys": R_PHYS,
+        "r_pml": R_PML,
+        "n_wavelengths": int(GRID.size),
+    }
+
+
+def _freeze(case_key: str, res: dict[str, np.ndarray]) -> Path:
+    """Write one frozen spectrum file, with gate-2 placeholders intact."""
+    case_id, pol, n_clad, epsi = CASES[case_key]
+    spec = Spectrum(
+        case_id=case_id,
+        claim=(
+            "pysie2d's cross-sections on a circle agree with an "
+            "independent frequency-domain FEM solve (dolfinx, radial "
+            "PML, curved elements) that shares no formulation, "
+            "discretisation or linear algebra with the boundary-integral "
+            "method."
+        ),
+        tool={"name": "dolfinx", "version": _versions()},
+        geometry={"rad": RAD, "m": 0, "n1": 2.0, "n2": 2.0, "n3": 2.0, "n_pts": 200},
+        material={"n_core": N_CORE, "n_clad": n_clad, "epsi": epsi},
+        pol=pol,
+        pol_mapping=POL_MAPPING[pol],
+        angle_deg=0.0,
+        wavelength_nm=GRID,
+        c_sca_nm=res["c_sca"],
+        c_ext_nm=res["c_ext"],
+        c_abs_nm=res["c_abs"],
+        convergence=Convergence(
+            parameter="(h_particle, Lagrange degree)",
+            coarse="placeholder — gate 2 has not been run",
+            fine=f"({H_PARTICLE} nm, {DEGREE})",
+            max_rel_drift=float("nan"),
+            note="PLACEHOLDER. Not to be committed until gate 2 runs.",
+        ),
+        tolerance=Tolerance(
+            rel=float("nan"),
+            abs_nm=float("nan"),
+            justification="PLACEHOLDER — set from gate 2's measured floor.",
+        ),
+        notes=(
+            "Worst optical-theorem residual "
+            f"(C_ext − C_sca − C_abs)/C_ext over the grid: "
+            f"{np.max(np.abs(res['residual'])):.2e}. The three are "
+            "computed independently — two volume integrals and one flux "
+            "integral — so this residual is evidence, not an identity."
+        ),
+    )
+    return write(spec, DATA / f"{case_id}.json")
+
+
 def main() -> None:
-    """Run every case at the converged discretisation and freeze the spectra."""
+    """Run the selected cases at the selected discretisation.
+
+    One process per job, driven by ``validation/study.py``. The mesh is built
+    once and shared by every case in the job, because the cases differ only in
+    material and polarisation — remeshing between them would put a different
+    geometry error in each and make them incomparable.
+    """
+    global H_PARTICLE, H_OUTER, DEGREE, GEOM_ORDER, GRID
+    global PML_ORDER, PML_REFLECTION, R_MEAS, R_PHYS, R_PML
+
+    parser = argparse.ArgumentParser(description="dolfinx external-validation driver")
+    parser.add_argument("--cases", default="lossless-te,lossless-tm,lossy-te,lossy-tm")
+    parser.add_argument("--grid", choices=("study", "full"), default="full")
+    parser.add_argument("--h-particle", type=float, default=H_PARTICLE)
+    parser.add_argument("--h-outer", type=float, default=H_OUTER)
+    parser.add_argument("--degree", type=int, default=DEGREE)
+    parser.add_argument("--geom-order", type=int, default=GEOM_ORDER)
+    parser.add_argument("--pml-order", type=int, default=PML_ORDER)
+    parser.add_argument("--pml-reflection", type=float, default=PML_REFLECTION)
+    parser.add_argument("--r-phys", type=float, default=R_PHYS)
+    parser.add_argument("--r-pml", type=float, default=R_PML)
+    parser.add_argument("--out", default=None, help="prefix for per-case .npz output")
+    parser.add_argument(
+        "--freeze",
+        action="store_true",
+        help="write the frozen file (omit while gate 2 is still open)",
+    )
+    args = parser.parse_args()
+
+    H_PARTICLE, H_OUTER = args.h_particle, args.h_outer
+    DEGREE, GEOM_ORDER = args.degree, args.geom_order
+    PML_ORDER, PML_REFLECTION = args.pml_order, args.pml_reflection
+    R_PHYS, R_PML = args.r_phys, args.r_pml
+    GRID = WAVELENGTHS[::4] if args.grid == "study" else WAVELENGTHS
+
     _require_complex()
     DATA.mkdir(parents=True, exist_ok=True)
     domain, cell_tags, facet_tags = build_mesh(H_PARTICLE, H_OUTER, GEOM_ORDER)
 
-    for case_id, pol, n_clad, epsi in CASES:
+    for case_key in args.cases.split(","):
+        case_id, pol, n_clad, epsi = CASES[case_key]
         if MPI.COMM_WORLD.rank == 0:
             print(f"\n{case_id}", flush=True)
         res = sweep(domain, cell_tags, facet_tags, pol, n_clad, epsi, DEGREE)
         if MPI.COMM_WORLD.rank != 0:
             continue
-        spec = Spectrum(
-            case_id=case_id,
-            claim=(
-                "pysie2d's cross-sections on a circle agree with an "
-                "independent frequency-domain FEM solve (dolfinx, radial "
-                "PML, curved elements) that shares no formulation, "
-                "discretisation or linear algebra with the boundary-integral "
-                "method."
-            ),
-            tool={"name": "dolfinx", "version": _versions()},
-            geometry={
-                "rad": RAD,
-                "m": 0,
-                "n1": 2.0,
-                "n2": 2.0,
-                "n3": 2.0,
-                "n_pts": 200,
-            },
-            material={"n_core": N_CORE, "n_clad": n_clad, "epsi": epsi},
-            pol=pol,
-            pol_mapping=POL_MAPPING[pol],
-            angle_deg=0.0,
-            wavelength_nm=WAVELENGTHS,
-            c_sca_nm=res["c_sca"],
-            c_ext_nm=res["c_ext"],
-            c_abs_nm=res["c_abs"],
-            convergence=Convergence(
-                parameter="(h_particle, Lagrange degree)",
-                coarse="placeholder — gate 2 has not been run",
-                fine=f"({H_PARTICLE} nm, {DEGREE})",
-                max_rel_drift=float("nan"),
-                note="PLACEHOLDER. Not to be committed until gate 2 runs.",
-            ),
-            tolerance=Tolerance(
-                rel=float("nan"),
-                abs_nm=float("nan"),
-                justification="PLACEHOLDER — set from gate 2's measured floor.",
-            ),
-            notes=(
-                "Worst optical-theorem residual "
-                f"(C_ext − C_sca − C_abs)/C_ext over the grid: "
-                f"{np.max(np.abs(res['residual'])):.2e}. The three are "
-                "computed independently — two volume integrals and one flux "
-                "integral — so this residual is evidence, not an identity."
-            ),
-        )
-        path = write(spec, DATA / f"{case_id}.json")
-        print(f"  → {path.name}", flush=True)
+        if args.out:
+            path = Path(f"{args.out}-{case_key}.npz")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            np.savez(
+                path,
+                wavelength_nm=GRID,
+                knobs=json.dumps(_knobs()),
+                cells=domain.topology.index_map(2).size_global,
+                **res,
+            )
+            print(f"  → {path.name}", flush=True)
+        if args.freeze:
+            print(f"  → {_freeze(case_key, res).name}", flush=True)
 
 
 def _versions() -> str:

@@ -80,6 +80,7 @@ disagreement between the two travels with the frozen file.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -137,6 +138,28 @@ material. FDTD is second-order accurate, so this is a gate-2 knob, not a
 converged value.
 """
 
+GRID = WAVELENGTHS
+"""The wavelengths the DFT monitors actually record.
+
+``--grid study`` replaces this with every fourth point of ``WAVELENGTHS``.
+It is a *subset* of the frozen grid, not a coarser linspace of its own, so a
+drift measured here lands on points that exist in the final file. Note that
+the source bandwidth below is deliberately *not* subsampled with it: the pulse
+must still cover the whole 400–900 nm band, or the endpoints of the study grid
+would sit in its skirt and their poor signal-to-noise would be misread as a
+discretisation error.
+"""
+
+DFT_DECAY = 1e-11
+"""Residual DFT change at which time stepping stops.
+
+MEEP's default. It is a convergence knob and not merely a cost knob —
+truncating the transform early biases the recorded spectrum — but it is also
+the dominant cost: the normalisation run at resolution 25 carried on for some
+fifty cell-crossings to satisfy it. Gate 2 measures whether relaxing it moves
+any cross-section before it is relaxed.
+"""
+
 CASES = {
     "te": (2, mp.Ez),
     "tm": (1, mp.Hz),
@@ -169,7 +192,7 @@ def _frequencies() -> list[float]:
     interpolation — which would otherwise smear a resonance and be mistaken for
     a discretisation error.
     """
-    return [NM_PER_A / lam for lam in WAVELENGTHS]
+    return [NM_PER_A / lam for lam in GRID]
 
 
 def _cell() -> tuple[float, mp.Vector3]:
@@ -252,7 +275,7 @@ def run_normalisation(component, freqs: list[float]):
     )
     boxes = _flux_box(sim, freqs, R_FLUX)
     n2f = _n2f_box(sim, freqs, R_N2F)
-    sim.run(until_after_sources=mp.stop_when_dft_decayed())
+    sim.run(until_after_sources=mp.stop_when_dft_decayed(tol=DFT_DECAY))
 
     # The wave travels −y, so it enters through the +y face. That face's flux
     # is negative (power flowing in), and dividing by its length turns the
@@ -298,7 +321,7 @@ def run_scattering(component, freqs: list[float], flux_data, n2f_data, intensity
         sim.load_minus_flux_data(box, data)
     sim.load_minus_near2far_data(n2f, n2f_data)
 
-    sim.run(until_after_sources=mp.stop_when_dft_decayed())
+    sim.run(until_after_sources=mp.stop_when_dft_decayed(tol=DFT_DECAY))
 
     scattered = sum(np.asarray(mp.get_fluxes(b)) for b in scat_boxes)
     # Net *inward* flux of the total field is the power the particle swallowed;
@@ -372,7 +395,7 @@ def freeze(case: str, res: dict[str, np.ndarray]) -> Path:
         pol=pol,
         pol_mapping=POL_MAPPING[pol],
         angle_deg=0.0,
-        wavelength_nm=WAVELENGTHS,
+        wavelength_nm=GRID,
         c_sca_nm=res["c_sca"] * NM_PER_A,
         c_ext_nm=res["c_ext"] * NM_PER_A,
         c_abs_nm=res["c_abs"] * NM_PER_A,
@@ -400,30 +423,66 @@ def freeze(case: str, res: dict[str, np.ndarray]) -> Path:
     return write(spec, DATA / f"{case_id}.json")
 
 
+def _knobs() -> dict[str, float | int]:
+    """Every setting a result depends on, for the record written beside it.
+
+    A refinement study is only evidence if each level says what it was. These
+    travel in the ``.npz`` next to the arrays, so a result file found later is
+    self-describing in the same way a frozen spectrum is.
+    """
+    return {
+        "resolution": RESOLUTION,
+        "dpml": DPML,
+        "r_flux": R_FLUX,
+        "r_n2f": R_N2F,
+        "pad": PAD,
+        "dft_decay": DFT_DECAY,
+        "r_far": R_FAR,
+        "n_far": N_FAR,
+        "n_wavelengths": int(GRID.size),
+    }
+
+
 def main() -> None:
-    """Run one polarisation and freeze it.
+    """Run one polarisation at one setting.
 
     One case per process: the conda build is ``nompi``, so the only
-    parallelism available is running the two polarisations as separate
-    processes, and they are independent.
+    parallelism available is running jobs as separate processes, which is what
+    ``validation/study.py`` does.
     """
-    global RESOLUTION
+    global RESOLUTION, DPML, R_FLUX, DFT_DECAY, GRID
 
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="MEEP external-validation driver")
     parser.add_argument("--case", choices=sorted(CASES), default="te")
     parser.add_argument(
         "--resolution", type=int, default=RESOLUTION, help="pixels per 100 nm"
     )
+    parser.add_argument("--dpml", type=float, default=DPML, help="PML thickness, in a")
+    parser.add_argument(
+        "--r-flux",
+        type=float,
+        default=None,
+        help="flux-box half-width in units of the particle radius",
+    )
+    parser.add_argument("--dft-decay", type=float, default=DFT_DECAY)
+    parser.add_argument("--grid", choices=("study", "full"), default="full")
+    parser.add_argument("--out", default=None, help="path for the .npz output")
     parser.add_argument(
         "--freeze",
         action="store_true",
         help="write the frozen file (omit while gate 2 is still open)",
     )
     args = parser.parse_args()
+
     RESOLUTION = args.resolution
+    DPML = args.dpml
+    DFT_DECAY = args.dft_decay
+    if args.r_flux is not None:
+        R_FLUX = args.r_flux * RAD
+    GRID = WAVELENGTHS[::4] if args.grid == "study" else WAVELENGTHS
 
     res = run_case(args.case)
-    for i, lam in enumerate(WAVELENGTHS):
+    for i, lam in enumerate(GRID):
         print(
             f"  λ={lam:6.1f}  C_sca={res['c_sca'][i] * NM_PER_A:10.3f}  "
             f"C_ext={res['c_ext'][i] * NM_PER_A:10.3f}  "
@@ -431,11 +490,11 @@ def main() -> None:
             f"far/box−1={res['c_sca_far'][i] / res['c_sca'][i] - 1:+.2e}",
             flush=True,
         )
-    np.savez(
-        Path(__file__).parent / f"_last-{args.case}-res{RESOLUTION}.npz",
-        wavelength_nm=WAVELENGTHS,
-        **res,
-    )
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(out, wavelength_nm=GRID, knobs=json.dumps(_knobs()), **res)
+        print(f"  → {out.name}", flush=True)
     if args.freeze:
         print(f"  → {freeze(args.case, res).name}", flush=True)
 
