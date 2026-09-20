@@ -194,7 +194,24 @@ study in
 [docs/design/studies/quadrature-study-plan.md](docs/design/studies/quadrature-study-plan.md),
 the invariants in `docs/conventions.md` §13.
 
-Longer term: slab-waveguide backgrounds, multiple particles.
+**v0.7 — multipole decomposition of the scattered field.** Specced, not
+implemented: [multipole-spec.md](docs/design/multipole-spec.md). Cylindrical-
+harmonic expansion of the exterior field about the particle centre, ported from
+the pre-v0.6 research code, anchored on analytic Mie in both polarisations. It
+is purely additive — no signature on the existing surface changes — which is
+why it ships ahead of the slower v0.8 work.
+
+**v0.8 — external validation for non-circular shapes.** Scoping:
+[v0.8-external-validation.md](docs/design/v0.8-external-validation.md). Every
+anchor in the repo is circular; this is the first independent check of a Gielis
+star, against MEEP and dolfinx. Renumbered from v0.7 on 20 Sep 2026 — the
+external tools are conda-first and CI will never run them, so a finished
+additive feature is not held behind them.
+
+Longer term: multiple particles
+([multiparticle-handoff.md](docs/design/multiparticle-handoff.md)), which is the
+last API-breaking item on the roadmap and therefore the gate on **v1.0**
+alongside v0.8; then slab-waveguide backgrounds.
 
 ## How to work here
 
