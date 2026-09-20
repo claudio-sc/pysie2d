@@ -155,3 +155,24 @@ def test_default_angular_grid_resolves_a_high_multipole_particle(pol):
     assert result.efficiencies()["qsca"] == pytest.approx(
         ref[f"Q_sca_{POL_TAG[pol]}"], rel=RTOL_QSCA
     )
+
+
+@pytest.mark.parametrize("pol", [1, 2])
+def test_cross_sections_and_efficiencies_agree(circle, pol):
+    """C = Q · 2·rad exactly, pinning the two entry points to one quadrature.
+
+    `cross_sections()` and `efficiencies()` are separate computations of the
+    same far-field integrals; the identity C = Q · 2·rad is algebraic, so the
+    only discrepancy admissible is round-off in re-summing the same terms —
+    hence 1e-14, not a convergence-order bound. A lossy particle exercises all
+    three of sca/ext/abs with none of them incidentally zero.
+    """
+    geom = circle(300)
+    mat = Material(n_core=N_CORE, n_clad=N_CLAD, pol=pol, epsi=0.5)
+    result = BIESolver(geom, mat).scatter(wavelength=600.0, angle=37.0)
+
+    eff = result.efficiencies()
+    cs = result.cross_sections()
+    width = 2.0 * geom.rad
+    for q_key, c_key in (("qsca", "c_sca"), ("qext", "c_ext"), ("qabs", "c_abs")):
+        assert np.isclose(cs[c_key], eff[q_key] * width, rtol=1e-14, atol=0.0)

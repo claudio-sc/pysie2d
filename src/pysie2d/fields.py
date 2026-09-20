@@ -72,6 +72,37 @@ def _far_field_at(
     return np.sum(np.exp(arg) * puto * delt, axis=0)
 
 
+def _cross_sections(
+    amp: np.ndarray, amp_fwd: complex, wnum_bg: complex
+) -> dict[str, float]:
+    """Absolute cross-sections (nm) from a far-field amplitude.
+
+    Implements dσ/dθ = |amp(θ)|²/(8π·k_bg), C_ext = Im[amp(π−α)]/k_bg and
+    C_abs = C_ext − C_sca. Shared by the single- and multi-particle result
+    classes so the two paths cannot disagree. C_ext presumes a unit-amplitude
+    incident **plane wave**.
+
+    Args:
+        amp: complex (nff,) far-field amplitude on the ``[−π, π]`` inclusive
+            grid of :func:`far_field`.
+        amp_fwd: Amplitude at the exact forward direction π − α, evaluated off
+            the grid with :func:`_far_field_at`.
+        wnum_bg: Background wavenumber k_bg (rad/nm).
+
+    Returns:
+        dict with keys 'c_sca', 'c_ext', 'c_abs', in nm.
+    """
+    nff = len(amp)
+    delthe = 2.0 * PI / (nff - 1.0)
+    # amp spans [-pi, pi] inclusive, so index 0 and nff-1 are the same physical
+    # direction; summing both double-counts it. Dropping the duplicate (not
+    # halving both) is what makes C_sca independent of where that one grid
+    # angle falls relative to the forward peak.
+    c_sca = float(np.sum(np.abs(amp[:-1]) ** 2) / (8.0 * PI * wnum_bg) * delthe)
+    c_ext = float(amp_fwd.imag / wnum_bg)
+    return {"c_sca": c_sca, "c_ext": c_ext, "c_abs": c_ext - c_sca}
+
+
 # ---------------------------------------------------------------------------
 # Inside/outside test  (subroutine eicero)
 # ---------------------------------------------------------------------------

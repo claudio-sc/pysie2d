@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 import numpy as np
 
-from .fields import _far_field_at, eval_field, far_field
+from .fields import _cross_sections, _far_field_at, eval_field, far_field
 from .geometry import Geometry
 from .kernels import assemble_matrix, assemble_matrix_dwn
 from .material import Material
@@ -303,6 +303,37 @@ class ScatterResult:
         qext = amp_fwd.imag / (wnum_bg * 2.0 * g.rad)
         qabs = qext - qsca
         return {"qsca": float(qsca), "qext": float(qext), "qabs": float(qabs)}
+
+    def cross_sections(self, n_angles: int = 500) -> dict[str, float]:
+        """Absolute scattering, extinction and absorption cross-sections (nm).
+
+        The multiparticle observable of docs/design/multiparticle-spec.md §3.6,
+        provided here too so the single- and multi-particle paths report the
+        same quantity. Equal to :meth:`efficiencies` scaled by the geometric
+        width ``2·rad`` — which is why this is the quantity to compare across
+        shapes, since that normalisation is only approximate off a circle.
+
+        Plane-wave excitation only: ``C_ext`` is defined against a
+        unit-amplitude incident plane wave.
+
+        Args:
+            n_angles: Number of far-field angles used in the angular integral;
+                see :meth:`efficiencies` for how to size it. C_ext does not
+                depend on it.
+
+        Returns:
+            dict with keys 'c_sca', 'c_ext', 'c_abs', in nm.
+        """
+        g = self.geometry
+        wnum_bg = self.wnum_bg
+        amp, _ = self.far_field(n_angles)
+        # π − angle lands on the far-field grid only by accident, so evaluate
+        # the forward amplitude there exactly (same trap as in efficiencies).
+        forward = np.array([PI - np.deg2rad(self.angle)])
+        amp_fwd = _far_field_at(
+            forward, g.n_pts, wnum_bg, g.f, g.g, g.df, g.dg, g.delt, self.ei
+        )[0]
+        return _cross_sections(amp, amp_fwd, wnum_bg)
 
 
 class BIESolver:
