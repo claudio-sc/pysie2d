@@ -363,6 +363,62 @@ def test_one_particle_cluster_is_bit_identical_to_BIESolver(m: int, pol: int):
     assert np.array_equal(multi.eval_field(x, z), single.eval_field(x, z))
 
 
+def test_coupling_decays_at_the_two_dimensional_Green_function_rate():
+    """The coupling correction dies as `H₀⁽¹⁾(k·d) ~ d^{−1/2}` (spec §6.2).
+
+    The first-order multiple-scattering correction at one particle is
+    proportional to the *other* particle's field there, which in 2-D falls off
+    as `d^{−1/2}` — not `d^{−1}`, the 3-D rate, and not a constant. The
+    "uncoupled" reference is `Σ_p amp_p` from two entirely separate
+    `BIESolver` runs on the same `Geometry` objects, summed with **no phase
+    factor**: the geometries carry absolute coordinates, so the inter-particle
+    phase is already in each far field (spec §3.4). A test that needed a
+    hand-added phase would be reporting a bug in that convention.
+
+    **This is a slope test, not a tolerance test, on purpose.** A wrong
+    cross-block normalisation — `h_p` used where `h_q` belongs in
+    `assemble_cross_block`, a missing factor of 2, a swapped source/observer
+    particle — changes the *power* of the decay, not merely its constant. A
+    comparison at a single gap can be absorbed into the constant and pass; a
+    fitted exponent cannot.
+
+    Measured here (the §6.4 dimer, nn = 200, TE, λ = 633 nm), relative
+    deviation `max_θ|amp_coupled − Σ amp_p| / max_θ|amp_coupled|`:
+
+        gap/λ    2.7     4.5     7.5    12.5    21     35     55     75
+        dev    8.8e-2  6.9e-2  5.8e-2  4.6e-2  3.8e-2 2.9e-2 2.3e-2 2.0e-2
+
+    Full-range log-log slope −0.4465, four widest gaps −0.5211. The rate
+    approaches −1/2 *from above* as the gap grows, because the higher-order
+    terms that survive at short range bend the slope; that is why the fit uses
+    the four widest gaps only. The asserted band (−0.60, −0.40) brackets the
+    measured −0.52 with headroom while still excluding both −1 and 0, which is
+    the whole point of the check.
+    """
+    lam, nn = 633.0, 200
+    mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
+    gaps = lam * np.array([2.7, 4.5, 7.5, 12.5, 21.0, 35.0, 55.0, 75.0])
+
+    devs = []
+    for gap in gaps:
+        g0 = Geometry.gielis(180.0, nn, m=0)
+        g1 = Geometry.gielis(110.0, nn, m=0, x0=180.0 + 110.0 + gap)
+        coupled = ClusterBIESolver(Cluster([g0, g1]), mats, pol=2).scatter(
+            wavelength=lam, angle=37.0
+        )
+        amp, _ = coupled.far_field(361)
+        amp_0, _ = (
+            BIESolver(g0, mats[0]).scatter(wavelength=lam, angle=37.0).far_field(361)
+        )
+        amp_1, _ = (
+            BIESolver(g1, mats[1]).scatter(wavelength=lam, angle=37.0).far_field(361)
+        )
+        devs.append(np.max(np.abs(amp - (amp_0 + amp_1))) / np.max(np.abs(amp)))
+
+    slope = np.polyfit(np.log(gaps[-4:]), np.log(np.array(devs[-4:])), 1)[0]
+    assert -0.60 < slope < -0.40
+
+
 def _lossy_dimer_materials() -> list[Material]:
     """The §6.4 dimer's materials with particle 1 lossy, for G5."""
     return [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2, epsi=0.3)]
