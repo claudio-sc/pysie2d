@@ -195,8 +195,12 @@ def test_expansion_centre_follows_the_particle():
     k = 2.0 * np.pi * N_CLAD / WAVELENGTH
     phase = np.exp(1j * k * (x0 * np.sin(alpha_r) - z0 * np.cos(alpha_r)))
 
-    # Measured 1.419e-15 at this displacement, against coefficients of order 1.
-    np.testing.assert_allclose(moved.c, at_origin.c * phase, rtol=0, atol=3e-15)
+    # Measured 1.419e-15 on this machine at this displacement, against
+    # coefficients of order 1; CI's BLAS build measured 5.42e-15 on the same
+    # comparison (v0.8-multiparticle PR #19's first CI run) — a round-off
+    # floor that differs across LAPACK/BLAS pivoting, not a convergence order,
+    # so 1e-14 covers both with headroom rather than re-fitting to one machine.
+    np.testing.assert_allclose(moved.c, at_origin.c * phase, rtol=0, atol=1e-14)
 
 
 @pytest.mark.parametrize("s", [2.0, 7.0])
