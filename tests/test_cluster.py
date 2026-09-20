@@ -218,11 +218,11 @@ def test_resolution_imbalance_warns_and_names_the_worst_particle():
     """
     cluster = Cluster(
         [
-            # n_pts = 70, not 20: the 230 nm gap (a = 180 nm) needs n_pts >= 62
+            # n_pts = 90, not 20: the 230 nm gap (a = 180 nm) needs n_pts >= 89
             # per GAP_ENVELOPE_C, and this test isolates the resolution guard
             # from the gap guard — both firing here would leave the assertion
             # unable to tell which one it caught.
-            Geometry.gielis(180.0, 70, m=0),
+            Geometry.gielis(180.0, 90, m=0),
             Geometry.gielis(110.0, 400, m=0, x0=520.0),
         ]
     )
@@ -239,11 +239,11 @@ def test_balanced_cluster_solves_without_warning():
 
     The mirror of the test above: a guard that fires on the ordinary case is
     worse than no guard, because users learn to filter it. The resolutions are
-    96/72 rather than 80/60 so the pair also clears the gap envelope of
-    `GAP_ENVELOPE_C` (230 nm gap, a = 180 nm, 62 nodes needed) — this test
+    120/90 rather than 80/60 so the pair also clears the gap envelope of
+    `GAP_ENVELOPE_C` (230 nm gap, a = 180 nm, 89 nodes needed) — this test
     asserts silence from *every* guard, not just the resolution one.
     """
-    cluster = _dimer(96, 72)
+    cluster = _dimer(120, 90)
     mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
     solver = ClusterBIESolver(cluster, mats, pol=2)
     with warnings.catch_warnings():
@@ -259,16 +259,16 @@ def test_plane_wave_solve_returns_finite_observables_of_the_right_shape():
     Np = 1 reduction; this checks that every façade method runs on a genuine
     two-particle solution and returns the advertised sizes.
     """
-    # 64/64, not 60/50: the 230 nm gap (a = 180 nm) needs n_pts >= 62 per
+    # 96/96, not 60/50: the 230 nm gap (a = 180 nm) needs n_pts >= 89 per
     # GAP_ENVELOPE_C, and this smoke test asserts silence isn't the point here.
-    cluster = _dimer(64, 64)
+    cluster = _dimer(96, 96)
     mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
     res = ClusterBIESolver(cluster, mats, pol=2).scatter(wavelength=633.0, angle=37.0)
 
     assert res.ei.shape == (cluster.n_dof,)
     assert np.all(np.isfinite(res.ei))
-    assert res.ei_particle(0).shape == (128,)
-    assert res.ei_particle(1).shape == (128,)
+    assert res.ei_particle(0).shape == (192,)
+    assert res.ei_particle(1).shape == (192,)
 
     amp, angles = res.far_field(201)
     assert amp.shape == angles.shape == (201,)
@@ -294,7 +294,7 @@ def test_dipole_solve_returns_a_finite_solution():
     The single-particle right-hand side builder stacks verbatim under the §14
     layout, so the only thing new here is the stacking.
     """
-    cluster = _dimer(64, 64)
+    cluster = _dimer(96, 96)
     mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
     res = ClusterBIESolver(cluster, mats, pol=2).scatter_dipole(633.0, 260.0, 700.0)
 
@@ -309,7 +309,7 @@ def test_cross_sections_after_a_dipole_solve_is_rejected():
     optical theorem's forward-amplitude relation does not apply and the number
     would be meaningless rather than merely imprecise.
     """
-    cluster = _dimer(64, 64)
+    cluster = _dimer(96, 96)
     mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
     res = ClusterBIESolver(cluster, mats, pol=2).scatter_dipole(633.0, 260.0, 700.0)
     with pytest.raises(ValueError, match="incident plane wave"):
@@ -324,7 +324,7 @@ def test_dipole_source_inside_one_particle_of_a_cluster_raises():
     though it is comfortably outside particle 0. This is the test that would
     fail if a future change tried to "optimise" the per-particle guard away.
     """
-    cluster = _dimer(64, 64)
+    cluster = _dimer(96, 96)
     mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
     solver = ClusterBIESolver(cluster, mats, pol=2)
     with pytest.raises(ValueError, match="inside the particle"):

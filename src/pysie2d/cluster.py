@@ -47,15 +47,18 @@ RESOLUTION_SPREAD_WARN = 4.0
 # self-convergence in docs/design/studies/cluster-gap-envelope.md over
 # x = 1.0, 1.79, 3.5 in both polarisations: the smallest nn reaching round-off
 # is the *same* at every x and pol once gap/a <= 0.83, which is what licenses a
-# single constant, and gives nn·sqrt(gap/a) in 45-91 on a sqrt(2) nn grid. 70
-# sits in that band and over-predicts the need at every measured point by
-# 1.1-1.7x — the conservative side for a warning, and never a silent miss.
-# The price is deliberate: sqrt(a/gap) is the near-gap asymptote, so at
-# gap >~ a, where the need is set by resolving the particle rather than the
-# gap (measured C ~ 41 there), the guard warns about 1.5x early. No single
-# constant avoids both, and a warning that misses a 1e-5 error is worse than
-# one that fires early.
-GAP_ENVELOPE_C = 70.0
+# single constant. Measured nn·sqrt(gap/a) spans 41-101 on a sqrt(2) nn grid,
+# worst at the tightest gap tested (gap/a = 0.032) — the exponential-rate
+# estimate behind nn ~ C·sqrt(a/gap) is a leading-order approximation, and the
+# strict 1e-13 criterion used here needs relatively more nodes right at the
+# near-singularity than the pilot's looser read suggested. 100 covers the
+# worst measured point rather than the mid-range typical value: a guard that
+# silently under-warns exactly where degradation is worst is worse than one
+# that warns early in the common case (docs/design/studies/
+# cluster-gap-envelope.md). Validated over gap/a in [0.032, 5.06]; below that
+# range this is extrapolation, not measurement, and the guard should be
+# treated as diagnostic rather than a hard bound.
+GAP_ENVELOPE_C = 100.0
 
 
 class ClusterOverlapError(ValueError):
