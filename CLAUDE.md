@@ -211,19 +211,22 @@ particle, anchored on a two-cylinder addition-theorem reference. **Additive**
 *beside* `BIESolver`/`ScatterResult`, whose signatures do not change — the
 one API-breaking design the handoff assumed was rejected.
 
-**v0.9 — external validation for non-circular shapes.** Scoping:
-[v0.9-external-validation.md](docs/design/v0.9-external-validation.md). Every
+**v1.0 — external validation for non-circular shapes.** Scoping:
+[v1.0-external-validation.md](docs/design/v1.0-external-validation.md). Every
 anchor in the repo is circular; this is the first independent check of a Gielis
-star, against MEEP and dolfinx. Renumbered twice, from v0.7 and then from v0.8
-(spec D11), on the same rule both times — the external tools are conda-first and
-CI will never run them, so a finished additive feature is not held behind them.
+star, against MEEP and dolfinx. Renumbered three times — v0.7, then v0.8 (spec
+D11), then v0.9 — the first two on the rule that the external tools are
+conda-first and CI will never run them, so a finished additive feature is not
+held behind them; the third because the owner decided this milestone *is* the
+1.0 release, not a step before it.
 
 Multiple particles *was* the last API-breaking item and therefore a gate on
-v1.0; under D1 it is additive, so **it no longer gates v1.0**. The existing
-surface provably cannot change, which leaves **v0.9 external validation as the
-sole v1.0 gate**: a 1.0 promises a stable surface *and* answers that have been
-checked against something that is neither circular nor ours. Longer term:
-slab-waveguide backgrounds.
+v1.0; under D1 it is additive, so **it no longer gates the release by forcing a
+surface freeze**. What still gates v1.0 is external validation itself: a 1.0
+promises a stable surface *and* answers that have been checked against
+something that is neither circular nor ours, and this milestone is where that
+check happens — there is no separate v0.9 step. Longer term: slab-waveguide
+backgrounds.
 
 ## How to work here
 
