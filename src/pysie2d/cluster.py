@@ -40,6 +40,23 @@ PI = np.pi
 # fixed gap (docs/design/studies/cluster-gap-envelope.md).
 RESOLUTION_SPREAD_WARN = 4.0
 
+# Nodes needed before the near-gap integrand's analyticity strip stops being
+# resolved. For a circle of radius a, a near-singularity at distance `gap` sits
+# at conformal half-width ~ sqrt(2·gap/a), so the trapezoid rule's rate
+# exp(-nn·sqrt(2·gap/a)) fixes the form nn >= C·sqrt(a/gap). Measured by BIE
+# self-convergence in docs/design/studies/cluster-gap-envelope.md over
+# x = 1.0, 1.79, 3.5 in both polarisations: the smallest nn reaching round-off
+# is the *same* at every x and pol once gap/a <= 0.83, which is what licenses a
+# single constant, and gives nn·sqrt(gap/a) in 45-91 on a sqrt(2) nn grid. 70
+# sits in that band and over-predicts the need at every measured point by
+# 1.1-1.7x — the conservative side for a warning, and never a silent miss.
+# The price is deliberate: sqrt(a/gap) is the near-gap asymptote, so at
+# gap >~ a, where the need is set by resolving the particle rather than the
+# gap (measured C ~ 41 there), the guard warns about 1.5x early. No single
+# constant avoids both, and a warning that misses a 1e-5 error is worse than
+# one that fires early.
+GAP_ENVELOPE_C = 70.0
+
 
 class ClusterOverlapError(ValueError):
     """Two particle boundaries intersect; the formulation does not apply."""
@@ -332,8 +349,11 @@ class ClusterBIESolver:
         Warns:
             ClusterResolutionWarning: If the particles' resolutions differ by
                 more than ``RESOLUTION_SPREAD_WARN``.
+            ClusterGapWarning: If the closest gap falls below the quadrature
+                envelope of ``GAP_ENVELOPE_C``.
         """
         self._check_resolution(wavelength)
+        self._check_gap(wavelength)
         cl = self.cluster
         k_bg = self.materials[0].wnum_bg(wavelength)
         rhs = np.zeros(cl.n_dof, dtype=complex)
@@ -364,8 +384,11 @@ class ClusterBIESolver:
         Warns:
             ClusterResolutionWarning: If the particles' resolutions differ by
                 more than ``RESOLUTION_SPREAD_WARN``.
+            ClusterGapWarning: If the closest gap falls below the quadrature
+                envelope of ``GAP_ENVELOPE_C``.
         """
         self._check_resolution(wavelength)
+        self._check_gap(wavelength)
         cl = self.cluster
         k_bg = self.materials[0].wnum_bg(wavelength)
         rhs = np.zeros(cl.n_dof, dtype=complex)
@@ -378,6 +401,50 @@ class ClusterBIESolver:
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
             ei, cl, self.materials, self.pol, wavelength, 0.0, "dipole"
+        )
+
+    def _check_gap(self, wavelength: float) -> None:
+        """Warn when the closest gap is finer than the quadrature can resolve.
+
+        The cross-block integrand of two nearly touching boundaries has a
+        near-singularity a conformal half-width ~ sqrt(2·gap/a) off the real
+        axis; below ``GAP_ENVELOPE_C·sqrt(a/gap)`` nodes the trapezoid rule
+        stops resolving it and the coupled solution degrades **silently** — the
+        matrix stays well conditioned and every single-particle diagnostic
+        stays clean. It is also the backstop for the one overlap case
+        ``_check_overlap`` cannot see (a node-free lens sliver).
+
+        Args:
+            wavelength: Vacuum wavelength λ_vac in nm. Unused — the envelope is
+                a purely geometric ratio (conventions §9 scale covariance) —
+                but taken for symmetry with ``_check_resolution``.
+        """
+        cl = self.cluster
+        if len(cl) < 2:
+            return
+        gap = cl.min_gap
+        a = max(float(np.hypot(g.f - g.x0, g.g - g.z0).max()) for g in cl.geometries)
+        nn_needed = GAP_ENVELOPE_C * np.sqrt(a / gap)
+        nn_worst = min(g.n_pts for g in cl.geometries)
+        if nn_worst >= nn_needed:
+            return
+        circular = all(g.is_circle for g in cl.geometries)
+        detail = (
+            ""
+            if circular
+            else (
+                " This envelope was measured on circles and is not validated "
+                "for non-circular facing boundaries (spec D9); treat it as a "
+                "diagnostic, not a bound."
+            )
+        )
+        warnings.warn(
+            f"minimum gap {gap:.4g} nm needs about n_pts = {nn_needed:.0f} "
+            f"per particle at this configuration, but the coarsest particle "
+            f"has {nn_worst}. The cross-block quadrature degrades silently "
+            f"below the envelope.{detail}",
+            ClusterGapWarning,
+            stacklevel=3,
         )
 
     def _check_resolution(self, wavelength: float | complex) -> None:

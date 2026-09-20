@@ -17,11 +17,13 @@ from pysie2d import (
     BIESolver,
     Cluster,
     ClusterBIESolver,
+    ClusterGapWarning,
     ClusterOverlapError,
     ClusterResolutionWarning,
     Geometry,
     Material,
 )
+from pysie2d.cluster import GAP_ENVELOPE_C
 
 RAD = 100.0
 
@@ -230,9 +232,12 @@ def test_balanced_cluster_solves_without_warning():
     """Two comparably resolved particles must cost no warning at all.
 
     The mirror of the test above: a guard that fires on the ordinary case is
-    worse than no guard, because users learn to filter it.
+    worse than no guard, because users learn to filter it. The resolutions are
+    96/72 rather than 80/60 so the pair also clears the gap envelope of
+    `GAP_ENVELOPE_C` (230 nm gap, a = 180 nm, 62 nodes needed) — this test
+    asserts silence from *every* guard, not just the resolution one.
     """
-    cluster = _dimer(80, 60)
+    cluster = _dimer(96, 72)
     mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
     solver = ClusterBIESolver(cluster, mats, pol=2)
     with warnings.catch_warnings():
@@ -457,3 +462,75 @@ def test_far_field_reciprocity_on_an_asymmetric_cluster():
     )
 
     assert direct[0] == pytest.approx(reciprocal[0], rel=5e-15)
+
+
+def test_gap_comfortably_inside_the_envelope_is_silent():
+    """The envelope guard must not fire on a well-separated pair (G3).
+
+    Radii 180/110 nm with a 910 nm gap needs `n_pts = 31` by the envelope;
+    at 60 nodes each the measured far field is at round-off (1.4e-15 against
+    an `nn = 1024` truth, docs/design/studies/cluster-gap-envelope.md), so
+    *any* warning here is a guard firing for the wrong reason.
+    """
+    cluster = Cluster(
+        [
+            Geometry.gielis(180.0, 60, m=0),
+            Geometry.gielis(110.0, 60, m=0, x0=1200.0),
+        ]
+    )
+    mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
+    solver = ClusterBIESolver(cluster, mats, pol=2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        solver.scatter(wavelength=633.0, angle=37.0)
+
+
+def test_gap_below_the_envelope_warns_with_a_sufficient_n_pts():
+    """A 20 nm gap at 60 nodes is below the envelope and must say so (G3).
+
+    This is the failure mode the guard exists for: the coupled matrix stays
+    well conditioned, every single-particle diagnostic stays clean, and the
+    far field is wrong at the 1e-5 level (measured at gap/a = 0.11, nn = 64).
+    The message must name a *sufficient* resolution, so the assertion checks
+    the number against `GAP_ENVELOPE_C·sqrt(a/gap)` recomputed here rather
+    than merely checking that the warning type appeared.
+    """
+    cluster = Cluster(
+        [
+            Geometry.gielis(180.0, 60, m=0),
+            Geometry.gielis(110.0, 60, m=0, x0=310.0),
+        ]
+    )
+    mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
+    solver = ClusterBIESolver(cluster, mats, pol=2)
+    expected = GAP_ENVELOPE_C * np.sqrt(180.0 / cluster.min_gap)
+    assert expected > 60  # the premise: 60 nodes really is below the envelope
+    with pytest.warns(ClusterGapWarning) as record:
+        solver.scatter(wavelength=633.0, angle=37.0)
+    message = str(record[0].message)
+    assert f"n_pts = {expected:.0f}" in message
+    assert "has 60" in message
+    # A circular pair carries no D9 caveat; that clause belongs to case three.
+    assert "not validated" not in message
+
+
+def test_non_circular_pair_below_the_envelope_repeats_the_D9_caveat():
+    """The envelope was measured on circles only, and the warning says so.
+
+    A rounded square facing a circle has a flat facing boundary, whose
+    curvature is nowhere the circle's, so the conformal half-width
+    sqrt(2·gap/a) that fixes the envelope is not the right one. Per D9 the
+    guard still fires — a small gap is still a diagnostic — but it must tell
+    the reader the bound is not
+    validated here, or the number reads as authoritative.
+    """
+    cluster = Cluster(
+        [
+            Geometry.gielis(180.0, 60, m=0),
+            Geometry.gielis(110.0, 60, m=4, n1=8.0, n2=8.0, n3=8.0, x0=380.0),
+        ]
+    )
+    mats = [Material(2.0, 1.0, pol=2), Material(1.6, 1.0, pol=2)]
+    solver = ClusterBIESolver(cluster, mats, pol=2)
+    with pytest.warns(ClusterGapWarning, match="is not validated for"):
+        solver.scatter(wavelength=633.0, angle=37.0)
