@@ -218,3 +218,58 @@ def eval_field(
         field[j] = (1j / 4.0) * sum_h
 
     return field
+
+
+def _representation_at(
+    ei_p: np.ndarray,
+    nn: int,
+    f: np.ndarray,
+    df: np.ndarray,
+    g: np.ndarray,
+    dg: np.ndarray,
+    delt: float,
+    wnum: complex,
+    x_pts: np.ndarray,
+    z_pts: np.ndarray,
+) -> np.ndarray:
+    """BIE representation integral over one boundary, at every point.
+
+    The vectorised twin of the body of :func:`eval_field`'s point loop, with
+    the inside/outside test removed so a caller can sum it over several
+    boundaries at one wavenumber (docs/design/multiparticle-spec.md §3.5) —
+    which is what a cluster's exterior field is. Classification is the
+    caller's business here, and :class:`pysie2d.cluster.ClusterScatterResult`
+    does it with ray casting rather than the nearest-point normal.
+
+    :func:`eval_field` is deliberately **not** refactored onto this helper: its
+    point loop keeps its memory at O(nn) where this one is O(M·nn). The
+    duplication is a single four-line formula and the two are measured
+    bit-identical, which the Np = 1 cluster test asserts with
+    ``np.array_equal`` — so if they ever drift, a test fails.
+
+    Args:
+        ei_p: complex (2nn,) BIE solution vector for this boundary
+            (φ = ``ei_p[:nn]``, χ = ``ei_p[nn:]``).
+        nn: Number of boundary points.
+        f: (nn,) boundary x coordinates (nm).
+        df: (nn,) df/dt.
+        g: (nn,) boundary z coordinates (nm).
+        dg: (nn,) dg/dt.
+        delt: Trapezoid step 2π/nn in t.
+        wnum: Wavenumber to evaluate at (rad/nm) — k_bg outside the particle,
+            k_core = nc·k_bg inside it. May be complex.
+        x_pts: (M,) observation x-coordinates (nm).
+        z_pts: (M,) observation z-coordinates (nm).
+
+    Returns:
+        complex (M,) contribution of this boundary at each observation point.
+    """
+    xmf = x_pts[:, None] - f[None, :]
+    zmg = z_pts[:, None] - g[None, :]
+    arg1 = wnum * np.sqrt(xmf**2 + zmg**2)
+    arg2 = -dg[None, :] * xmf + df[None, :] * zmg
+    integrand = (
+        wnum**2 * arg2 * hank1(arg1) / arg1 * ei_p[None, :nn]
+        - hank0(arg1) * ei_p[None, nn:]
+    )
+    return (1j / 4.0) * np.sum(integrand * delt, axis=1)

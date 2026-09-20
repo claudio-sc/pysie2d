@@ -540,6 +540,47 @@ one shape class where it pays — flat-sided, near-corner shapes with
 points), and very spiky stars can fail its Newton inversion. Both limits are
 stated in its docstring; nothing in this section depends on it.
 
+## 14. The cluster degree-of-freedom layout (v0.8)
+
+A cluster of `Np` particles carries `N = 2·Σ_p nn_p` unknowns. Particle `p`
+occupies the **contiguous** slice `[o_p : o_p + 2·nn_p]`, with the offsets
+cumulative over `2·nn_q`:
+
+    o_p = Σ_{q<p} 2·nn_q                 (Cluster.offsets, Cluster.slice)
+    ei  = [φ_0, χ_0, φ_1, χ_1, …, φ_{Np−1}, χ_{Np−1}]
+
+Within one particle's slice the first `nn_p` entries are φ_p and the next
+`nn_p` are χ_p — that is §4 unchanged, applied to the sub-vector.
+
+**Contiguity is what makes every primitive reusable.** Each particle's
+`2·nn_p` sub-vector is *exactly* the argument `assemble_matrix`,
+`plane_wave_rhs`, `line_dipole_rhs`, `_far_field_at` and the representation
+integral already take, so the cluster path calls them verbatim rather than
+reimplementing them at an offset. The measurable consequence is that a
+one-particle cluster reproduces `BIESolver` **bit-identically** — matrix,
+solution vector, far field and near field — which is what
+`tests/test_cluster.py` asserts with `np.array_equal` rather than `allclose`.
+If that assertion ever degrades to "close", this layout has been changed and
+this section is no longer true; that, not the number, is what the test guards.
+
+**This section does not extend §4, and must not be read as reordering it.**
+The alternative grouping `[φ_0 … φ_{Np−1}, χ_0 … χ_{Np−1}]` — the legacy
+research code's layout, which §4 can look like it implies — needs two offset
+tables under ragged `nn_p` and leaves no block of the system matrix
+contiguous. §4 governs the layout *within* one particle; §14 governs only how
+particles concatenate. Do not "fix" one into the other.
+
+**The blocks that layout addresses.** The block at (field particle `q`, source
+particle `p`) is `2·nn_q × 2·nn_p`. The diagonal `q = p` is the single-particle
+matrix at that particle's own `nn_p`, `nc_p`, `eps_p` and the **common** `k_bg`
+— a cluster sits in one background, so `n_clad` is validated equal across the
+materials while the background-relative `nc` and `eps` (§2) may differ freely.
+The off-diagonal has M1/M2 in its upper half and **exactly zero** below:
+particle `p`'s interior Green function is confined to `p`'s own volume, so
+coupling enters only through the exterior background kernel. That argument
+needs the interior domains disjoint, which is why overlapping boundaries are
+rejected by the formulation and not merely by an implementation limit.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,
