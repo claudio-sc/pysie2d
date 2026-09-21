@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from pysie2d.geometry import gielis
 
@@ -26,9 +27,14 @@ sys.path.insert(0, str(ROOT / "validation"))
 import gielis as validation_gielis  # noqa: E402
 
 
-def test_contour_matches_the_package_exactly():
-    star = validation_gielis.STAR
-    theta, x, z = validation_gielis.contour()
+@pytest.fixture(params=sorted(validation_gielis.SHAPES))
+def shape_name(request):
+    return request.param
+
+
+def test_contour_matches_the_package_exactly(shape_name):
+    star = validation_gielis.SHAPES[shape_name]
+    theta, x, z = validation_gielis.contour(**star)
     f, g, *_ = gielis(
         theta,
         rad=star["rad"],
@@ -49,16 +55,34 @@ def test_contour_matches_the_package_exactly():
     np.testing.assert_array_equal(z, g)
 
 
-def test_committed_contour_is_what_the_module_generates():
+def test_committed_contour_is_what_the_module_generates(shape_name):
     # The drivers read the .npz, not the function. If the two ever disagree,
     # the shape that was simulated is not the shape in the repo.
-    stored = validation_gielis.load()
-    theta, x, z = validation_gielis.contour(stored["theta"].size)
+    shape = validation_gielis.SHAPES[shape_name]
+    stored = validation_gielis.load(shape_name)
+    theta, x, z = validation_gielis.contour(stored["theta"].size, **shape)
     np.testing.assert_array_equal(stored["theta"], theta)
     np.testing.assert_array_equal(stored["x"], x)
     np.testing.assert_array_equal(stored["z"], z)
-    for key, value in validation_gielis.STAR.items():
+    for key, value in shape.items():
         assert stored[key] == value
+
+
+def test_the_star_is_centrosymmetric_and_the_skew_shape_is_not():
+    # This is why there are two shapes. The incident direction is pinned to
+    # -z in both external drivers and is unobservable on a circle, so it was
+    # to be falsified on the star -- but at m = 6 a shift of θ by π shifts
+    # mθ/4 by 1.5π, exchanging the |cos|^n2 and |sin|^n3 terms, and with
+    # n2 = n3 they are the same term. Both incidence directions then give
+    # identical cross-sections (measured in dolfinx: 1.3e-12 relative on
+    # C_ext), so the check cannot fail on the frozen shape. SKEW breaks the
+    # exchange with n2 != n3 and is what the two-angle check runs on.
+    for name, expected in (("star", True), ("skew", False)):
+        _, x, z = validation_gielis.contour(**validation_gielis.SHAPES[name])
+        r = np.hypot(x, z)
+        defect = np.max(np.abs(r - np.roll(r, r.size // 2)))
+        # Round-off against tens of nm: no tolerance is being tuned here.
+        assert bool(defect < 1e-9) is expected, f"{name}: inversion defect {defect}"
 
 
 def test_the_star_is_six_fold_and_not_a_circle():

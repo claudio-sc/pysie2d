@@ -12,6 +12,7 @@ separation is deliberate.
 | path | what it is |
 |---|---|
 | `spectrum.py` | The frozen-file format: schema, writer, reader. One definition, shared by the drivers here and by `tests/test_external_validation.py`. |
+| `gielis.py` | Gate 4's star: the superformula in numpy alone, and the sampled contour both drivers read from `data/gielis-star.npz`. Neither driver may import pysie2d, so this is the one place the shape is written down; `tests/test_gielis_contour.py` asserts it equals the package's own `gielis()` bit for bit. |
 | `mie_bootstrap.py` | Freezes the repo's own analytic Mie series. **Not an external anchor** — it exists to prove the format and its consumer. |
 | `dolfinx/` | FEM frequency-domain driver. Carries the lossy cases: it represents a constant `Im ε` exactly. |
 | `meep/` | FDTD time-domain driver. Lossless only — MEEP has no frequency-independent `Im ε`, so a broadband run would make the material dispersive. |
@@ -44,6 +45,15 @@ beside them. Those environments are conda-first and are documented honestly as
 such — there is no `[project.optional-dependencies]` group for them, because an
 extras group most readers cannot install produces a skipped test that looks
 like a defect.
+
+## The incidence trap
+
+Both drivers pin the incident wave to pysie2d's `angle = 0`, travelling along
+**−z** (their own −y). On a circle that choice is unobservable: reversing it
+leaves every cross-section unchanged, so the convention has never been
+falsifiable. The six-fold star is not symmetric under the flip, so `--angle-deg
+180` — offered by both drivers, and not a production setting — makes it fail
+loudly: the two spectra must differ, and only one can match pysie2d.
 
 ## The polarisation trap
 

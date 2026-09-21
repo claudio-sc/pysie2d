@@ -45,6 +45,26 @@ STAR = {
 }
 """The frozen shape. ``n_core = 2.0``, ``n_clad = 1.0`` live with the cases."""
 
+SKEW = {**STAR, "n2": 8.0}
+"""A deliberately non-centrosymmetric shape. Not frozen, and not an anchor.
+
+It exists for one measurement. The incident direction is pinned to −z in both
+drivers and is unobservable on a circle, so the plan was to falsify it on the
+star — but the star cannot do it either: at ``m = 6`` a shift of θ by π shifts
+the superformula's argument ``mθ/4`` by 1.5π, which exchanges the ``|cos|^n2``
+and ``|sin|^n3`` terms, and with ``n2 = n3`` they are the same term. So
+``r(θ+π) = r(θ)`` to round-off (measured: 7e-13 nm) and both directions give
+the same cross-sections to 1e-12. A gate that cannot fail is the thing this
+milestone keeps finding.
+
+``n2 = 8`` breaks that exchange — the inversion defect goes to 33 nm — while
+leaving everything else about the shape alone, so the two-angle check on it
+measures the incidence convention and nothing else. The frozen anchor stays
+the README star, which is the shape ``examples/`` draws.
+"""
+
+SHAPES = {"star": STAR, "skew": SKEW}
+
 N_CONTOUR = 1440
 """Contour samples handed to gmsh and to MEEP.
 
@@ -88,9 +108,13 @@ def contour(
     return theta, r * np.sin(theta), r * np.cos(theta)
 
 
-def load() -> dict[str, np.ndarray]:
-    """Read the committed contour. The drivers call this and nothing else."""
-    with np.load(DATA / "gielis-star.npz") as d:
+def load(shape: str = "star") -> dict[str, np.ndarray]:
+    """Read one committed contour. The drivers call this and nothing else.
+
+    Args:
+        shape: ``star`` (the frozen anchor) or ``skew`` (the direction check).
+    """
+    with np.load(DATA / f"gielis-{shape}.npz") as d:
         return {k: d[k] for k in d.files}
 
 
@@ -100,12 +124,20 @@ def main() -> None:
     parser.add_argument("--n-pts", type=int, default=N_CONTOUR)
     args = parser.parse_args()
 
-    theta, x, z = contour(args.n_pts)
     DATA.mkdir(exist_ok=True)
-    out = DATA / "gielis-star.npz"
-    np.savez(out, theta=theta, x=x, z=z, **{k: np.asarray(v) for k, v in STAR.items()})
-    r = np.hypot(x, z)
-    print(f"{out}: {theta.size} points, r ∈ [{r.min():.3f}, {r.max():.3f}] nm")
+    for name, shape in SHAPES.items():
+        theta, x, z = contour(args.n_pts, **shape)
+        out = DATA / f"gielis-{name}.npz"
+        np.savez(
+            out, theta=theta, x=x, z=z, **{k: np.asarray(v) for k, v in shape.items()}
+        )
+        r = np.hypot(x, z)
+        defect = np.max(np.abs(r - np.roll(r, r.size // 2)))
+        print(
+            f"{out.name}: {theta.size} points, "
+            f"r ∈ [{r.min():.3f}, {r.max():.3f}] nm, "
+            f"inversion defect {defect:.3g} nm"
+        )
 
 
 if __name__ == "__main__":

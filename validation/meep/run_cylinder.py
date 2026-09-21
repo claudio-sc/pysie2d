@@ -264,7 +264,7 @@ def _particle() -> list:
     material = mp.Medium(index=N_CORE)
     if SHAPE == "circle":
         return [mp.Cylinder(radius=RAD, material=material, height=mp.inf)]
-    star = gielis.load()
+    star = gielis.load(SHAPE)
     vertices = [
         mp.Vector3(float(x) / NM_PER_A, float(z) / NM_PER_A)
         for x, z in zip(star["x"], star["z"], strict=True)
@@ -486,7 +486,7 @@ def _geometry_block() -> dict[str, float]:
     """
     if SHAPE == "circle":
         return {"rad": RAD_NM, "m": 0, "n1": 2.0, "n2": 2.0, "n3": 2.0, "n_pts": 200}
-    star = gielis.STAR
+    star = gielis.SHAPES[SHAPE]
     return {
         "rad": star["rad"],
         "m": star["m"],
@@ -531,7 +531,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="MEEP external-validation driver")
     parser.add_argument("--case", choices=sorted(CASES), default="te")
-    parser.add_argument("--shape", choices=("circle", "star"), default=SHAPE)
+    parser.add_argument("--shape", choices=("circle", "star", "skew"), default=SHAPE)
     parser.add_argument(
         "--angle-deg",
         type=float,
@@ -560,8 +560,8 @@ def main() -> None:
     args = parser.parse_args()
 
     SHAPE, ANGLE_DEG = args.shape, args.angle_deg
-    if SHAPE == "star":
-        star = gielis.load()
+    if SHAPE != "circle":
+        star = gielis.load(SHAPE)
         R_ENCLOSE = float(np.max(np.hypot(star["x"], star["z"]))) / NM_PER_A
         R_FLUX, R_N2F = 4.0 * R_ENCLOSE, 5.0 * R_ENCLOSE
     RESOLUTION = args.resolution

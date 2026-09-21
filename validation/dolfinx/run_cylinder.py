@@ -167,7 +167,7 @@ def _particle_surface() -> int:
     if SHAPE == "circle":
         return gmsh.model.occ.addDisk(0, 0, 0, RAD, RAD)
 
-    star = gielis.load()
+    star = gielis.load(SHAPE)
     pts = [
         gmsh.model.occ.addPoint(float(x), float(z), 0.0)
         for x, z in zip(star["x"], star["z"], strict=True)
@@ -620,7 +620,7 @@ def _geometry_block() -> dict[str, float]:
     """
     if SHAPE == "circle":
         return {"rad": RAD, "m": 0, "n1": 2.0, "n2": 2.0, "n3": 2.0, "n_pts": 200}
-    star = gielis.STAR
+    star = gielis.SHAPES[SHAPE]
     return {
         "rad": star["rad"],
         "m": star["m"],
@@ -694,7 +694,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="dolfinx external-validation driver")
     parser.add_argument("--cases", default="lossless-te,lossless-tm,lossy-te,lossy-tm")
-    parser.add_argument("--shape", choices=("circle", "star"), default=SHAPE)
+    parser.add_argument("--shape", choices=("circle", "star", "skew"), default=SHAPE)
     parser.add_argument(
         "--angle-deg",
         type=float,
@@ -723,13 +723,13 @@ def main() -> None:
     args = parser.parse_args()
 
     SHAPE, ANGLE_DEG = args.shape, args.angle_deg
-    if SHAPE == "star":
+    if SHAPE != "circle":
         # The domain scales with the particle's enclosing radius, so the star
         # is meshed over a domain 1.78x wider in each direction than the
         # circle at the same multipliers — roughly 3x the cells at fixed
         # h_outer. Sized here rather than passed in, so the two shapes cannot
         # silently be compared across different contour placements.
-        star = gielis.load()
+        star = gielis.load(SHAPE)
         R_ENCLOSE = float(np.max(np.hypot(star["x"], star["z"])))
         R_MEAS, R_PHYS, R_PML = (m * R_ENCLOSE for m in (3.0, 4.0, 6.0))
     H_PARTICLE, H_OUTER = args.h_particle, args.h_outer
