@@ -51,6 +51,11 @@ independent flux integral on the physical/PML interface. Computing all three
 rather than deriving one from the other two is deliberate: the residual
 ``C_ext − C_sca − C_abs`` is then a free consistency check that a compensating
 sign error cannot survive.
+
+That residual is also this driver's **null test**. The lossless ``C_abs`` is
+not: its integrand carries ``Im(ε)``, identically zero for a real material, so
+it reads exact zero whatever the solve did. The residual pairs two volume
+integrals against one flux integral over a different region and can fail.
 """
 
 from __future__ import annotations
@@ -312,7 +317,11 @@ def solve_one(
     u_t = u_s + u_inc
 
     # --- C_abs: volumetric Joule loss inside the particle, normalised by the
-    # incident intensity. Exactly zero for real ε, which is the null test.
+    # incident intensity. For a real ε this integrand carries Im(ε) ≡ 0, so it
+    # returns exact zero *by construction* — it is not the null test here and
+    # cannot fail. The dolfinx null test is the optical-theorem residual below
+    # (design §5 gate 3); MEEP's C_abs is a flux tally that knows nothing about
+    # the material, and there the zero reading is genuine evidence.
     if pol == 2:
         abs_form = (k0 / n_clad) * ufl.imag(eps) * ufl.inner(u_t, u_t)
     else:
@@ -517,7 +526,10 @@ def _freeze(case_key: str, res: dict[str, np.ndarray]) -> Path:
             f"(C_ext − C_sca − C_abs)/C_ext over the grid: "
             f"{np.max(np.abs(res['residual'])):.2e}. The three are "
             "computed independently — two volume integrals and one flux "
-            "integral — so this residual is evidence, not an identity."
+            "integral — so this residual is evidence, not an identity. It is "
+            "also this tool's null test: a lossless C_abs is exactly zero by "
+            "construction here (its integrand carries Im(ε) ≡ 0) and cannot "
+            "fail, so absorption-free-ness is asserted through the residual."
         ),
     )
     return write(spec, DATA / f"{case_id}.json")

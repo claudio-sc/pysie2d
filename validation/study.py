@@ -73,13 +73,17 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "validation" / "_study"
 CONDA = Path.home() / "miniforge3" / "bin" / "conda"
 
-WORKERS = 3
+WORKERS = 1
 """Concurrent jobs.
 
-The machine has four performance cores and one is deliberately left free, so
-the box stays usable while a batch runs. Both conda builds are single-process
-(``nompi`` for MEEP, and the dolfinx driver is run on one rank), so
-concurrency here is whole jobs, not threads inside one.
+Both conda builds are single-process (``nompi`` for MEEP, and the dolfinx
+driver is run on one rank), so concurrency here is whole jobs, not threads
+inside one. Three workers on this four-performance-core machine bought far
+less than 3×: every job in the first batch overran its single-process
+measurement by 2–5×, because MUMPS LU and Yee stepping are both
+memory-bandwidth-bound and share one bus. One worker keeps each job's wall
+time equal to its measured cost, which is what makes the estimates mean
+something, and leaves the machine usable.
 """
 
 ALL_CASES = ("lossless-te", "lossless-tm", "lossy-te", "lossy-tm")
@@ -106,7 +110,14 @@ class Job:
     cases: tuple[str, ...] = ()
     cost: float = 1.0
     """Wall-time estimate in units of a resolution-25 MEEP TE run (~140 s),
-    measured not guessed — see ``--dry-run``."""
+    measured not guessed — see ``--dry-run``.
+
+    **These are single-process measurements**, taken one job at a time. Both
+    workloads are memory-bandwidth-bound — MUMPS LU and Yee stepping — so
+    running ``WORKERS`` of them does not divide the wall time by ``WORKERS``:
+    the first batch overran its concurrent estimate by 2–5× per job. Treat the
+    serial total as the honest number and the concurrent one as a floor.
+    """
 
     @property
     def outputs(self) -> list[Path]:
@@ -317,7 +328,7 @@ MEEP_JOBS = [
 JOBS = {"dolfinx": DOLFINX_JOBS, "meep": MEEP_JOBS}
 
 COST_UNIT_S = 142.0
-"""Seconds in one cost unit — the measured resolution-25 MEEP TE run."""
+"""Seconds in one cost unit — the resolution-25 MEEP TE run measured alone."""
 
 
 # --- comparisons -----------------------------------------------------------
@@ -428,10 +439,16 @@ def estimate(jobs: list[Job]) -> None:
         )
     print(
         f"\n{len(jobs)} jobs, {total * COST_UNIT_S / 3600:.1f} h serial "
-        f"({todo * COST_UNIT_S / 3600:.1f} h remaining), "
-        f"≈ {todo * COST_UNIT_S / 3600 / WORKERS * 1.3:.1f} h at {WORKERS} workers"
+        f"({todo * COST_UNIT_S / 3600:.1f} h remaining, single-process)"
     )
-    print("(· = already complete. The 1.3 allows for uneven job lengths.)")
+    if WORKERS > 1:
+        print(
+            f"At {WORKERS} workers expect no better than "
+            f"{todo * COST_UNIT_S / 3600 / WORKERS:.1f} h and plausibly the "
+            "serial figure: both workloads are memory-bandwidth-bound, and "
+            "the first batch overran per job by 2–5×."
+        )
+    print("(· = already complete. Every 'est' above is a serial measurement.)")
 
 
 def _load(tool: str, name: str, case: str) -> dict | None:
@@ -467,6 +484,38 @@ def _drift(coarse: dict, fine: dict, key: str) -> float:
     return float(np.max(np.abs(a - b)) / scale)
 
 
+def _nulls(tool: str) -> None:
+    """Report gate 3's null test for every result on disk, per tool.
+
+    The two tools need *different* quantities, and using the same one for both
+    is how this gate came to pass vacuously. dolfinx's ``C_abs`` is a volume
+    integral carrying ``Im(ε)``: at ``epsi = 0`` it is exactly zero by
+    construction, so printing it says nothing that a broken solve could
+    contradict. Its null test is the optical-theorem residual — two volume
+    integrals against one flux integral over a different region — which is
+    reported for every case, lossy included, because it is not a lossless
+    identity. MEEP's ``C_abs`` is a flux tally that never sees the material,
+    so there the zero reading *is* the evidence; it is absolute (nm) and not
+    relative, because the quantity under test is zero.
+    """
+    per_tool = (("dolfinx", "residual", "rel"), ("meep", "c_abs", "nm"))
+    for which, quantity, unit in per_tool:
+        if tool not in ("all", which):
+            continue
+        for path in sorted((OUT / which).glob("*.npz")):
+            with np.load(path) as d:
+                if quantity not in d.files:
+                    continue
+                worst = float(np.max(np.abs(d[quantity])))
+            print(f"{which:8s} {path.stem:26s} worst |{quantity}| = {worst:.2e} {unit}")
+    print(
+        "\nNull test, gate 3. dolfinx: the optical-theorem residual, because a\n"
+        "lossless C_abs there is exact zero by construction and cannot fail.\n"
+        "MEEP: C_abs itself, in nm — an independent flux tally that never\n"
+        "reads the material, so a non-zero value is a real defect.\n"
+    )
+
+
 def analyse(tool: str) -> None:
     """Report every comparison that has both its levels on disk."""
     for which, coarse, fine, what in COMPARISONS:
@@ -491,6 +540,8 @@ def analyse(tool: str) -> None:
         "PML or truncation drift larger than the mesh drift\nmeans the mesh "
         "ladder found a floor that was never the limiting error."
     )
+    print()
+    _nulls(tool)
 
 
 def main() -> None:
