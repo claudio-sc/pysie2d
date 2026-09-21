@@ -358,7 +358,8 @@ def run_scattering(component, freqs: list[float], flux_data, n2f_data, intensity
     """Run with the particle, subtracting the saved incident fields.
 
     Returns:
-        dict of arrays ``c_sca``, ``c_abs``, ``c_ext``, ``c_sca_far`` — all in
+        dict of arrays ``c_sca``, ``c_abs``, ``c_ext``, ``c_sca_far`` and the
+        angular pattern ``far_pattern``/``far_angles`` — cross-sections in
         units of a.
     """
     half, size = _cell()
@@ -391,16 +392,23 @@ def run_scattering(component, freqs: list[float], flux_data, n2f_data, intensity
     # for a real ε it is zero, and how close to zero is the gate-3 null test.
     absorbed = -sum(np.asarray(mp.get_fluxes(b)) for b in total_boxes)
 
-    far = _far_field_power(sim, n2f, freqs)
+    far, pattern = _far_field_power(sim, n2f, freqs)
     return {
         "c_sca": scattered / intensity,
         "c_abs": absorbed / intensity,
         "c_ext": (scattered + absorbed) / intensity,
         "c_sca_far": far / intensity,
+        # dC_sca/dφ, on the N_FAR angles of _far_field_power. Normalised the
+        # same way as the integrated cross-sections, so it is a differential
+        # cross-section in units of a per radian and not a bare flux.
+        "far_pattern": pattern / intensity,
+        "far_angles": 2 * np.pi * np.arange(N_FAR) / N_FAR,
     }
 
 
-def _far_field_power(sim: mp.Simulation, n2f, freqs: list[float]) -> np.ndarray:
+def _far_field_power(
+    sim: mp.Simulation, n2f, freqs: list[float]
+) -> tuple[np.ndarray, np.ndarray]:
     """Radiated power from the near-to-far transform, integrated on a circle.
 
     This is the independent second path to ``C_sca``: a surface-equivalence
@@ -411,10 +419,21 @@ def _far_field_power(sim: mp.Simulation, n2f, freqs: list[float]) -> np.ndarray:
     The contour is closed and periodic, so the trapezoid rule on N_FAR equally
     spaced angles converges spectrally — no quadrature error at this sample
     count.
+
+    The per-angle integrand is returned alongside the integral, because the
+    *pattern* is the only observable in this milestone that can see the
+    incident direction at all: every total cross-section is direction-
+    invariant by reciprocity (``validation/gielis.py``, SKEW), so integrating
+    it away is integrating away the one check that can fail.
+
+    Returns:
+        ``(power, pattern)`` — the integral over angle (n_freq,), and the
+        radial Poynting flux per unit angle (N_FAR, n_freq).
     """
     phi = 2 * np.pi * np.arange(N_FAR) / N_FAR
     power = np.zeros(len(freqs))
-    for angle in phi:
+    pattern = np.zeros((N_FAR, len(freqs)))
+    for i, angle in enumerate(phi):
         pt = mp.Vector3(R_FAR * np.cos(angle), R_FAR * np.sin(angle))
         ff = sim.get_farfields(n2f, 1, center=pt, size=mp.Vector3())
         ex, ey, ez = ff["Ex"], ff["Ey"], ff["Ez"]
@@ -427,8 +446,9 @@ def _far_field_power(sim: mp.Simulation, n2f, freqs: list[float]) -> np.ndarray:
         # so nothing about the spectrum's *shape* looks wrong.
         s_x = np.real(ey * np.conj(hz) - ez * np.conj(hy))
         s_y = np.real(ez * np.conj(hx) - ex * np.conj(hz))
-        power += (s_x * np.cos(angle) + s_y * np.sin(angle)) * R_FAR
-    return power * (2 * np.pi / N_FAR)
+        pattern[i] = (s_x * np.cos(angle) + s_y * np.sin(angle)) * R_FAR
+        power += pattern[i]
+    return power * (2 * np.pi / N_FAR), pattern
 
 
 def run_case(case: str) -> dict[str, np.ndarray]:
