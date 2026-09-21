@@ -102,6 +102,17 @@ NM_PER_A = 100.0
 # files use, so gate 1 is a diff against a file already in the repo.
 RAD_NM = 200.0
 N_CORE = 1.5
+"""Core index. The circle fixture's, and **not** the star's.
+
+The gate-4 star is ``n_core = 2.0`` — the shape and the material that
+``examples/nearfield_map.py`` and ``examples/purcell_map.py`` draw, so the
+figure a visitor sees and the geometry that carries the claim are one case.
+``--shape star`` switches it; ``--n-core`` overrides both. It is a harder case
+for both tools than the circle, not merely a different one: the contrast is
+larger, so the field inside the particle varies on a shorter length.
+"""
+
+N_CORE_STAR = 2.0
 N_CLAD = 1.0
 WAVELENGTHS = np.linspace(400.0, 900.0, 51)
 
@@ -527,11 +538,12 @@ def main() -> None:
     ``validation/study.py`` does.
     """
     global RESOLUTION, DPML, R_FLUX, R_N2F, DFT_DECAY, GRID
-    global SHAPE, ANGLE_DEG, R_ENCLOSE
+    global SHAPE, ANGLE_DEG, R_ENCLOSE, N_CORE
 
     parser = argparse.ArgumentParser(description="MEEP external-validation driver")
     parser.add_argument("--case", choices=sorted(CASES), default="te")
     parser.add_argument("--shape", choices=("circle", "star", "skew"), default=SHAPE)
+    parser.add_argument("--n-core", type=float, default=None)
     parser.add_argument(
         "--angle-deg",
         type=float,
@@ -560,6 +572,9 @@ def main() -> None:
     args = parser.parse_args()
 
     SHAPE, ANGLE_DEG = args.shape, args.angle_deg
+    N_CORE = N_CORE if SHAPE == "circle" else N_CORE_STAR
+    if args.n_core is not None:
+        N_CORE = args.n_core
     if SHAPE != "circle":
         star = gielis.load(SHAPE)
         R_ENCLOSE = float(np.max(np.hypot(star["x"], star["z"]))) / NM_PER_A

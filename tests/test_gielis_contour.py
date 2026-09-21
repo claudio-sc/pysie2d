@@ -69,14 +69,14 @@ def test_committed_contour_is_what_the_module_generates(shape_name):
 
 
 def test_the_star_is_centrosymmetric_and_the_skew_shape_is_not():
-    # This is why there are two shapes. The incident direction is pinned to
-    # -z in both external drivers and is unobservable on a circle, so it was
-    # to be falsified on the star -- but at m = 6 a shift of θ by π shifts
+    # This is why there are two shapes. At m = 6 a shift of θ by π shifts
     # mθ/4 by 1.5π, exchanging the |cos|^n2 and |sin|^n3 terms, and with
-    # n2 = n3 they are the same term. Both incidence directions then give
-    # identical cross-sections (measured in dolfinx: 1.3e-12 relative on
-    # C_ext), so the check cannot fail on the frozen shape. SKEW breaks the
-    # exchange with n2 != n3 and is what the two-angle check runs on.
+    # n2 = n3 they are the same term -- so the frozen star is centrosymmetric
+    # and SKEW, at n2 != n3, is not. The asymmetry is asserted here because
+    # the direction check depends on the shape actually being asymmetric;
+    # what that check then showed is that asymmetry is not enough, since
+    # reciprocity makes every total cross-section direction-invariant
+    # (validation/gielis.py, SKEW).
     for name, expected in (("star", True), ("skew", False)):
         _, x, z = validation_gielis.contour(**validation_gielis.SHAPES[name])
         r = np.hypot(x, z)

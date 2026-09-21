@@ -86,6 +86,17 @@ DATA = ROOT / "tests" / "data"
 # frozen Mie files use, so gate 1 is a diff against a file already in the repo.
 RAD = 200.0
 N_CORE = 1.5
+"""Core index. The circle fixture's, and **not** the star's.
+
+The gate-4 star is ``n_core = 2.0`` — the shape and the material that
+``examples/nearfield_map.py`` and ``examples/purcell_map.py`` draw, so the
+figure a visitor sees and the geometry that carries the claim are one case.
+``--shape star`` switches it; ``--n-core`` overrides both. It is a harder case
+for both tools than the circle, not merely a different one: the contrast is
+larger, so the field inside the particle varies on a shorter length.
+"""
+
+N_CORE_STAR = 2.0
 WAVELENGTHS = np.linspace(400.0, 900.0, 51)
 
 ANGLE_DEG = 0.0
@@ -690,11 +701,12 @@ def main() -> None:
     """
     global H_PARTICLE, H_OUTER, DEGREE, GEOM_ORDER, GRID
     global PML_ORDER, PML_REFLECTION, R_MEAS, R_PHYS, R_PML
-    global SHAPE, ANGLE_DEG, R_ENCLOSE
+    global SHAPE, ANGLE_DEG, R_ENCLOSE, N_CORE
 
     parser = argparse.ArgumentParser(description="dolfinx external-validation driver")
     parser.add_argument("--cases", default="lossless-te,lossless-tm,lossy-te,lossy-tm")
     parser.add_argument("--shape", choices=("circle", "star", "skew"), default=SHAPE)
+    parser.add_argument("--n-core", type=float, default=None)
     parser.add_argument(
         "--angle-deg",
         type=float,
@@ -723,6 +735,9 @@ def main() -> None:
     args = parser.parse_args()
 
     SHAPE, ANGLE_DEG = args.shape, args.angle_deg
+    N_CORE = N_CORE if SHAPE == "circle" else N_CORE_STAR
+    if args.n_core is not None:
+        N_CORE = args.n_core
     if SHAPE != "circle":
         # The domain scales with the particle's enclosing radius, so the star
         # is meshed over a domain 1.78x wider in each direction than the

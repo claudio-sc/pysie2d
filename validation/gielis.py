@@ -48,19 +48,22 @@ STAR = {
 SKEW = {**STAR, "n2": 8.0}
 """A deliberately non-centrosymmetric shape. Not frozen, and not an anchor.
 
-It exists for one measurement. The incident direction is pinned to −z in both
-drivers and is unobservable on a circle, so the plan was to falsify it on the
-star — but the star cannot do it either: at ``m = 6`` a shift of θ by π shifts
-the superformula's argument ``mθ/4`` by 1.5π, which exchanges the ``|cos|^n2``
-and ``|sin|^n3`` terms, and with ``n2 = n3`` they are the same term. So
-``r(θ+π) = r(θ)`` to round-off (measured: 7e-13 nm) and both directions give
-the same cross-sections to 1e-12. A gate that cannot fail is the thing this
-milestone keeps finding.
+It exists to hold one measurement, and the measurement came out the other way.
+The incident direction is pinned to −z in both drivers and is unobservable on
+a circle, so the plan was to falsify it on the star. The star cannot: at
+``m = 6`` a shift of θ by π shifts the superformula's argument ``mθ/4`` by
+1.5π, exchanging the ``|cos|^n2`` and ``|sin|^n3`` terms, and with ``n2 = n3``
+they are the same term, so ``r(θ+π) = r(θ)`` to 7e-13 nm. ``n2 = 8`` breaks
+that exchange and lifts the inversion defect to 33 nm.
 
-``n2 = 8`` breaks that exchange — the inversion defect goes to 33 nm — while
-leaving everything else about the shape alone, so the two-angle check on it
-measures the incidence convention and nothing else. The frozen anchor stays
-the README star, which is the shape ``examples/`` draws.
+**It changed nothing.** Reversing the incidence on the skew shape moves
+``C_ext`` by 3e-13 in dolfinx and 2.5e-05 in MEEP — its own noise — exactly as
+on the star. The cause is not the geometry but reciprocity: the forward
+scattering amplitude for ``k̂`` equals the one for ``−k̂`` for any reciprocal
+scatterer, so ``C_ext`` is direction-invariant whatever the shape, and
+losslessness carries ``C_sca`` with it. No total cross-section can pin this
+convention. The check that can is the far-field *pattern*, which is what the
+skew shape is now kept for.
 """
 
 SHAPES = {"star": STAR, "skew": SKEW}
