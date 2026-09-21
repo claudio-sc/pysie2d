@@ -90,6 +90,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "validation"))
 
+import gielis  # noqa: E402
 from spectrum import Convergence, Spectrum, Tolerance, write  # noqa: E402
 
 DATA = ROOT / "tests" / "data"
@@ -106,11 +107,27 @@ WAVELENGTHS = np.linspace(400.0, 900.0, 51)
 
 RAD = RAD_NM / NM_PER_A
 
+SHAPE = "circle"
+"""Which particle is placed. ``star`` is gate 4's Gielis shape."""
+
+ANGLE_DEG = 0.0
+"""Incidence direction in pysie2d's convention. Only 0 and 180 are offered."""
+
+R_ENCLOSE = RAD
+"""Radius of the smallest disc containing the particle (units of a).
+
+The box radii below are multiples of *this*, not of ``rad``: the star's
+``rad = 200 nm`` is its minimum radius and its lobes reach 356 nm, so keeping
+the multipliers on ``rad`` would put the flux contour at 1.7 particle radii,
+inside the evanescent skirt the ``box`` isolation group measured. Equal to
+``RAD`` on the circle, so gate 1 and gate 2 are untouched.
+"""
+
 # Domain layout, in units of a. The flux box has to clear the evanescent skirt
 # of the particle, and the near-to-far surface has to sit outside the flux box
 # so the two observables do not read the same fields off the same cells.
-R_FLUX = 4.0 * RAD
-R_N2F = 5.0 * RAD
+R_FLUX = 4.0 * R_ENCLOSE
+R_N2F = 5.0 * R_ENCLOSE
 PAD = 2.0
 DPML = 5.0  # ≈ 0.55 λ_max; a PML thinner than half a wavelength reflects.
 
@@ -202,13 +219,18 @@ def _cell() -> tuple[float, mp.Vector3]:
 
 
 def _source(component, half: float) -> list[mp.Source]:
-    """A plane wave sheet propagating along −y.
+    """A plane wave sheet propagating along −y (pysie2d's ``angle = 0``).
 
     The sheet spans the full cell width, corners included, so it has to be
     ``is_integrated`` — otherwise its ends sit inside the PML as unterminated
     current filaments and radiate spuriously. Placed at the inner PML edge, so
     the half of its radiation that goes the wrong way (+y) is absorbed within a
     wavelength and never reaches the particle.
+
+    ``ANGLE_DEG = 180`` moves the sheet to the opposite edge, so the wave runs
+    +y. That is gate 4's direction check, not a production setting: on a
+    circle the two give identical cross-sections, so the −y convention is
+    unfalsifiable there, while the six-fold star is not symmetric under it.
     """
     fcen = 0.5 * (NM_PER_A / WAVELENGTHS[0] + NM_PER_A / WAVELENGTHS[-1])
     df = 1.5 * (NM_PER_A / WAVELENGTHS[0] - NM_PER_A / WAVELENGTHS[-1])
@@ -216,10 +238,38 @@ def _source(component, half: float) -> list[mp.Source]:
         mp.Source(
             mp.GaussianSource(fcen, fwidth=df, is_integrated=True),
             component=component,
-            center=mp.Vector3(0, half - DPML),
+            center=mp.Vector3(0, _incidence_sign() * (half - DPML)),
             size=mp.Vector3(2 * half, 0),
         )
     ]
+
+
+def _incidence_sign() -> float:
+    """+1 for the pinned −y wave, −1 for the reversed one."""
+    return 1.0 if ANGLE_DEG == 0.0 else -1.0
+
+
+def _particle() -> list:
+    """The scatterer, as MEEP geometry.
+
+    The star is a prism through the committed contour (``validation/gielis.py``)
+    — a polygon, because MEEP has no spline: the Yee grid resolves the boundary
+    by subpixel averaging over straight segments in any case, and at 1440
+    vertices the chord error (~0.1 nm) is far below one grid cell at the
+    resolutions the study reaches (2 nm at res 50).
+
+    MEEP's invariant axis is z and pysie2d's is y, so this driver's ``(x, y)``
+    is pysie2d's ``(x, z)`` — the same swap the polarisation mapping records.
+    """
+    material = mp.Medium(index=N_CORE)
+    if SHAPE == "circle":
+        return [mp.Cylinder(radius=RAD, material=material, height=mp.inf)]
+    star = gielis.load()
+    vertices = [
+        mp.Vector3(float(x) / NM_PER_A, float(z) / NM_PER_A)
+        for x, z in zip(star["x"], star["z"], strict=True)
+    ]
+    return [mp.Prism(vertices, height=mp.inf, material=material)]
 
 
 def _flux_box(sim: mp.Simulation, freqs: list[float], r: float):
@@ -277,11 +327,15 @@ def run_normalisation(component, freqs: list[float]):
     n2f = _n2f_box(sim, freqs, R_N2F)
     sim.run(until_after_sources=mp.stop_when_dft_decayed(tol=DFT_DECAY))
 
-    # The wave travels −y, so it enters through the +y face. That face's flux
-    # is negative (power flowing in), and dividing by its length turns the
+    # The wave enters through the face it is aimed at — +y for the pinned −y
+    # wave, −y when the direction check reverses it. That face's flux is
+    # negative (power flowing in), and dividing by its length turns the
     # incident power into the intensity every cross-section is normalised by:
     # C = P/I then carries units of length, as a 2-D cross-section must.
-    incident = np.abs(np.asarray(mp.get_fluxes(boxes[2])))
+    # Reading the wrong face here would normalise by an outgoing flux that is
+    # near zero in the background run, so it fails loudly rather than subtly.
+    entry = 2 if ANGLE_DEG == 0.0 else 3
+    incident = np.abs(np.asarray(mp.get_fluxes(boxes[entry])))
     intensity = incident / (2 * R_FLUX)
 
     flux_data = [sim.get_flux_data(b) for b in boxes]
@@ -297,9 +351,7 @@ def run_scattering(component, freqs: list[float], flux_data, n2f_data, intensity
         units of a.
     """
     half, size = _cell()
-    particle = [
-        mp.Cylinder(radius=RAD, material=mp.Medium(index=N_CORE), height=mp.inf)
-    ]
+    particle = _particle()
     sim = mp.Simulation(
         cell_size=size,
         boundary_layers=[mp.PML(DPML)],
@@ -379,7 +431,7 @@ def run_case(case: str) -> dict[str, np.ndarray]:
 def freeze(case: str, res: dict[str, np.ndarray]) -> Path:
     """Write one frozen spectrum, converting cross-sections to nm."""
     pol, _component = CASES[case]
-    case_id = f"meep-circle-lossless-{case}"
+    case_id = f"meep-{SHAPE}-lossless-{case}"
     far_dev = np.max(np.abs(res["c_sca_far"] - res["c_sca"]) / np.abs(res["c_sca"]))
     spec = Spectrum(
         case_id=case_id,
@@ -390,11 +442,11 @@ def freeze(case: str, res: dict[str, np.ndarray]) -> Path:
             "the boundary-integral method."
         ),
         tool={"name": "meep", "version": mp.__version__},
-        geometry={"rad": RAD_NM, "m": 0, "n1": 2.0, "n2": 2.0, "n3": 2.0, "n_pts": 200},
+        geometry=_geometry_block(),
         material={"n_core": N_CORE, "n_clad": N_CLAD, "epsi": 0.0},
         pol=pol,
         pol_mapping=POL_MAPPING[pol],
-        angle_deg=0.0,
+        angle_deg=ANGLE_DEG,
         wavelength_nm=GRID,
         c_sca_nm=res["c_sca"] * NM_PER_A,
         c_ext_nm=res["c_ext"] * NM_PER_A,
@@ -423,6 +475,28 @@ def freeze(case: str, res: dict[str, np.ndarray]) -> Path:
     return write(spec, DATA / f"{case_id}.json")
 
 
+def _geometry_block() -> dict[str, float]:
+    """The shape, in the form the frozen file and the repo-side test read it.
+
+    ``n_pts`` is pysie2d's boundary discretisation, not this driver's contour
+    sampling: the test rebuilds the particle from these five numbers and
+    solves with the package, so what is recorded has to be what pysie2d needs
+    to reproduce the same *curve*. The two codes agree on the curve, not on
+    how either of them samples it.
+    """
+    if SHAPE == "circle":
+        return {"rad": RAD_NM, "m": 0, "n1": 2.0, "n2": 2.0, "n3": 2.0, "n_pts": 200}
+    star = gielis.STAR
+    return {
+        "rad": star["rad"],
+        "m": star["m"],
+        "n1": star["n1"],
+        "n2": star["n2"],
+        "n3": star["n3"],
+        "n_pts": 400,
+    }
+
+
 def _knobs() -> dict[str, float | int]:
     """Every setting a result depends on, for the record written beside it.
 
@@ -431,6 +505,8 @@ def _knobs() -> dict[str, float | int]:
     self-describing in the same way a frozen spectrum is.
     """
     return {
+        "shape": SHAPE,
+        "angle_deg": ANGLE_DEG,
         "resolution": RESOLUTION,
         "dpml": DPML,
         "r_flux": R_FLUX,
@@ -450,10 +526,19 @@ def main() -> None:
     parallelism available is running jobs as separate processes, which is what
     ``validation/study.py`` does.
     """
-    global RESOLUTION, DPML, R_FLUX, DFT_DECAY, GRID
+    global RESOLUTION, DPML, R_FLUX, R_N2F, DFT_DECAY, GRID
+    global SHAPE, ANGLE_DEG, R_ENCLOSE
 
     parser = argparse.ArgumentParser(description="MEEP external-validation driver")
     parser.add_argument("--case", choices=sorted(CASES), default="te")
+    parser.add_argument("--shape", choices=("circle", "star"), default=SHAPE)
+    parser.add_argument(
+        "--angle-deg",
+        type=float,
+        choices=(0.0, 180.0),
+        default=0.0,
+        help="incidence direction; 180 is gate 4's direction check, not production",
+    )
     parser.add_argument(
         "--resolution", type=int, default=RESOLUTION, help="pixels per 100 nm"
     )
@@ -474,11 +559,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    SHAPE, ANGLE_DEG = args.shape, args.angle_deg
+    if SHAPE == "star":
+        star = gielis.load()
+        R_ENCLOSE = float(np.max(np.hypot(star["x"], star["z"]))) / NM_PER_A
+        R_FLUX, R_N2F = 4.0 * R_ENCLOSE, 5.0 * R_ENCLOSE
     RESOLUTION = args.resolution
     DPML = args.dpml
     DFT_DECAY = args.dft_decay
     if args.r_flux is not None:
-        R_FLUX = args.r_flux * RAD
+        # In units of the enclosing radius, matching how R_FLUX is defined —
+        # on the star, ``rad`` is not the length the contour has to clear.
+        R_FLUX = args.r_flux * R_ENCLOSE
     GRID = WAVELENGTHS[::4] if args.grid == "study" else WAVELENGTHS
 
     res = run_case(args.case)
