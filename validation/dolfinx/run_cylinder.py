@@ -77,6 +77,7 @@ from petsc4py import PETSc
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "validation"))
 
+import gielis  # noqa: E402
 from spectrum import Convergence, Spectrum, Tolerance, write  # noqa: E402
 
 DATA = ROOT / "tests" / "data"
@@ -87,13 +88,36 @@ RAD = 200.0
 N_CORE = 1.5
 WAVELENGTHS = np.linspace(400.0, 900.0, 51)
 
-# Domain layout, in units of RAD. The physical disc must be far enough out
-# that the scattered field is locally outgoing where the PML starts; the
+ANGLE_DEG = 0.0
+"""Incidence direction in pysie2d's convention. Only 0 and 180 are offered."""
+
+SHAPE = "circle"
+"""Which particle is meshed. ``star`` is gate 4's Gielis shape.
+
+Only ``build_mesh`` and the frozen file's ``geometry`` block depend on it: the
+PML, the weak form and all three observables are stated in terms of the tagged
+regions and never in terms of a radius, which is what makes a non-circular
+particle a change of mesh rather than a change of formulation.
+"""
+
+R_ENCLOSE = RAD
+"""Radius of the smallest disc containing the particle (nm).
+
+The domain radii below are multiples of *this*, not of ``rad``. For the star
+``rad = 200`` is its **minimum** radius and its lobes reach 356 nm, so keeping
+the multipliers on ``rad`` would move the measurement contour from 3 particle
+radii to 1.7 and put it inside the evanescent skirt the circle study was
+careful to stay outside. On the circle the two are the same number, so the
+gate-1 and gate-2 results are untouched.
+"""
+
+# Domain layout, in units of R_ENCLOSE. The physical disc must be far enough
+# out that the scattered field is locally outgoing where the PML starts; the
 # measurement contour is that same interface, so it also has to be outside the
 # evanescent skirt of the particle.
-R_MEAS = 3.0 * RAD
-R_PHYS = 4.0 * RAD
-R_PML = 6.0 * RAD
+R_MEAS = 3.0 * R_ENCLOSE
+R_PHYS = 4.0 * R_ENCLOSE
+R_PML = 6.0 * R_ENCLOSE
 
 # PML strength. σ₀ is quoted as a round-trip reflection target rather than as
 # a bare number, because the bare number means nothing without the thickness
@@ -129,8 +153,93 @@ def _require_complex() -> None:
         )
 
 
+def _particle_surface() -> int:
+    """Add the particle to the gmsh model and return its surface tag.
+
+    The star is a periodic B-spline through the committed contour points
+    (``validation/gielis.py``), not a polygon: a polygon's corners would give
+    every element on the boundary a geometry error that no element order can
+    reduce, and geometric order 2 exists here precisely to keep that error
+    below the field error. The spline is closed by repeating the first point,
+    which is how OCC marks a periodic curve — the contour file itself excludes
+    the duplicate.
+    """
+    if SHAPE == "circle":
+        return gmsh.model.occ.addDisk(0, 0, 0, RAD, RAD)
+
+    star = gielis.load()
+    pts = [
+        gmsh.model.occ.addPoint(float(x), float(z), 0.0)
+        for x, z in zip(star["x"], star["z"], strict=True)
+    ]
+    curve = gmsh.model.occ.addBSpline([*pts, pts[0]])
+    loop = gmsh.model.occ.addCurveLoop([curve])
+    return gmsh.model.occ.addPlaneSurface([loop])
+
+
+def _size_field(particle_tag: int, h_particle: float, h_outer: float) -> None:
+    """Impose ``h_particle`` on the particle, grading to ``h_outer`` outside.
+
+    ``CharacteristicLengthMin`` alone does **not** do this — it is a floor, not
+    a target, so gmsh meshes the whole model at the Max size. Measured on the
+    circle at ``(12, 40)``: the particle gets 212 cells, i.e. ~35 nm elements.
+    The circle's gate-1 and gate-2 numbers were produced that way and are left
+    exactly as they are — the mesh ladder moves both sizes together, so it
+    refines genuinely and its measured floor stands — but the star cannot be
+    meshed like that. Its lobe tips at ``n1 = 6, n2 = n3 = 12`` are the
+    sharpest features in the model, and the field inside the particle varies
+    on ``λ/n_core``, the shortest wavelength anywhere in the domain.
+
+    Two fields, minimised: a constant ``h_particle`` restricted to the
+    particle, so the interior is resolved and not just the boundary layer, and
+    a distance-graded shell outside it, so the element size does not jump by a
+    factor of three across the material interface — a jump there shows up as a
+    spurious reflection in ``C_sca``, which is read on a contour that sees it.
+
+    Args:
+        particle_tag: OCC surface tag of the particle after fragmenting.
+        h_particle: Element size inside the particle (nm).
+        h_outer: Element size in the background and PML (nm).
+    """
+    curves = [
+        tag for _, tag in gmsh.model.getBoundary([(2, particle_tag)], oriented=False)
+    ]
+
+    inside = gmsh.model.mesh.field.add("MathEval")
+    gmsh.model.mesh.field.setString(inside, "F", str(h_particle))
+    restricted = gmsh.model.mesh.field.add("Restrict")
+    gmsh.model.mesh.field.setNumber(restricted, "InField", inside)
+    gmsh.model.mesh.field.setNumbers(restricted, "SurfacesList", [particle_tag])
+
+    distance = gmsh.model.mesh.field.add("Distance")
+    gmsh.model.mesh.field.setNumbers(distance, "CurvesList", curves)
+    gmsh.model.mesh.field.setNumber(distance, "Sampling", 400)
+    graded = gmsh.model.mesh.field.add("Threshold")
+    gmsh.model.mesh.field.setNumber(graded, "InField", distance)
+    gmsh.model.mesh.field.setNumber(graded, "SizeMin", h_particle)
+    gmsh.model.mesh.field.setNumber(graded, "SizeMax", h_outer)
+    gmsh.model.mesh.field.setNumber(graded, "DistMin", 0.0)
+    # Grade over a few coarse elements, not over the domain: the transition is
+    # there to avoid a size jump at the interface, not to refine the far field.
+    gmsh.model.mesh.field.setNumber(graded, "DistMax", 4.0 * h_outer)
+
+    smallest = gmsh.model.mesh.field.add("Min")
+    gmsh.model.mesh.field.setNumbers(smallest, "FieldsList", [restricted, graded])
+    gmsh.model.mesh.field.setAsBackgroundMesh(smallest)
+
+    # A background field is only authoritative if the size sources it competes
+    # with are switched off; left on, gmsh takes the minimum with sizes
+    # interpolated from the CAD points and the field silently does nothing.
+    for source in (
+        "MeshSizeExtendFromBoundary",
+        "MeshSizeFromPoints",
+        "MeshSizeFromCurvature",
+    ):
+        gmsh.option.setNumber(f"Mesh.{source}", 0)
+
+
 def build_mesh(h_particle: float, h_outer: float, order: int):
-    """Mesh the circle, the background disc and the PML annulus.
+    """Mesh the particle, the background disc and the PML annulus.
 
     Three concentric physical surfaces so that the material coefficients are
     piecewise constant per cell and the physical/PML interface exists as a
@@ -150,10 +259,11 @@ def build_mesh(h_particle: float, h_outer: float, order: int):
     """
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 0)
-    gmsh.model.add("cylinder")
+    gmsh.model.add(SHAPE)
 
     discs = [
-        gmsh.model.occ.addDisk(0, 0, 0, r, r) for r in (RAD, R_MEAS, R_PHYS, R_PML)
+        _particle_surface(),
+        *(gmsh.model.occ.addDisk(0, 0, 0, r, r) for r in (R_MEAS, R_PHYS, R_PML)),
     ]
     out, _ = gmsh.model.occ.fragment([(2, discs[-1])], [(2, tag) for tag in discs[:-1]])
     gmsh.model.occ.synchronize()
@@ -167,6 +277,7 @@ def build_mesh(h_particle: float, h_outer: float, order: int):
     )
     for marker, (_, tag) in zip((PARTICLE, INNER, OUTER, PML), by_area, strict=True):
         gmsh.model.addPhysicalGroup(2, [tag], marker)
+    particle_tag = by_area[0][1]
 
     # The measurement contour: the curve of radius R_MEAS.
     contour = [
@@ -178,6 +289,8 @@ def build_mesh(h_particle: float, h_outer: float, order: int):
 
     gmsh.option.setNumber("Mesh.CharacteristicLengthMin", h_particle)
     gmsh.option.setNumber("Mesh.CharacteristicLengthMax", h_outer)
+    if SHAPE != "circle":
+        _size_field(particle_tag, h_particle, h_outer)
     gmsh.option.setNumber("Mesh.ElementOrder", order)
     gmsh.model.mesh.generate(2)
 
@@ -288,7 +401,13 @@ def solve_one(
     lam, jac = _pml_tensor(x, k0)
 
     # exp(-i k_bg z) — pysie2d's angle = 0, travelling along −z (here −y).
-    u_inc = ufl.exp(-1j * k_bg * x[1])
+    # ANGLE_DEG = 180 reverses it. That is not a production setting: it is
+    # gate 4's direction check. On the circle both directions give identical
+    # cross-sections, so the pinned −z is unfalsifiable there; the six-fold
+    # star is not symmetric under the flip, so the two spectra must differ and
+    # only one of them can match pysie2d at angle = 0.
+    sign = -1.0 if ANGLE_DEG == 0.0 else 1.0
+    u_inc = ufl.exp(sign * 1j * k_bg * x[1])
 
     dx = ufl.Measure("dx", domain=domain, subdomain_data=cell_tags)
     a = (
@@ -415,11 +534,12 @@ final file could not be attributed to any point in it.
 """
 
 CASES = {
-    "lossless-te": ("dolfinx-circle-lossless-te", 2, 1.0, 0.0),
-    "lossless-tm": ("dolfinx-circle-lossless-tm", 1, 1.0, 0.0),
-    "lossy-te": ("dolfinx-circle-lossy-te", 2, 1.33, 0.5),
-    "lossy-tm": ("dolfinx-circle-lossy-tm", 1, 1.33, 0.5),
+    "lossless-te": ("dolfinx-{shape}-lossless-te", 2, 1.0, 0.0),
+    "lossless-tm": ("dolfinx-{shape}-lossless-tm", 1, 1.0, 0.0),
+    "lossy-te": ("dolfinx-{shape}-lossy-te", 2, 1.33, 0.5),
+    "lossy-tm": ("dolfinx-{shape}-lossy-tm", 1, 1.33, 0.5),
 }
+"""Case ids carry the shape, so a star file can never overwrite a circle one."""
 
 POL_MAPPING = {
     2: (
@@ -474,6 +594,8 @@ def _knobs() -> dict[str, float | int | str]:
     is self-describing, exactly as a frozen spectrum is.
     """
     return {
+        "shape": SHAPE,
+        "angle_deg": ANGLE_DEG,
         "h_particle": H_PARTICLE,
         "h_outer": H_OUTER,
         "degree": DEGREE,
@@ -487,24 +609,47 @@ def _knobs() -> dict[str, float | int | str]:
     }
 
 
+def _geometry_block() -> dict[str, float]:
+    """The shape, in the form the frozen file and the repo-side test read it.
+
+    ``n_pts`` is pysie2d's boundary discretisation, not this driver's contour
+    sampling: the test rebuilds the particle from these five numbers and
+    solves with the package, so what is recorded has to be what pysie2d needs
+    to reproduce the *same curve* — the two codes agree on the curve, not on
+    how either one samples it.
+    """
+    if SHAPE == "circle":
+        return {"rad": RAD, "m": 0, "n1": 2.0, "n2": 2.0, "n3": 2.0, "n_pts": 200}
+    star = gielis.STAR
+    return {
+        "rad": star["rad"],
+        "m": star["m"],
+        "n1": star["n1"],
+        "n2": star["n2"],
+        "n3": star["n3"],
+        "n_pts": 400,
+    }
+
+
 def _freeze(case_key: str, res: dict[str, np.ndarray]) -> Path:
     """Write one frozen spectrum file, with gate-2 placeholders intact."""
     case_id, pol, n_clad, epsi = CASES[case_key]
+    case_id = case_id.format(shape=SHAPE)
     spec = Spectrum(
         case_id=case_id,
         claim=(
-            "pysie2d's cross-sections on a circle agree with an "
+            f"pysie2d's cross-sections on a {SHAPE} agree with an "
             "independent frequency-domain FEM solve (dolfinx, radial "
             "PML, curved elements) that shares no formulation, "
             "discretisation or linear algebra with the boundary-integral "
             "method."
         ),
         tool={"name": "dolfinx", "version": _versions()},
-        geometry={"rad": RAD, "m": 0, "n1": 2.0, "n2": 2.0, "n3": 2.0, "n_pts": 200},
+        geometry=_geometry_block(),
         material={"n_core": N_CORE, "n_clad": n_clad, "epsi": epsi},
         pol=pol,
         pol_mapping=POL_MAPPING[pol],
-        angle_deg=0.0,
+        angle_deg=ANGLE_DEG,
         wavelength_nm=GRID,
         c_sca_nm=res["c_sca"],
         c_ext_nm=res["c_ext"],
@@ -545,9 +690,18 @@ def main() -> None:
     """
     global H_PARTICLE, H_OUTER, DEGREE, GEOM_ORDER, GRID
     global PML_ORDER, PML_REFLECTION, R_MEAS, R_PHYS, R_PML
+    global SHAPE, ANGLE_DEG, R_ENCLOSE
 
     parser = argparse.ArgumentParser(description="dolfinx external-validation driver")
     parser.add_argument("--cases", default="lossless-te,lossless-tm,lossy-te,lossy-tm")
+    parser.add_argument("--shape", choices=("circle", "star"), default=SHAPE)
+    parser.add_argument(
+        "--angle-deg",
+        type=float,
+        choices=(0.0, 180.0),
+        default=0.0,
+        help="incidence direction; 180 is gate 4's direction check, not production",
+    )
     parser.add_argument("--grid", choices=("study", "full"), default="full")
     parser.add_argument("--h-particle", type=float, default=H_PARTICLE)
     parser.add_argument("--h-outer", type=float, default=H_OUTER)
@@ -555,8 +709,11 @@ def main() -> None:
     parser.add_argument("--geom-order", type=int, default=GEOM_ORDER)
     parser.add_argument("--pml-order", type=int, default=PML_ORDER)
     parser.add_argument("--pml-reflection", type=float, default=PML_REFLECTION)
-    parser.add_argument("--r-phys", type=float, default=R_PHYS)
-    parser.add_argument("--r-pml", type=float, default=R_PML)
+    # None, not the circle's numbers: these are multiples of the particle's
+    # enclosing radius, which the star changes. An argparse default captured
+    # at import would silently put the star's PML back at the circle's radius.
+    parser.add_argument("--r-phys", type=float, default=None)
+    parser.add_argument("--r-pml", type=float, default=None)
     parser.add_argument("--out", default=None, help="prefix for per-case .npz output")
     parser.add_argument(
         "--freeze",
@@ -565,10 +722,21 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    SHAPE, ANGLE_DEG = args.shape, args.angle_deg
+    if SHAPE == "star":
+        # The domain scales with the particle's enclosing radius, so the star
+        # is meshed over a domain 1.78x wider in each direction than the
+        # circle at the same multipliers — roughly 3x the cells at fixed
+        # h_outer. Sized here rather than passed in, so the two shapes cannot
+        # silently be compared across different contour placements.
+        star = gielis.load()
+        R_ENCLOSE = float(np.max(np.hypot(star["x"], star["z"])))
+        R_MEAS, R_PHYS, R_PML = (m * R_ENCLOSE for m in (3.0, 4.0, 6.0))
     H_PARTICLE, H_OUTER = args.h_particle, args.h_outer
     DEGREE, GEOM_ORDER = args.degree, args.geom_order
     PML_ORDER, PML_REFLECTION = args.pml_order, args.pml_reflection
-    R_PHYS, R_PML = args.r_phys, args.r_pml
+    R_PHYS = args.r_phys if args.r_phys is not None else R_PHYS
+    R_PML = args.r_pml if args.r_pml is not None else R_PML
     GRID = WAVELENGTHS[::4] if args.grid == "study" else WAVELENGTHS
 
     _require_complex()
@@ -577,6 +745,7 @@ def main() -> None:
 
     for case_key in args.cases.split(","):
         case_id, pol, n_clad, epsi = CASES[case_key]
+        case_id = case_id.format(shape=SHAPE)
         if MPI.COMM_WORLD.rank == 0:
             print(f"\n{case_id}", flush=True)
         res = sweep(domain, cell_tags, facet_tags, pol, n_clad, epsi, DEGREE)
