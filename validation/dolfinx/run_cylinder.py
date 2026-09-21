@@ -167,13 +167,23 @@ def _require_complex() -> None:
 def _particle_surface() -> int:
     """Add the particle to the gmsh model and return its surface tag.
 
-    The star is a periodic B-spline through the committed contour points
+    The star is a periodic spline through the committed contour points
     (``validation/gielis.py``), not a polygon: a polygon's corners would give
     every element on the boundary a geometry error that no element order can
     reduce, and geometric order 2 exists here precisely to keep that error
     below the field error. The spline is closed by repeating the first point,
     which is how OCC marks a periodic curve — the contour file itself excludes
     the duplicate.
+
+    ``addSpline``, **not** ``addBSpline``: OCC reads the latter's points as
+    *control* points, so the curve is pulled inside the lobes and only
+    second-order accurate. Measured radial deviation from the analytic Gielis
+    curve at 1440 points: 5.2e-02 nm for ``addBSpline`` against 1.6e-04 nm
+    here — 332x, and fourth order against second. It matters because the first
+    star ladder plateaued: dolfinx's own error fell 2.4e-04 -> 1.9e-06 down
+    four levels while its disagreement with pysie2d stopped at 1.7e-04, which
+    is what a 5e-02 nm boundary displacement on a 200 nm particle is worth.
+    A floor reached for the wrong reason, exactly as the study plan warns.
     """
     if SHAPE == "circle":
         return gmsh.model.occ.addDisk(0, 0, 0, RAD, RAD)
@@ -183,7 +193,7 @@ def _particle_surface() -> int:
         gmsh.model.occ.addPoint(float(x), float(z), 0.0)
         for x, z in zip(star["x"], star["z"], strict=True)
     ]
-    curve = gmsh.model.occ.addBSpline([*pts, pts[0]])
+    curve = gmsh.model.occ.addSpline([*pts, pts[0]])
     loop = gmsh.model.occ.addCurveLoop([curve])
     return gmsh.model.occ.addPlaneSurface([loop])
 
