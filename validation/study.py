@@ -498,15 +498,22 @@ def _nulls(tool: str) -> None:
     so there the zero reading *is* the evidence; it is absolute (nm) and not
     relative, because the quantity under test is zero.
     """
-    per_tool = (("dolfinx", "residual", "rel"), ("meep", "c_abs", "nm"))
-    for which, quantity, unit in per_tool:
+    # MEEP works in units of a = 100 nm and its .npz holds the raw arrays —
+    # only freeze() and the driver's progress print multiply by NM_PER_A. The
+    # scale below is what makes the "nm" on the next line true; without it
+    # this reported gate 3's null a hundred times smaller than it is.
+    per_tool = (
+        ("dolfinx", "residual", "rel", 1.0),
+        ("meep", "c_abs", "nm", 100.0),
+    )
+    for which, quantity, unit, scale in per_tool:
         if tool not in ("all", which):
             continue
         for path in sorted((OUT / which).glob("*.npz")):
             with np.load(path) as d:
                 if quantity not in d.files:
                     continue
-                worst = float(np.max(np.abs(d[quantity])))
+                worst = scale * float(np.max(np.abs(d[quantity])))
             print(f"{which:8s} {path.stem:26s} worst |{quantity}| = {worst:.2e} {unit}")
     print(
         "\nNull test, gate 3. dolfinx: the optical-theorem residual, because a\n"
