@@ -150,7 +150,9 @@ evidence.
   other there.
 - **Metals are out of scope entirely.** `Material` cannot express `Re ε < 0`:
   `epsr = (n_core/n_clad)²` is non-negative by construction. Nothing with a
-  negative real permittivity has been run or checked.
+  negative real permittivity has been run or checked. What it would take is
+  scoped in
+  [docs/design/absorption-scope.md](design/absorption-scope.md).
 - **MEEP's systematics are bounded, not localised.** Its absorber, flux-contour
   and transform-truncation sensitivities were measured at resolution 25 and the
   frozen spectra are at 50 (circle) and 32 (star). They bound those effects
