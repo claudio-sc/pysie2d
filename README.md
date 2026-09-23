@@ -18,9 +18,9 @@ validated end-to-end against a closed-form reference. That core includes
 quasi-normal-mode extraction from the surface-integral operator (see
 [Quasi-normal modes](#quasi-normal-modes)) and finite clusters of particles
 (see [Clusters of particles](#clusters-of-particles)), validated against an
-independent two-cylinder addition-theorem anchor. Potential extensions in the
-mid/long-term include slab waveguide backgrounds and non-circular external
-validation against independent solvers (MEEP, dolfinx).
+independent two-cylinder addition-theorem anchor, and non-circular external
+validation against two independent solvers (MEEP and dolfinx). Potential
+extensions in the mid/long-term include slab waveguide backgrounds.
 
 ## Figures
 
@@ -109,6 +109,10 @@ implementation uses the closed-surface (particle) form given in
 
 ## Validation
 
+**[docs/validation.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/validation.md)
+answers "how is this package validated?" in one page**, including the external
+anchors summarised below. What follows here is the closed-form half.
+
 The physics test suite compares the solver against analytic Mie theory for a
 circular cylinder: scattering / extinction / absorption efficiencies, the
 optical theorem on a lossy particle, energy conservation on a lossless one, the
@@ -136,6 +140,20 @@ to within its discretisation error and nothing more. That error is spectral too:
 boundary becomes the accuracy floor. On non-circular shapes, modes are
 identified by continuation from the circle
 ([conventions](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md) §8).
+
+Every anchor above is circular — the superformula has a closed form only at
+`m = 0`. For a Gielis star there is none, so the reference is two independent
+Maxwell solvers: **MEEP** (FDTD, time domain, sharing no formulation,
+discretisation or linear algebra with a boundary-integral method) and
+**FEniCSx/dolfinx** (FEM, frequency domain, curved elements). Their spectra are
+committed to `tests/data/` as JSON carrying full provenance, so
+`uv run pytest` re-checks them with numpy alone — **no conda, MEEP or dolfinx
+installation is ever required to run the suite**. On the star pysie2d agrees
+with dolfinx to parts in `10⁶` and with MEEP to one or two significant figures,
+in both polarisations, across 400–900 nm. Every tolerance is computed from a
+measurement rather than chosen, and
+[docs/validation.md](https://github.com/claudio-sc/pysie2d/blob/main/docs/validation.md)
+states plainly what is *not* covered.
 
 ## Install / run / test
 
