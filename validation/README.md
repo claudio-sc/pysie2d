@@ -13,6 +13,7 @@ separation is deliberate.
 |---|---|
 | `spectrum.py` | The frozen-file format: schema, writer, reader. One definition, shared by the drivers here and by `tests/test_external_validation.py`. |
 | `gielis.py` | Gate 4's star: the superformula in numpy alone, and the sampled contour both drivers read from `data/gielis-star.npz`. Neither driver may import pysie2d, so this is the one place the shape is written down; `tests/test_gielis_contour.py` asserts it equals the package's own `gielis()` bit for bit. |
+| `compare.py` | Differences an external result against pysie2d on that file's own grid — gate 4's number. Reads the material from the result's `knobs` record rather than being told it, and refuses a file that has no `n_core` there. |
 | `mie_bootstrap.py` | Freezes the repo's own analytic Mie series. **Not an external anchor** — it exists to prove the format and its consumer. |
 | `dolfinx/` | FEM frequency-domain driver. Carries the lossy cases: it represents a constant `Im ε` exactly. |
 | `meep/` | FDTD time-domain driver. Lossless only — MEEP has no frequency-independent `Im ε`, so a broadband run would make the material dispersive. |
