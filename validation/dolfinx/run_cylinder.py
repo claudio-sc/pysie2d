@@ -617,6 +617,10 @@ def _knobs() -> dict[str, float | int | str]:
     return {
         "shape": SHAPE,
         "angle_deg": ANGLE_DEG,
+        # The one physical input --n-core can override, and whose default
+        # depends on the shape. Without it a run at the star's 2.0 and one
+        # at the circle's 1.5 leave byte-identical records.
+        "n_core": N_CORE,
         "h_particle": H_PARTICLE,
         "h_outer": H_OUTER,
         "degree": DEGREE,
