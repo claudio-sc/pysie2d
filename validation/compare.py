@@ -45,21 +45,52 @@ POL = {"te": 2, "tm": 1}
 """conventions §2, non-negotiable 2: pol 2 is TE (E_y, Mie b_n), pol 1 is TM."""
 
 
-def _n_core(knobs: dict, n_core: float | None) -> float:
-    """The core index this result was produced at.
+def _material(
+    knobs: dict,
+    case: str,
+    n_core: float | None,
+    n_clad: float | None,
+    epsi: float | None,
+) -> tuple[float, float, float]:
+    """The material this result was produced at, read from its own record.
+
+    Read rather than assumed, and refused rather than guessed. A star run at
+    ``n_core = 1.5`` differenced against pysie2d at 2.0 — or a lossy case
+    differenced at ``epsi = 0`` — produces a plausible, meaningless number.
+
+    The two lossless defaults are the exception, and they are safe: the case
+    name itself says the material does not absorb, and every lossless case in
+    the study sits in vacuum (``CASES`` in the dolfinx driver).
+
+    Args:
+        knobs: The result file's own ``knobs`` record.
+        case: Case name, e.g. ``lossless-te``.
+        n_core: Override, or None to read it from the record.
+        n_clad: Override, or None to read it from the record.
+        epsi: Override, or None to read it from the record.
+
+    Returns:
+        ``(n_core, n_clad, epsi)``, all absolute (conventions §2).
 
     Raises:
-        SystemExit: if the file predates the ``n_core`` record and none was
-            given. Better to stop than to difference against a guess.
+        SystemExit: if a value is in neither the record nor the command line.
     """
-    if n_core is not None:
-        return n_core
-    if "n_core" not in knobs:
-        raise SystemExit(
-            "this file has no n_core in its knobs record (written before that "
-            "field existed); pass --n-core explicitly"
-        )
-    return float(knobs["n_core"])
+    lossless_default = {"n_clad": 1.0, "epsi": 0.0}
+    out = {}
+    for key, value in (("n_core", n_core), ("n_clad", n_clad), ("epsi", epsi)):
+        if value is not None:
+            out[key] = float(value)
+        elif key in knobs:
+            out[key] = float(knobs[key])
+        elif "lossy" not in case and key in lossless_default:
+            out[key] = lossless_default[key]
+        else:
+            raise SystemExit(
+                f"{key} is in neither this file's knobs record (written before "
+                f"that field existed) nor the command line; pass "
+                f"--{key.replace('_', '-')} explicitly"
+            )
+    return out["n_core"], out["n_clad"], out["epsi"]
 
 
 def pysie2d_spectrum(
@@ -108,7 +139,15 @@ def _drift(a: dict, b: dict, key: str, scale: float) -> float:
     return float(np.max(np.abs(a[key] - b[key])) / scale)
 
 
-def compare(tool: str, name: str, case: str, nn: int, n_core: float | None) -> None:
+def compare(
+    tool: str,
+    name: str,
+    case: str,
+    nn: int,
+    n_core: float | None,
+    n_clad: float | None = None,
+    epsi: float | None = None,
+) -> None:
     """Report one external result against pysie2d, pointwise."""
     stem = name if tool == "meep" else f"{name}-{case}"
     path = OUT / tool / f"{stem}.npz"
@@ -123,13 +162,8 @@ def compare(tool: str, name: str, case: str, nn: int, n_core: float | None) -> N
     if tool == "meep":
         ext = {k: v * NM_PER_A for k, v in ext.items()}
 
-    if "lossy" in case:
-        # epsi is not in the knobs record, and Im(eps) is absolute
-        # (conventions §2) — there is no safe default to fall back on.
-        raise SystemExit("lossy cases are not supported here: epsi is unrecorded")
     pol_key = case.split("-")[-1]
-    n_core_used = _n_core(knobs, n_core)
-    epsi = 0.0
+    n_core_used, n_clad_used, epsi_used = _material(knobs, case, n_core, n_clad, epsi)
     ours = pysie2d_spectrum(
         wl,
         # Unlike n_core, a wrong shape cannot produce a plausible number — it
@@ -137,8 +171,8 @@ def compare(tool: str, name: str, case: str, nn: int, n_core: float | None) -> N
         # this field are defaulted rather than refused.
         knobs.get("shape", "circle"),
         n_core_used,
-        1.0,
-        epsi,
+        n_clad_used,
+        epsi_used,
         POL[pol_key],
         nn,
         float(knobs.get("angle_deg", 0.0)),
@@ -147,7 +181,10 @@ def compare(tool: str, name: str, case: str, nn: int, n_core: float | None) -> N
     drifts = "  ".join(
         f"{k}={_drift(ext, ours, k, scale):.2e}" for k in OBSERVABLES if k in ext
     )
-    print(f"{tool:8s} {stem:28s} n_core={n_core_used:.2f} nn={nn:4d}  {drifts}")
+    print(
+        f"{tool:8s} {stem:28s} n_core={n_core_used:.2f} "
+        f"n_clad={n_clad_used:.2f} epsi={epsi_used:.2f} nn={nn:4d}  {drifts}"
+    )
 
 
 def nn_check(shape: str, n_core: float, nn_list: tuple[int, ...]) -> None:
@@ -178,6 +215,8 @@ def main() -> None:
     parser.add_argument("--case", default="lossless-te")
     parser.add_argument("--nn", type=int, default=800)
     parser.add_argument("--n-core", type=float, default=None)
+    parser.add_argument("--n-clad", type=float, default=None)
+    parser.add_argument("--epsi", type=float, default=None)
     parser.add_argument("--nn-check", action="store_true")
     parser.add_argument("--shape", default="star")
     args = parser.parse_args()
@@ -185,7 +224,15 @@ def main() -> None:
     if args.nn_check:
         nn_check(args.shape, args.n_core or 2.0, (100, 200, 400, 800))
     else:
-        compare(args.tool, args.name, args.case, args.nn, args.n_core)
+        compare(
+            args.tool,
+            args.name,
+            args.case,
+            args.nn,
+            args.n_core,
+            args.n_clad,
+            args.epsi,
+        )
 
 
 if __name__ == "__main__":
