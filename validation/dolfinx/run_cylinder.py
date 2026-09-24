@@ -607,12 +607,16 @@ def sweep(domain, cell_tags, facet_tags, pol, n_clad, epsi, degree):
     return out
 
 
-def _knobs() -> dict[str, float | int | str]:
+def _knobs(n_clad: float, epsi: float) -> dict[str, float | int | str]:
     """Every setting a result depends on, for the record written beside it.
 
     A refinement study is only evidence if each level says what it was. These
     go into the ``.npz`` next to the arrays so that a result file found later
     is self-describing, exactly as a frozen spectrum is.
+
+    Args:
+        n_clad: Background index for this case, from ``CASES``.
+        epsi: Absolute imaginary permittivity for this case, from ``CASES``.
     """
     return {
         "shape": SHAPE,
@@ -621,6 +625,11 @@ def _knobs() -> dict[str, float | int | str]:
         # depends on the shape. Without it a run at the star's 2.0 and one
         # at the circle's 1.5 leave byte-identical records.
         "n_core": N_CORE,
+        # The other two thirds of the material. They are per-case rather than
+        # global, so a result file recorded only n_core and left the reader to
+        # infer the background and the loss from the case name in its filename.
+        "n_clad": n_clad,
+        "epsi": epsi,
         "h_particle": H_PARTICLE,
         "h_outer": H_OUTER,
         "degree": DEGREE,
@@ -786,7 +795,7 @@ def main() -> None:
             np.savez(
                 path,
                 wavelength_nm=GRID,
-                knobs=json.dumps(_knobs()),
+                knobs=json.dumps(_knobs(n_clad, epsi)),
                 cells=domain.topology.index_map(2).size_global,
                 **res,
             )
