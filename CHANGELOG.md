@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.8.1 (2026-09-26)
+
+### Bug Fixes
+
+- Interior field sign and TM derivative
+  ([`b07168f`](https://github.com/claudio-sc/pysie2d/commit/b07168ff0be2789149cda39d8458d7519ab55441))
+
+### Documentation
+
+- Near-field map shows the total field
+  ([`9387cb6`](https://github.com/claudio-sc/pysie2d/commit/9387cb69b632c75fd8e66668be121be044ddc978))
+
+
 ## v0.8.0 (2026-09-20)
 
 

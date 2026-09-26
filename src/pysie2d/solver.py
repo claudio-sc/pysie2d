@@ -179,6 +179,7 @@ class ScatterResult:
             np.asarray(x, dtype=float),
             np.asarray(z, dtype=float),
             ri=self.material.nc,
+            eta_in=self.material.eps if self.material.pol == 1 else 1.0,
         )
 
     def multipoles(
