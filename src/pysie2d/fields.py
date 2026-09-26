@@ -156,13 +156,16 @@ def eval_field(
     x_pts: np.ndarray,
     z_pts: np.ndarray,
     ri: complex | None = None,
+    eta_in: complex = 1.0,
 ) -> np.ndarray:
     """Evaluate the field at arbitrary (x, z) points.
 
     Uses the BIE representation formula (Huygens principle) for exterior points.
-    For interior points, the same formula is used with the particle wavenumber
-    wnum_core = ri * wnum_bg when ri is provided; otherwise interior points
-    return 0+0j.
+    For interior points, when ri is provided, it uses the interior
+    representation: wavenumber wnum_core = ri * wnum_bg, the opposite sign
+    (the boundary normal points *out* of the interior region), and the
+    interior-side derivative eta_in·χ (conventions §4). Without ri, interior
+    points return 0+0j.
 
     Never evaluate on or very near the boundary: the representation-formula
     integrand is near-singular there and degrades within roughly 2–3 boundary-
@@ -187,6 +190,9 @@ def eval_field(
         ri: Particle refractive index (relative to background). When provided,
             interior points are evaluated using wnum_core = ri * wnum_bg. When None
             (default), interior points return 0+0j.
+        eta_in: Ratio of the interior- to the exterior-side normal derivative,
+            ``Material.eps`` for TM (pol = 1) and 1 for TE (pol = 2). Used only
+            with ri.
 
     Returns:
         field: complex (M,) field E_y at each observation point (exterior
@@ -211,11 +217,13 @@ def eval_field(
         dist = np.sqrt(xmf**2 + zmg**2)
         arg2 = -dg * xmf + df * zmg
         k = wnum_bg if outside else wnum_core
+        chi = ei[nn:] if outside else eta_in * ei[nn:]
+        sign = 1.0 if outside else -1.0
         arg1 = k * dist
         sum_h = np.sum(
-            (k**2 * arg2 * hank1(arg1) / arg1 * ei[:nn] - hank0(arg1) * ei[nn:]) * delt
+            (k**2 * arg2 * hank1(arg1) / arg1 * ei[:nn] - hank0(arg1) * chi) * delt
         )
-        field[j] = (1j / 4.0) * sum_h
+        field[j] = sign * (1j / 4.0) * sum_h
 
     return field
 

@@ -96,7 +96,15 @@ A BIE solve returns `ei` of shape `(2·nn,)`, where `nn` is the number of
 boundary quadrature points:
 
 - `ei[:nn]` — `φ`: boundary field values.
-- `ei[nn:]` — `χ`: boundary normal-derivative values.
+- `ei[nn:]` — `χ`: boundary normal-derivative values, taken on the
+  **exterior** side.
+
+The interface condition is continuity of `ψ` and of `(1/ε^p)·∂ψ/∂n` (p = 0 TE,
+p = 1 TM), so the interior-side derivative is `χ` in TE and `eps·χ` in TM, with
+`eps = Material.eps` (the same factor `assemble_matrix` puts on M4). The interior
+representation formula uses that derivative, `k_core`, and the opposite sign to
+the exterior one, because the boundary normal points *out* of the interior
+region.
 
 Excitation right-hand sides follow the same layout. The plane-wave and (later)
 line-dipole sources populate only the `φ` half; the `χ` half stays zero.
