@@ -1,9 +1,10 @@
 """Near-field map of a Gielis star under plane-wave illumination.
 
 Evaluates the field on a 2-D grid around an ``m = 6`` Gielis superformula
-particle. The interior is filled by passing the particle index ``ri`` to the
-representation formula, so the map shows the scattered field outside the
-boundary and the internal field inside it. The particle boundary is overlaid.
+particle. ``eval_field`` returns the scattered field outside the boundary and
+the total field inside it, so the incident wave is added outside: the map is
+the total field everywhere, continuous across the boundary. The particle
+boundary is overlaid.
 
 Colour scale: ``|field|`` from 0 to the 99th percentile of the grid values
 (printed at run time). Values within a few boundary-point spacings of the
@@ -18,6 +19,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.path import Path as Polygon
 
 from pysie2d import BIESolver, Geometry, Material
 
@@ -43,6 +45,12 @@ def main() -> None:
     axis = np.linspace(-GRID_HALF_WIDTH, GRID_HALF_WIDTH, GRID_N)
     xx, zz = np.meshgrid(axis, axis)
     field = result.eval_field(xx.ravel(), zz.ravel()).reshape(xx.shape)
+    inside = Polygon(np.column_stack([geom.f, geom.g])).contains_points(
+        np.column_stack([xx.ravel(), zz.ravel()])
+    )
+    # Incidence at angle 0 is exp(−i k_bg z) (sources.plane_wave_rhs).
+    incident = np.exp(-1j * mat.wnum_bg(WAVELENGTH) * zz)
+    field = field + np.where(inside.reshape(xx.shape), 0.0, incident)
     magnitude = np.abs(field)
 
     vmax = float(np.percentile(magnitude, 99))
@@ -69,7 +77,7 @@ def main() -> None:
         f"$n_c$={N_CORE}, $\\lambda$={WAVELENGTH:.0f} nm, plane wave (TE)"
     )
     ax.set_aspect("equal")
-    fig.colorbar(im, ax=ax, label="|field|")
+    fig.colorbar(im, ax=ax, label="|total field|")
     fig.tight_layout()
 
     out = Path(__file__).resolve().parent.parent / "figures" / "nearfield_map.png"
