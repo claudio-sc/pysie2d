@@ -542,3 +542,32 @@ def test_non_circular_pair_below_the_envelope_repeats_the_D9_caveat():
     solver = ClusterBIESolver(cluster, mats, pol=2)
     with pytest.warns(ClusterGapWarning, match="is not validated for"):
         solver.scatter(wavelength=633.0, angle=37.0)
+
+
+# The small far particle is over-resolved by design; the warning is expected.
+@pytest.mark.filterwarnings("ignore::pysie2d.ClusterResolutionWarning")
+@pytest.mark.parametrize("pol", [2, 1])
+def test_cluster_interior_field_matches_mie_for_an_isolated_particle(pol):
+    """The cluster interior branch reproduces the single-particle Mie interior.
+
+    A second, small particle 30 µm away couples at O(H₀(k·d)), so this checks
+    the interior representation's sign and TM eps·χ weighting in the cluster
+    path at an O(1e-2) tolerance, which is far below the O(1) error of either
+    defect. The single-particle path is anchored at round-off in test_field.
+    """
+    from test_field import _R_IN, _TH_IN, _mie_interior
+
+    rad, wavelength = 300.0, 633.0
+    mat = Material(n_core=2.0, n_clad=1.45, pol=pol, epsi=0.8)
+    far = Geometry.gielis(rad=20.0, n_pts=40, m=0, x0=30000.0)
+    cl = ClusterBIESolver(
+        Cluster([Geometry.gielis(rad=rad, n_pts=100, m=0), far]), [mat, mat], pol=pol
+    )
+    x, z = _R_IN * np.sin(_TH_IN), _R_IN * np.cos(_TH_IN)
+
+    ref = _mie_interior(mat, wavelength, rad, x, z)
+    err = np.max(np.abs(cl.scatter(wavelength=wavelength).eval_field(x, z) - ref))
+    # The floor is the coupling to the far particle, not the solver: measured
+    # 2.5e-3 (TE) and 2.3e-5 (TM). The bound gives 4× margin and sits two
+    # orders below the O(1) error of a wrong sign or TM factor.
+    assert err / np.max(np.abs(ref)) < 1e-2

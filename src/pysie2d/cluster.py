@@ -677,9 +677,16 @@ class ClusterScatterResult:
         for p, gp in enumerate(self.cluster.geometries):
             sel = inside == p
             if sel.any():
-                k_core = _real_if_real(self.materials[p].nc * self.wnum_bg)
-                field[sel] = _representation_at(
-                    self.ei_particle(p),
+                mat = self.materials[p]
+                k_core = _real_if_real(mat.nc * self.wnum_bg)
+                # Interior representation (conventions §4): χ is the
+                # exterior-side derivative, eps·χ inside in TM, and the
+                # interior integral carries the opposite sign.
+                ei_in = self.ei_particle(p).copy()
+                if mat.pol == 1:
+                    ei_in[gp.n_pts :] *= mat.eps
+                field[sel] = -_representation_at(
+                    ei_in,
                     gp.n_pts,
                     gp.f,
                     gp.df,
