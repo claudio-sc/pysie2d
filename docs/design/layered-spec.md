@@ -176,3 +176,16 @@ Also recorded there:
    callable, because tabulated data is not holomorphic (holomorphy C0).
    Analytic Drude/Lorentz models are deferred.
 7. `Material.nc` gain fix ships separately to main (PR #24), before v0.9.
+8. `Material.from_eps(eps, n_clad, pol)`: additive classmethod taking an absolute
+   complex ε (Re ε < 0 allowed, `nc = √ε` principal root), anchored on Mie for a
+   metal cylinder. It is needed for the tungsten heater below.
+9. **README figure (LDOS only; the multipole comparison is dropped).** A heater
+   cross-section at 1550 nm:
+   - Si half-space substrate under an SiO₂ cover (n = 1.444);
+   - a rounded-square (Gielis) SiN core 200 nm above the substrate;
+   - a horizontally elongated tungsten heater 1 µm above the SiN;
+   - relative-LDOS maps in two panels, TE and TM.
+
+   Particle sizes are still to be fixed with the owner. The figure also needs
+   a 2-D caveat: these are line-source LDOS values, not the guided mode along
+   the heater axis.
