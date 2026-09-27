@@ -169,3 +169,10 @@ Also recorded there:
 3. The reflected (upward) far field, `σ_sca,up` with its checked upper bound, and
    `σ_abs` are in scope. Transmission and extinction are not.
 4. LDOS stays normalised to the unbounded cover (D10).
+5. `HalfSpace.pec(z_int)` is public API: R ≡ ∓1 evaluated as the exact image
+   Hankel term, with no Sommerfeld integral.
+6. Dispersion: `eps_sub` may be a callable `ε(λ_vac)` for **driven** solves
+   (real λ, evaluated once per call at the facade). `QNMSolver` rejects a
+   callable, because tabulated data is not holomorphic (holomorphy C0).
+   Analytic Drude/Lorentz models are deferred.
+7. `Material.nc` gain fix ships separately to main (PR #24), before v0.9.
