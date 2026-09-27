@@ -1,0 +1,132 @@
+# v1.1 layered backgrounds — code-spec, milestone 1: the half-space
+
+Status: **draft for owner review.** No package code has been written against it.
+
+Inputs:
+- [sommerfeld-holomorphy.md](sommerfeld-holomorphy.md) is the theory (step 1).
+- [studies/halfspace/](studies/halfspace/README.md) is the measured prototype
+  (step 2a).
+- The legacy derivations are in `sie-legacy-0726/docs/sommerfeld_greens_function.tex`.
+  They are sound for real k in the top-cladding cell, and **wrong for complex k**
+  (holomorphy note §1).
+
+## D. Decisions
+
+| # | Decision | Why |
+|---|---|---|
+| D1 | A `Background` enters as an optional keyword, `background=None`, on `BIESolver`, `QNMSolver`, `ClusterBIESolver` and `relative_ldos_map`. `None` is the homogeneous cladding and is bit-identical to v1.0. | Additive, with no signature change. One solver family serves both integrated-photonics and scattering users. |
+| D2 | Milestone 1 ships `HalfSpace(eps_sub, z_int)` only. The multilayer later adds a `Multilayer` that supplies a different R(q) and nothing else. | The Sommerfeld functionals depend on the stack only through R(q). |
+| D3 | Layer permittivities are **absolute complex ε**, not `Material`. Layers use `k = k₀·√ε` (principal complex root, signed zero normalised). `Im ε ≥ 0` is asserted on every layer. | `Material.nc` rebuilds Im n from abs(ε) and cannot express Re ε < 0; gain breaks the continuation argument (holomorphy §2). |
+| D4 | Everything below the facade takes `wnum_bg` and the **background-relative** `eps_sub/n_clad²`, never a wavelength. `Background` exposes `eps_rel(n_clad)`. | Conventions §2.3: one conversion point. It also preserves scale covariance (§9), since the path is built in units of k. |
+| D5 | The particle (and every source and observation point) lies strictly in the cover, `min(g) > z_int`. Fields in the substrate are out of scope. | That is the only Green-function cell the milestone needs. The others need transmission functionals. |
+| D6 | The reflected blocks are assembled as a **banded separable GEMM** on a deformed path, with no surrogate and no tabulation. | Measured at 4–14 ms per block at nn ≤ 256, the same at real and complex k, and about 10× cheaper than the free-space assembly at complex k. |
+| D7 | The path is **fixed per call context**: per wavelength for driven solves, and **once per search box for QNMs**, sized from the shadow box B̄. The clearance condition C1 is asserted, not inferred. | Beyn needs one holomorphic M(λ) on the box. A crossing shows up as a cut, which rank detection does not catch. |
+| D8 | No TM `R_∞` image subtraction in the matrix path. | Measured net loss (study trap 5). |
+| D9 | Far field, cross sections, efficiencies, multipoles and `assemble_derivative`-based sensitivity **raise `NotImplementedError`** when a background is set. **Exception:** the analytic dM/dλ needed by `QNMResult.refine` ships. | Far field over a substrate needs reflected and transmitted angular spectra with new normalisations, which the owner deferred. Newton refinement is part of the QNM deliverable. |
+| D10 | LDOS stays normalised to the **unbounded cover**: `relative_ldos = 1 + 4·Im S`, where S now includes the substrate's reflected self-field. It therefore equals the substrate-only enhancement when no particle is present. | Keeps §7 unchanged. The alternative normalisation, to the bare interface, is a one-line ratio the user can take. |
+| D11 | The owner excluded plane-wave illumination from the substrate side, including TIR, from this milestone. Plane waves from the cover (incident plus Fresnel-reflected) are in. | Owner's scope. Cover illumination needs only `r(q_inc)`. |
+
+## 1. Module layout
+
+New module `layered.py` (primitives, no wavelength anywhere):
+
+    alpha(q, k)                          vertical-cut sheet, α(0)=+k       (holomorphy §3)
+    fresnel_r(q, k1, eps_rel, pol)       TE (α1−α2)/(α1+α2); TM admittance form; PEC sentinel
+    SommerfeldPath                       nodes q, weights w, band edges; built by
+        .for_wavenumber(k, eps_rel, pol, D, z_min)     driven solves
+        .for_box(k_box_corners, eps_rel, pol, D, z_min) QNM: sized on ∂B̄, asserts C1
+    reflected_blocks(path, pol, k, eps_rel, f, g, df, dg, z_int, x_c)
+        → (m1_ind, m2_ind), (nn_q, nn_p)          exterior rows; cross-particle ready
+    reflected_blocks_dk(...)             d/dk of the above, for Newton refinement
+    reflected_green(path, pol, k, eps_rel, x, z, xs, zs, z_int)   pointwise, for RHS/field/LDOS
+
+`background.py`: `HalfSpace` (frozen dataclass: `eps_sub: complex`, `z_int: float`)
+with `eps_rel(n_clad)`, validation (D3) and `r(q, k, pol)`. It is exported from
+`__init__.py`.
+
+The prototype's `hs.py` and `gemm.py` port almost unchanged. The node rule is the
+study's rule; its constants (13·T/δ, 6/D, 38/Z_min, 24-point panels) move into
+named module constants, each with a comment giving the measurement behind it.
+
+## 2. Wiring
+
+- **Matrix:** `BIESolver.assemble(λ)` returns M + [[m1_ind, m2_ind], [0, 0]]. The
+  reflected term goes on the exterior rows only, with the same sign as
+  `assemble_cross_block`. For a cluster, every (q, p) pair gets reflected blocks,
+  including q = p, so D is the **cluster** extent.
+- **Right-hand sides:**
+  - `line_dipole_rhs` adds `G_ind(r_i, r_s)`.
+  - `plane_wave_rhs` adds the reflected plane wave `r(q_inc)·e^{i q_inc x + i α₁ (z − 2 z_int)}`. Only downward incidence from the cover is accepted.
+  - A custom `incident_rhs` must supply the full background incident field; its docstring says so.
+- **Near field:** `eval_field` returns the scattered field with `G_free + G_ind` in
+  the exterior representation. Total field = scattered + incident (+ reflected
+  incident). Points at or below `z_int` raise.
+- **LDOS:** S = scattered(particle) + G_ind(r_s, r_s), the latter from
+  `reflected_green`. `relative_ldos_map` keeps its single LU factorisation.
+- **QNM:** `QNMSolver(geometry, material, background=None)`. `modes(box)` builds
+  one `SommerfeldPath.for_box` and reuses it for every contour point and every
+  Newton step. `assemble_derivative` adds `reflected_blocks_dk` with the §2 chain
+  factor.
+
+## 3. Assertions and warnings
+
+| Condition | Action | Source |
+|---|---|---|
+| `Im ε_sub < 0` | raise | holomorphy §2 |
+| any node, source or observation point with `z ≤ z_int` | raise | D5 |
+| clearance C1 fails on ∂B̄ (branch points ±k₁, ±k₂; TM plasmon q_sp classified with the code's own α) | raise, naming the singularity and the offending corner | holomorphy §3–5 |
+| `λi_max/λr_min > tan 45°` | raise | holomorphy §8 |
+| `δ·D > ln(10)·3` after the depth floor | warn: expected digits lost | holomorphy §7, study "open" |
+| `spacing/(2·gap) > 0.25` (TE) or `> 0.2` (TM) | warn, like `ClusterGapWarning` | study trap 4 |
+| x not centred | never exposed: `reflected_blocks` always centres on the particle or cluster centroid | study trap 3 |
+
+## 4. Validation gates (each a test; tolerances quote the study's measured floors)
+
+| Gate | Check | Independent because |
+|---|---|---|
+| G1 | Pointwise PEC closed form ∓(i/4)H₀^{(1)}(k₁ρ_img) and its derivatives, at real and complex k | closed form |
+| G2 | Pointwise against the real-axis QUADPACK reference (legacy substitution, separate branch rule) for glass, lossy and Ag/Au, both polarisations, at real k | a second quadrature on a different path with a different branch implementation |
+| G3 | Complex k against Chebyshev continuation of the G2 reference, at Q = 10 | uses no complex path at all |
+| G4 | The legacy regression: the real-axis `Im α ≥ 0` integral at `Im k < 0` equals `−(i/4)H₀^{(2)}` | pins the failure mode so it cannot come back |
+| G5 | The plasmon pole is a zero of the TM denominator on the sheet, and `for_box` raises when a box forces a crossing | closed form, plus a guard test that must fail |
+| G6 | End-to-end: circle over PEC equals `ClusterBIESolver` particle + mirror, for φ, χ, near field and LDOS; TE/TM; real/complex λ; n_clad ∈ {1, 1.33} | v0.8 reference; pins the sign wiring |
+| G7 | `ε_sub = n_clad²` gives v1.0 bit-identity (G_ind ≡ 0 path short-circuited) and `background=None` gives v1.0 bit-identity | regression |
+| G8 | QNM over PEC: poles of the half-space solver equal the poles of the mirror-cluster matrix (Beyn on both). The gap → ∞ limit recovers the Mie roots. | v0.8 reference plus analytic Mie |
+| G9 | QNM over a dielectric or Ag substrate: continuation from a large gap (Mie-labelled) to a small gap is smooth (conventions §8), and the poles are unchanged when `for_box` depth is varied | consistency only. **The independent anchor for dielectric-substrate QNMs is external (MEEP) and is listed as open** |
+| G10 | Scale covariance: M(s·rad, s·λ) = M(rad, λ) with a background, and z_int scaled too | conventions §9 |
+| G11 | Timing: reflected-block assembly ≤ the free-space assembly at complex k, nn = 256 | performance claim D6 |
+
+## 5. Conventions entries (new §15, written in the implementing commit)
+
+The substrate is below, the cover above, and the interface is horizontal at `z = z_int`.
+Also recorded there:
+- the absolute complex ε with the principal root and signed-zero normalisation;
+- `Im ε ≥ 0` asserted;
+- the vertical-cut α sheet;
+- R sign per polarisation (TE −1 / TM +1 in the PEC limit);
+- the shadow box;
+- the fixed path per box;
+- the LDOS normalisation (D10);
+- the 2-D caveat: these are line-source fields, so absolute LDOS near the
+  interface is not a 3-D number, while Q, detuning and ratios carry over;
+- non-dispersive ε only, with interpolated tabulated data forbidden in QNM work
+  (holomorphy C0).
+
+## 6. Order of work (one commit each)
+
+1. `layered.py` primitives plus `HalfSpace`, with G1–G5.
+2. Driven wiring (matrix, RHS, near field, LDOS) plus G6, G7 and G10 for driven
+   quantities.
+3. Cluster wiring (G6 on a two-particle cluster over PEC, which becomes a
+   four-cylinder mirror reference).
+4. QNM: `for_box`, `reflected_blocks_dk`, `assemble_derivative`, G8, G9.
+5. G11 plus the `performance.md` update, and conventions §15 plus a README section.
+
+## 7. Open questions for the owner
+
+1. **Dielectric-substrate QNM anchor.** G9 is consistency only. Should MEEP (V3
+   harness, v1.0 infrastructure) be a gate of this milestone, or a follow-up?
+2. **The cluster in milestone 1** (step 3). Keep it, or defer it to the multilayer
+   milestone?
+3. **D9:** is raising on far field and cross sections acceptable for the first
+   release, or does scattering use need at least the reflected far field?
