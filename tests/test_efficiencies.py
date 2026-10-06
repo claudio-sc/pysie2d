@@ -176,3 +176,29 @@ def test_cross_sections_and_efficiencies_agree(circle, pol):
     width = 2.0 * geom.rad
     for q_key, c_key in (("qsca", "c_sca"), ("qext", "c_ext"), ("qabs", "c_abs")):
         assert np.isclose(cs[c_key], eff[q_key] * width, rtol=1e-14, atol=0.0)
+
+
+@pytest.mark.parametrize("pol", [1, 2])
+def test_gain_particle_is_not_mirrored_into_loss(circle, pol):
+    # A gain medium (epsi < 0) must emit: qabs < 0 and Im m < 0. Taking Im nc
+    # from |eps| returns the lossy index for either sign of epsi, which gives
+    # qabs > 0 here and the loss-side Mie value — so this cannot pass by
+    # accident. The reference index is built from the physics (ε = n² + iε'')
+    # independently of Material.nc.
+    wavelength = 600.0
+    epsi = -0.5
+    geom = circle(300)
+    mat = Material(n_core=N_CORE, n_clad=N_CLAD, pol=pol, epsi=epsi)
+    eff = BIESolver(geom, mat).scatter(wavelength=wavelength).efficiencies()
+
+    m = np.sqrt(complex(N_CORE**2, epsi)) / N_CLAD
+    assert m.imag < 0.0
+    assert mat.nc == pytest.approx(m, rel=1e-15)  # principal root, exact
+    ref = mie.efficiencies(size_parameter(wavelength), m)
+    tag = POL_TAG[pol]
+
+    assert eff["qabs"] < 0.0
+    # Same observables and quadrature as test_absorbing_particle; its measured
+    # round-off floors carry over unchanged.
+    assert eff["qsca"] == pytest.approx(ref[f"Q_sca_{tag}"], rel=RTOL_QSCA)
+    assert eff["qabs"] == pytest.approx(ref[f"Q_abs_{tag}"], rel=RTOL_QABS)
