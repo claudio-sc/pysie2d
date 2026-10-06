@@ -34,10 +34,11 @@ Geometry.is_circle -> property
 Geometry.n_pts -> property
 Geometry.theta -> property
 class Material
-Material.__init__(self, n_core: float, n_clad: float = 1.0, pol: int = 2, epsi: float = 0.0) -> None
+Material.__init__(self, n_core: float, n_clad: float = 1.0, pol: int = 2, epsi: float = 0.0, epsr_abs: float | None = None) -> None
 Material.eps -> property
 Material.epsi_rel -> property
 Material.epsr -> property
+Material.from_eps(eps: complex, n_clad: float = 1.0, pol: int = 2) -> 'Material'
 Material.nc -> property
 Material.wnum_bg(self, wavelength: float | complex) -> float | complex
 class Multipoles

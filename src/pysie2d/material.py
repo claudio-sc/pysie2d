@@ -29,6 +29,10 @@ class Material:
             referred to vacuum, matching ``n_core``). The relative permittivity
             that enters the operator is ``(n_core² + i·epsi)/n_clad²``, so
             ``epsi`` is divided by ``n_clad²`` — see :attr:`eps`. Default 0.
+        epsr_abs: Real part of the particle permittivity, **absolute**, or
+            ``None`` (default) to derive it as ``n_core²``. Set by
+            :meth:`from_eps`; it is what lets Re ε < 0 (a metal) be expressed,
+            since ``n_core`` is a real index and ``n_core²`` is never negative.
 
     Examples:
         >>> mat = Material(n_core=1.5, n_clad=1.0, pol=2)
@@ -44,13 +48,46 @@ class Material:
     n_clad: float = 1.0
     pol: int = 2
     epsi: float = 0.0
+    epsr_abs: float | None = None
+
+    @classmethod
+    def from_eps(cls, eps: complex, n_clad: float = 1.0, pol: int = 2) -> "Material":
+        """Build a material from an **absolute** complex permittivity.
+
+        This is the constructor for Re ε < 0 (silver, gold), which a real
+        ``n_core`` cannot express. Absolute means referred to vacuum, like
+        ``n_core`` and ``epsi``; the operator still sees ``eps/n_clad²``.
+
+        ``n_core`` is set to ``|√eps|`` and is **only** the length scale that
+        :func:`wavelength_over_ds` reads to size the boundary sampling. It does
+        not enter :attr:`eps` or :attr:`nc`.
+
+        Args:
+            eps: Absolute complex permittivity ε = ε' + iε''.
+            n_clad: Absolute background index. Default 1.0.
+            pol: Polarisation: 2 = TE (default), 1 = TM.
+
+        Returns:
+            A :class:`Material` with ``epsr_abs = Re ε`` and ``epsi = Im ε``.
+        """
+        eps = complex(eps)
+        return cls(
+            n_core=float(abs(np.sqrt(eps))),
+            n_clad=n_clad,
+            pol=pol,
+            epsi=eps.imag,
+            epsr_abs=eps.real,
+        )
 
     @property
     def epsr(self) -> float:
         """Real part of the permittivity **relative** to the background.
 
-        ``(n_core/n_clad)²``.
+        ``(n_core/n_clad)²``, or ``epsr_abs/n_clad²`` when built by
+        :meth:`from_eps`.
         """
+        if self.epsr_abs is not None:
+            return self.epsr_abs / self.n_clad**2
         return (self.n_core / self.n_clad) ** 2
 
     @property
