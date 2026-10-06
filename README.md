@@ -338,6 +338,67 @@ On scale: the dense solve, not assembly, is the cost here — it reaches parity
 with assembly at `Np = 2` and dominates from `Np = 3`, with `Np = 16` still a
 usable 2.7 s and 625 MiB ([performance](https://github.com/claudio-sc/pysie2d/blob/main/docs/design/performance.md) §6).
 
+## A substrate under the particle
+
+`background=HalfSpace(eps_sub, z_int)` on `BIESolver`, `ClusterBIESolver` and
+`QNMSolver` puts a half-space below the horizontal plane `z = z_int`, with the
+particle (and every source and observation point) above it. The feature is
+additive: without the argument nothing changes, bit for bit.
+
+```python
+from pysie2d import BIESolver, Geometry, HalfSpace, Material, relative_ldos
+
+geom = Geometry.gielis(rad=100, n_pts=256, m=0, z0=115.0)       # 15 nm above z = 0
+mat = Material(n_core=2.0, n_clad=1.0, pol=1)
+silver = HalfSpace(-18.3 + 0.48j, z_int=0.0)        # absolute complex ε; Re ε < 0 is fine
+solver = BIESolver(geom, mat, background=silver)
+
+res = solver.scatter(wavelength=633.0, angle=20.0)  # |angle| < 90°, from the cover
+print(res.cross_sections())                         # {'c_sca_up', 'c_abs'}, nm
+print(relative_ldos(solver, 633.0, 60.0, 330.0))    # LDOS above the interface
+```
+
+`HalfSpace.pec(z_int)` is a perfect conductor, evaluated as the exact image term
+with no integral. `Material.from_eps(eps, n_clad, pol)` builds a particle from an
+absolute complex permittivity, which a real `n_core` cannot express for a metal.
+`eps_sub` may be a callable `ε(λ_vac)` for driven solves; `QNMSolver` rejects it,
+because tabulated data is not holomorphic and the contour argument would break
+silently.
+
+The reflected field is a Sommerfeld integral on a **deformed** path, so it is
+valid at complex wavelength — the real-axis integral with the usual `Im α ≥ 0`
+rule returns the *incoming* wave there ([conventions](https://github.com/claudio-sc/pysie2d/blob/main/docs/conventions.md)
+§15). The reflected blocks cost about a tenth of the free-space assembly at
+`nn = 256`.
+
+What changes on the results:
+
+- `far_field()` is the **upward** amplitude on `[−π/2, π/2]`; there is no
+  transmitted far field.
+- `cross_sections()` returns `{'c_sca_up', 'c_abs'}` and `efficiencies()`
+  `{'qsca_up', 'qabs'}` — the free-space keys are absent, not raising, because
+  `c_ext` and the total `c_sca` are undefined when power also enters the
+  substrate. `c_sca_up` omits that power, so it is incomplete by construction;
+  `c_abs` comes from the boundary flux and is exact.
+- `eval_field` returns the scattered field; the incident and reflected-incident
+  waves are the caller's. `relative_ldos` is still normalised to the unbounded
+  cover, so it equals the substrate-only enhancement with no particle.
+- `multipoles()` and `QNMResult.sensitivity` raise `NotImplementedError`;
+  `QNMResult.refine` works.
+
+Guards: a boundary too coarse for its distance to the interface warns
+(`InterfaceGapWarning`: local node spacing over twice the gap above 0.25 for TE,
+0.2 for TM, so a flat facet is caught), a search box whose hump cannot clear a singularity raises, and so does
+a lossless `ε_sub = −n_clad²` (a surface-plasmon resonance with an infinite
+pole). These are 2-D line-source fields: absolute LDOS next to an interface is
+not a 3-D number, while `Q`, detunings and ratios carry over.
+
+Validation is against the PEC image problem (a particle plus its mirror,
+solved by `ClusterBIESolver`, to ~1e-13 in φ, χ and the near field), the PEC
+closed form, a real-axis QUADPACK reference, and Mie. For a **dielectric or lossy**
+substrate the QNM check is consistency only — the poles do not move when the
+path is deformed differently — until the MEEP comparison of v1.0.
+
 ## Performance
 
 The system is a dense `2nn × 2nn` complex matrix; at `nn = 300` (a `600 × 600`
@@ -385,6 +446,10 @@ would be an hour-long sweep takes seconds.
 - **v0.8.0** — finite clusters of arbitrary particles: coupled assembly, dense
   solve, and absolute cross-sections, anchored on an independent two-cylinder
   addition-theorem reference. Purely additive.
+- **v0.9.0** — a half-space substrate: `background=HalfSpace(...)` on the
+  single-particle, cluster and QNM solvers, reflected Green function by
+  Sommerfeld integrals on a deformed path (valid at complex wavelength).
+  Purely additive.
 
 ### Migrating from v0.5
 

@@ -1,9 +1,32 @@
 # v0.9 half-space background — code-spec
 
-Status: **ready for implementation (2026-10-06).** Owner decisions are in §7, and
-the builder contract that closes every open interface is §8. No package code yet.
+Status: **implemented on `v0.9-halfspace` (2026-10-06), except G9's continuation
+and the §8.7 figure, which stopped on the stop rule** (below). Owner decisions are
+in §7, and the builder contract that closes every open interface is §8.
 The half-space ships as **v0.9**; the MEEP comparison for substrates joins the
 v1.0 external-validation milestone. Multilayers follow after v1.0.
+
+**Implementation status.** Steps 0–5 are in, with G1–G8, G10–G14 and the
+path-independence half of G9 passing (`tests/test_layered.py`,
+`test_halfspace*.py`). Two things did not go as the spec says, and neither was
+worked around:
+
+1. **§8.7's continuation does not run.** Starting from the isolated-circle poles
+   with the prescribed box (Re × [0.9, 1.1], Im × [0.5, 2.0]) over silver at
+   nn = 320: TE finds one pole at gap 400 (489.6+52.6i, already 17 nm from the
+   isolated 473.1+43.2i) and one at 349, then at the next gap the box holds two
+   poles (476.4+27.1i and 515.1+29.3i) and four halvings (to gap 341) still hold
+   two; TM holds two poles in the very first box (737.3+62.7i and 880.8+145.8i).
+   The poles themselves are real: at gap 349 the wide TE box finds one pole,
+   489.4575+38.8661i, identical at nn = 160, 320 and 480. The premise fails
+   because a QNM field grows like `e^{|Im k|ρ}`, so the image coupling *grows* with
+   the gap and the isolated pole is not the `gap → ∞` limit (see
+   [conventions §15](../conventions.md)). A homotopy in ε_sub from `n_clad²`
+   (where G7 gives the isolated pole exactly) to the silver value, at fixed gap,
+   would label the mode rigorously; it is a design change and is not made here.
+2. **G8's second clause, "the gap → ∞ limit recovers the Mie roots", is not
+   asserted** for the same reason. Its first clause is: the half-space poles are
+   a subset of the mirror cluster's, to 7.8e-13 nm.
 
 Inputs:
 - [sommerfeld-holomorphy.md](sommerfeld-holomorphy.md) is the theory (step 1).

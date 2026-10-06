@@ -238,7 +238,7 @@ surface freeze**. What still gates v1.0 is external validation itself: a 1.0
 promises a stable surface *and* answers that have been checked against
 something that is neither circular nor ours, and this milestone is where that
 check happens. It also carries the MEEP comparison for the v0.9 substrate.
-Longer term: multilayer and slab-waveguide backgrounds on the v0.9 machinery.
+**v1.1 — multilayer and slab-waveguide backgrounds** on the v0.9 machinery.
 
 ## How to work here
 
