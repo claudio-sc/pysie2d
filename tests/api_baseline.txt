@@ -60,14 +60,14 @@ Parametrisation.gielis(*, rad: float, a: float, b: float, m: int, n1: float, n2:
 Parametrisation.nodes(self, nn: int) -> pysie2d.parametrisation.Nodes
 Parametrisation.uniform_theta() -> 'Parametrisation'
 class QNMResult
-QNMResult.__init__(self, wavelengths: numpy.ndarray, vectors: numpy.ndarray, multiplicity: numpy.ndarray, sigma_ratio: numpy.ndarray, sv_ratio: numpy.ndarray, max_gap: float, rank: int, cancellation: float, edge_margin: numpy.ndarray, converged: numpy.ndarray, cond_jacobian: numpy.ndarray, z_lo: complex, z_hi: complex, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material) -> None
+QNMResult.__init__(self, wavelengths: numpy.ndarray, vectors: numpy.ndarray, multiplicity: numpy.ndarray, sigma_ratio: numpy.ndarray, sv_ratio: numpy.ndarray, max_gap: float, rank: int, cancellation: float, edge_margin: numpy.ndarray, converged: numpy.ndarray, cond_jacobian: numpy.ndarray, z_lo: complex, z_hi: complex, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, background: pysie2d.background.HalfSpace | None = None) -> None
 QNMResult.n_modes -> property
 QNMResult.quality_factors -> property
 QNMResult.refine(self, *, tol: float = 1e-09, max_iter: int = 30) -> 'QNMResult'
 QNMResult.sensitivity(self, at: collections.abc.Callable[[float], tuple[pysie2d.geometry.Geometry, pysie2d.material.Material]], *, step: float = 1e-05) -> numpy.ndarray
 QNMResult.size_parameters -> property
 class QNMSolver
-QNMSolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material) -> None
+QNMSolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, background: pysie2d.background.HalfSpace | None = None) -> None
 QNMSolver.modes(self, z_lo: complex, z_hi: complex, *, n_quad_per_side: int = 12, n_probe: int = 12, rank_tol: float = 1e-08, rng_seed: int = 0) -> pysie2d.qnm.QNMResult
 SHAPE_STEP: float = 1e-05
 class ScatterResult
