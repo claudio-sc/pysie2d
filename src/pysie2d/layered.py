@@ -365,6 +365,27 @@ class SommerfeldPath:
         )
 
 
+@dataclass(frozen=True, eq=False)
+class Points:
+    """Observation or source points standing in for a field boundary.
+
+    Lets :func:`reflected_blocks` evaluate the reflected field at many points as
+    one separable GEMM instead of a point-by-node loop of exponentials.
+
+    Attributes:
+        f: (n,) x coordinates (nm).
+        g: (n,) z coordinates (nm).
+    """
+
+    f: np.ndarray
+    g: np.ndarray
+
+    @property
+    def n_pts(self) -> int:
+        """Number of points."""
+        return int(self.f.size)
+
+
 def _gauss_legendre(n: int, a: float, b: float) -> tuple[np.ndarray, np.ndarray]:
     x, w = np.polynomial.legendre.leggauss(n)
     return 0.5 * (b - a) * x + 0.5 * (b + a), 0.5 * (b - a) * w
@@ -489,7 +510,7 @@ def _reflected_blocks(
     pol: int,
     k: complex,
     eps_rel: complex | None,
-    tgt: Geometry,
+    tgt: Geometry | Points,
     src: Geometry,
     z_int: float,
     x_c: float,
@@ -577,7 +598,7 @@ def reflected_blocks(
     pol: int,
     k: complex,
     eps_rel: complex | None,
-    tgt: Geometry,
+    tgt: Geometry | Points,
     src: Geometry,
     z_int: float,
     x_c: float,
@@ -600,7 +621,7 @@ def reflected_blocks(
         pol: 2 = TE, 1 = TM.
         k: Background wavenumber, complex allowed.
         eps_rel: Substrate permittivity relative to the cover, or ``None`` for PEC.
-        tgt: Field boundary.
+        tgt: Field boundary, or :class:`Points`.
         src: Source boundary.
         z_int: Interface height (nm).
         x_c: Horizontal centre of the particle set.
@@ -619,7 +640,7 @@ def reflected_blocks_dk(
     pol: int,
     k: complex,
     eps_rel: complex | None,
-    tgt: Geometry,
+    tgt: Geometry | Points,
     src: Geometry,
     z_int: float,
     x_c: float,
@@ -633,7 +654,7 @@ def reflected_blocks_dk(
         pol: 2 = TE, 1 = TM.
         k: Background wavenumber, complex allowed.
         eps_rel: Substrate permittivity relative to the cover, or ``None``.
-        tgt: Field boundary.
+        tgt: Field boundary, or :class:`Points`.
         src: Source boundary.
         z_int: Interface height (nm).
         x_c: Horizontal centre of the particle set.
@@ -642,3 +663,128 @@ def reflected_blocks_dk(
         ``(dm1_dk, dm2_dk)``, each ``(tgt.n_pts, src.n_pts)``.
     """
     return _reflected_blocks(path, pol, k, eps_rel, tgt, src, z_int, x_c, True)
+
+
+@dataclass(frozen=True, eq=False)
+class Reflection:
+    """The reflected-field machinery for one call context.
+
+    Bundles the path, wavenumber, substrate permittivity and interface height
+    that a driven solve needs, so the facade, the right-hand sides, the near
+    field and the LDOS all use one path built once. ``eps_rel is None`` is PEC.
+
+    Attributes:
+        pol: 2 = TE, 1 = TM.
+        k: Background wavenumber (rad/nm), complex allowed.
+        eps_rel: Substrate permittivity relative to the cover, or ``None``.
+        z_int: Interface height (nm).
+        path: The Sommerfeld path, ``None`` for PEC.
+        x_c: Horizontal centre of everything the path serves.
+    """
+
+    pol: int
+    k: complex
+    eps_rel: complex | None
+    z_int: float
+    path: SommerfeldPath | None
+    x_c: float
+
+    @classmethod
+    def build(
+        cls,
+        pol: int,
+        k: complex,
+        eps_rel: complex | None,
+        z_int: float,
+        f: np.ndarray,
+        g: np.ndarray,
+        path: SommerfeldPath | None = None,
+    ) -> Reflection | None:
+        """Reflection for every point ``(f, g)`` the call will touch.
+
+        Args:
+            pol: 2 = TE, 1 = TM.
+            k: Background wavenumber.
+            eps_rel: Substrate permittivity relative to the cover, or ``None``.
+            z_int: Interface height (nm).
+            f: x coordinates of every node, source and observation point served.
+            g: Their z coordinates.
+            path: A path to use as is (QNM: one per search box). By default one
+                is built for this ``k``, sized for the points given.
+
+        Returns:
+            The reflection, or ``None`` when ``eps_rel == 1`` exactly: no
+            interface, so no reflected term is built at all (G7).
+
+        Raises:
+            ValueError: A point is at or below the interface.
+        """
+        if eps_rel is not None and eps_rel == 1.0:
+            return None
+        f, g = np.asarray(f, dtype=float), np.asarray(g, dtype=float)
+        _check_in_cover(g, z_int, "every node, source and observation point")
+        z_min = 2.0 * float((g - z_int).min())
+        if path is None and eps_rel is not None:
+            # D never below z_min: a single point has no extent, and the length
+            # must come from the geometry so the path stays scale covariant.
+            path = SommerfeldPath.for_wavenumber(
+                k, eps_rel, pol, max(float(np.ptp(f)), z_min), z_min
+            )
+        return cls(pol, k, eps_rel, z_int, path, 0.5 * float(f.max() + f.min()))
+
+    def blocks(
+        self, tgt: Geometry | Points, src: Geometry
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """:func:`reflected_blocks` with this context."""
+        return reflected_blocks(
+            self.path, self.pol, self.k, self.eps_rel, tgt, src, self.z_int, self.x_c
+        )
+
+    def blocks_dk(
+        self, tgt: Geometry | Points, src: Geometry
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """:func:`reflected_blocks_dk` with this context."""
+        return reflected_blocks_dk(
+            self.path, self.pol, self.k, self.eps_rel, tgt, src, self.z_int, self.x_c
+        )
+
+    def green(
+        self,
+        x: np.ndarray | float,
+        z: np.ndarray | float,
+        xs: np.ndarray | float,
+        zs: np.ndarray | float,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """:func:`reflected_green` with this context."""
+        return reflected_green(
+            self.path, self.pol, self.k, self.eps_rel, x, z, xs, zs, self.z_int
+        )
+
+    def plane_wave(self, angle: float, f: np.ndarray, g: np.ndarray) -> np.ndarray:
+        """Fresnel-reflected plane wave at ``(f, g)``, for a wave from the cover.
+
+        The incident wave of :func:`pysie2d.sources.plane_wave_rhs` travels
+        downward as ``exp(i k (f sin θ − g cos θ))``. Its reflection is
+        ``r(q)·exp(i q f + i α₁ (g − 2·z_int))`` with ``q = k sin θ`` and
+        ``α₁ = k cos θ``. Only ``r`` at the one real ``q`` is needed, so no path.
+
+        Args:
+            angle: Incidence angle θ (degrees), from the normal, |θ| < 90°.
+            f: x coordinates (nm).
+            g: z coordinates (nm).
+
+        Returns:
+            The reflected wave, shape of ``f``.
+
+        Raises:
+            ValueError: ``|angle| ≥ 90°``: grazing, and a wave from below the
+                interface is outside this milestone.
+        """
+        if abs(angle) >= 90.0:
+            raise ValueError(
+                f"incidence angle {angle}° must satisfy |angle| < 90° over a half-space"
+            )
+        theta = np.deg2rad(angle)
+        q, a1 = self.k * np.sin(theta), self.k * np.cos(theta)
+        r = fresnel_r(np.asarray(q), self.k, self.eps_rel, self.pol)
+        return r * np.exp(1j * (q * f + a1 * (g - 2.0 * self.z_int)))

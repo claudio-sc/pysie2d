@@ -8,12 +8,19 @@ vacuum-to-background conversion — :meth:`pysie2d.material.Material.wnum_bg` �
 happens exactly once per call path and cannot be applied twice.
 """
 
-import functools
 from collections.abc import Callable
 
 import numpy as np
 
-from .fields import _cross_sections, _far_field_at, eval_field, far_field
+from . import layered
+from .background import HalfSpace
+from .fields import (
+    _cross_sections,
+    _far_field_at,
+    _is_outside,
+    eval_field,
+    far_field,
+)
 from .geometry import Geometry
 from .kernels import assemble_matrix, assemble_matrix_dwn
 from .material import Material
@@ -123,6 +130,9 @@ class ScatterResult:
         material: The scatterer optical properties.
         wavelength: **Vacuum** wavelength (nm) this was solved at.
         angle: Incident plane-wave angle (degrees).
+        background: The substrate the particle sits on, or ``None`` for the
+            homogeneous cladding. With one, ``far_field``, ``efficiencies``,
+            ``cross_sections`` and ``multipoles`` are not yet available.
     """
 
     def __init__(
@@ -132,6 +142,7 @@ class ScatterResult:
         material: Material,
         wavelength: float,
         angle: float = 0.0,
+        background: HalfSpace | None = None,
     ) -> None:
         """Store the BIE solution and the problem it was solved for."""
         self.ei = ei
@@ -139,6 +150,13 @@ class ScatterResult:
         self.material = material
         self.wavelength = wavelength
         self.angle = angle
+        self.background = background
+
+    def _refuse_background(self, what: str) -> None:
+        # Not yet implemented over a substrate: the free-space formulas would
+        # silently return the wrong numbers, so refuse rather than approximate.
+        if self.background is not None:
+            raise NotImplementedError(f"{what} is not available with a background")
 
     @property
     def wnum_bg(self) -> complex:
@@ -165,9 +183,31 @@ class ScatterResult:
 
         Returns:
             complex ndarray, same shape as x/z.
+
+        Raises:
+            ValueError: With a background, a point at or below the interface.
+
+        With a background this is still the **scattered** field: the free-space
+        representation plus the reflected-image term
+        ``−Σ delt·((∂x'G_ind·dg − ∂z'G_ind·df)·φ + G_ind·χ)`` at exterior points.
+        Interior points are unchanged, because the interior representation uses
+        the core Green function only. The total exterior field is scattered +
+        incident + reflected incident; the last two are the caller's.
         """
         g = self.geometry
-        return eval_field(
+        x = np.asarray(x, dtype=float)
+        z = np.asarray(z, dtype=float)
+        refl = None
+        if self.background is not None:
+            refl = layered.Reflection.build(
+                self.material.pol,
+                self.wnum_bg,
+                self.background.eps_rel(self.material.n_clad, self.wavelength),
+                self.background.z_int,
+                np.concatenate([g.f, x.ravel()]),
+                np.concatenate([g.g, z.ravel()]),
+            )
+        field = eval_field(
             self.ei,
             g.n_pts,
             g.f,
@@ -176,11 +216,27 @@ class ScatterResult:
             g.dg,
             g.delt,
             self.wnum_bg,
-            np.asarray(x, dtype=float),
-            np.asarray(z, dtype=float),
+            x,
+            z,
             ri=self.material.nc,
             eta_in=self.material.eps if self.material.pol == 1 else 1.0,
         )
+        if refl is not None:
+            outside = np.array(
+                [
+                    _is_outside(xi, zi, g.f, g.g, g.df, g.dg)
+                    for xi, zi in zip(x.ravel(), z.ravel(), strict=True)
+                ],
+                dtype=bool,
+            )
+            if outside.any():
+                pts = layered.Points(x.ravel()[outside], z.ravel()[outside])
+                m1, m2 = refl.blocks(pts, g)
+                n = g.n_pts
+                image = -(m1 @ self.ei[:n] + m2 @ self.ei[n:])
+                field = field.copy()
+                field[np.flatnonzero(outside)] += image
+        return field
 
     def multipoles(
         self,
@@ -211,6 +267,7 @@ class ScatterResult:
                 the coefficients are meaningless (measured: 58 % error at
                 0.9 × the circumscribing radius, with nothing else to warn you).
         """
+        self._refuse_background("multipoles")
         geo = self.geometry
         r_circ = float(np.hypot(geo.f - geo.x0, geo.g - geo.z0).max())
         if r0 is None:
@@ -248,6 +305,7 @@ class ScatterResult:
             amplitude: complex (n_angles,) far-field amplitude.
             angles: float (n_angles,) observation angles (rad), from −π to π.
         """
+        self._refuse_background("far_field")
         g = self.geometry
         return far_field(
             g.n_pts,
@@ -278,6 +336,7 @@ class ScatterResult:
         Returns:
             dict with keys 'qsca', 'qext', 'qabs'.
         """
+        self._refuse_background("efficiencies")
         wnum_bg = self.wnum_bg
         norfac = 8.0 * PI * wnum_bg
         delthe = 2.0 * PI / (n_angles - 1.0)
@@ -325,6 +384,7 @@ class ScatterResult:
         Returns:
             dict with keys 'c_sca', 'c_ext', 'c_abs', in nm.
         """
+        self._refuse_background("cross_sections")
         g = self.geometry
         wnum_bg = self.wnum_bg
         amp, _ = self.far_field(n_angles)
@@ -348,6 +408,9 @@ class BIESolver:
     Attributes:
         geometry: Discretized particle boundary.
         material: Optical properties of the scatterer.
+        background: A :class:`~pysie2d.background.HalfSpace` the particle sits
+            above, or ``None`` (default) for the homogeneous cladding, which is
+            bit-identical to a solver without the argument.
 
     Examples:
         >>> geom = Geometry.gielis(rad=200, n_pts=300, m=6)
@@ -358,10 +421,52 @@ class BIESolver:
         >>> field = result.eval_field(x_grid, z_grid)
     """
 
-    def __init__(self, geometry: Geometry, material: Material) -> None:
-        """Compose a geometry and a material into a reusable solver."""
+    def __init__(
+        self,
+        geometry: Geometry,
+        material: Material,
+        background: HalfSpace | None = None,
+    ) -> None:
+        """Compose a geometry and a material into a reusable solver.
+
+        Raises:
+            ValueError: With a background, a boundary node at or below the
+                interface.
+        """
         self.geometry = geometry
         self.material = material
+        self.background = background
+        # A path fixed for a whole QNM search box; None builds one per call.
+        self._path: layered.SommerfeldPath | None = None
+        if background is not None:
+            layered.check_interface_gap([geometry], background.z_int, material.pol)
+
+    def _reflection(
+        self,
+        wavelength: float | complex,
+        f: np.ndarray | None = None,
+        g: np.ndarray | None = None,
+    ) -> layered.Reflection | None:
+        """Reflected-field context at ``wavelength``, or ``None`` without one.
+
+        Args:
+            wavelength: **Vacuum** wavelength (nm).
+            f: x coordinates of every point to serve; the boundary by default.
+            g: Their z coordinates.
+        """
+        if self.background is None:
+            return None
+        geo = self.geometry
+        mat = self.material
+        return layered.Reflection.build(
+            mat.pol,
+            mat.wnum_bg(wavelength),
+            self.background.eps_rel(mat.n_clad, wavelength),
+            self.background.z_int,
+            geo.f if f is None else f,
+            geo.g if g is None else g,
+            path=self._path,
+        )
 
     def assemble(self, wavelength: float | complex) -> np.ndarray:
         """Assemble the 2nn × 2nn BIE system matrix M(λ).
@@ -387,7 +492,7 @@ class BIESolver:
         """
         g = self.geometry
         mat = self.material
-        return assemble_matrix(
+        m = assemble_matrix(
             mat.pol,
             g.n_pts,
             g.f,
@@ -400,6 +505,14 @@ class BIESolver:
             mat.nc,
             mat.eps,
         )
+        refl = self._reflection(wavelength)
+        if refl is not None:
+            # The substrate's reflected field enters the exterior equation only,
+            # with the sign of the cross-particle blocks.
+            m1, m2 = refl.blocks(g, g)
+            m[: g.n_pts, : g.n_pts] += m1
+            m[: g.n_pts, g.n_pts :] += m2
+        return m
 
     def assemble_derivative(self, wavelength: float | complex) -> np.ndarray:
         """Analytic derivative dM/dλ of the BIE system matrix, λ vacuum in nm.
@@ -456,6 +569,13 @@ class BIESolver:
             mat.nc,
             mat.eps,
         )
+        refl = self._reflection(wavelength)
+        if refl is not None:
+            # Added before the chain factor, so it is applied exactly once. The
+            # path is fixed, so d/dk at fixed nodes is the exact derivative.
+            dm1, dm2 = refl.blocks_dk(g, g)
+            dm_dk[: g.n_pts, : g.n_pts] += dm1
+            dm_dk[: g.n_pts, g.n_pts :] += dm2
         return dm_dk * (-wnum_bg / wavelength)
 
     def scatter(
@@ -473,10 +593,16 @@ class BIESolver:
             incident_rhs: Custom incident-field callable with signature
                 ``(nn, wnum_bg, f, g) → complex (2*nn,)``, where ``wnum_bg`` is
                 the background wavenumber ``2π·n_clad/λ_vac`` — **not** a
-                wavelength. Replaces the default plane-wave excitation.
+                wavelength. Replaces the default plane-wave excitation. With a
+                background it must supply the **full** incident field, the
+                substrate's reflection of it included.
 
         Returns:
             ScatterResult carrying the solution vector and analysis methods.
+
+        Raises:
+            ValueError: With a background and the default plane wave,
+                ``|angle| ≥ 90°``.
         """
         g = self.geometry
         mat = self.material
@@ -490,9 +616,12 @@ class BIESolver:
             rhs = incident_rhs(g.n_pts, wnum_bg, g.f, g.g)
         else:
             rhs = plane_wave_rhs(g.n_pts, angle, wnum_bg, g.f, g.g)
+            refl = self._reflection(wavelength)
+            if refl is not None:
+                rhs[: g.n_pts] += refl.plane_wave(angle, g.f, g.g)
 
         ei = np.linalg.solve(m, rhs)
-        return ScatterResult(ei, g, mat, wavelength, angle)
+        return ScatterResult(ei, g, mat, wavelength, angle, self.background)
 
     def scatter_dipole(
         self,
@@ -518,5 +647,15 @@ class BIESolver:
             ValueError: If the source is inside the particle or too close to
                 its surface (see :func:`pysie2d.sources.line_dipole_rhs`).
         """
-        rhs = functools.partial(line_dipole_rhs, x_s=x_s, z_s=z_s)
+        geo = self.geometry
+        refl = self._reflection(
+            wavelength, np.append(geo.f, x_s), np.append(geo.g, z_s)
+        )
+
+        def rhs(nn: int, wnum_bg: complex, f: np.ndarray, g: np.ndarray) -> np.ndarray:
+            ei = line_dipole_rhs(nn, wnum_bg, f, g, x_s, z_s)
+            if refl is not None:
+                ei[:nn] += refl.green(f, g, x_s, z_s)[0]
+            return ei
+
         return self.scatter(wavelength, incident_rhs=rhs)

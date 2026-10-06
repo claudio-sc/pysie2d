@@ -16,6 +16,7 @@ numerically safe — provided ``r_s`` keeps the usual distance from the boundary
 import numpy as np
 from scipy.linalg import lu_factor, lu_solve
 
+from . import layered
 from .kernels import _real_if_real, hank0, hank1
 from .solver import BIESolver
 
@@ -40,10 +41,21 @@ def self_green(
 
     Returns:
         The complex self-Green function S(r_s, r_s, ω).
+
+    With a background, S also contains the substrate's reflected self-field
+    ``G_ind(r_s, r_s)``, so with no particle it is the substrate-only
+    enhancement, normalised to the unbounded cover (D10).
+
+    Raises:
+        ValueError: With a background, a source at or below the interface.
     """
     result = solver.scatter_dipole(wavelength, x_s, z_s)
     field = result.eval_field(np.array([x_s]), np.array([z_s]))
-    return complex(field[0])
+    s = complex(field[0])
+    refl = solver._reflection(wavelength, np.array([x_s]), np.array([z_s]))
+    if refl is not None:
+        s += complex(refl.green(x_s, z_s, x_s, z_s)[0])
+    return s
 
 
 def relative_ldos(
@@ -118,7 +130,8 @@ def relative_ldos_map(
 
     Returns:
         Relative LDOS at every source point, same shape as x_pts, with NaN at
-        invalid (interior / too-close) positions.
+        invalid (interior / too-close) positions — and, with a background, at
+        or below the interface.
     """
     geom = solver.geometry
     nn = geom.n_pts
@@ -140,6 +153,16 @@ def relative_ldos_map(
     # the same background wavenumber, built from the same single conversion.
     wnum_bg = _real_if_real(solver.material.wnum_bg(wavelength))
     lu = lu_factor(solver.assemble(wavelength))
+
+    # One reflected-field context for the whole grid, sized for every source that
+    # can be valid: the factorisation is reused, and so is the path.
+    refl = None
+    if solver.background is not None:
+        z_int = solver.background.z_int
+        above = np.isfinite(xf) & np.isfinite(zf) & (zf > z_int)
+        refl = solver._reflection(
+            wavelength, np.concatenate([f, xf[above]]), np.concatenate([g, zf[above]])
+        )
 
     # Geometry-only quantities, hoisted out of the per-point work.
     seg = np.sqrt(np.diff(f, append=f[0]) ** 2 + np.diff(g, append=g[0]) ** 2)
@@ -165,6 +188,8 @@ def relative_ldos_map(
             ] + f[None, :]
         crossings = np.count_nonzero(straddles & (xs[:, None] < x_cross), axis=1)
         valid = (crossings % 2 == 0) & (dist.min(axis=1) >= exclusion)
+        if solver.background is not None:
+            valid &= zs > solver.background.z_int
         if not valid.any():
             continue
 
@@ -174,6 +199,12 @@ def relative_ldos_map(
         h1 = hank1(arg)
         rhs = np.zeros((2 * nn, arg.shape[0]), dtype=complex)
         rhs[:nn, :] = (0.25j * h0).T
+        if refl is not None:
+            # G_ind is symmetric under swapping source and field point, so the
+            # (source, node) block is the transpose of the (node, source) one.
+            pts = layered.Points(xs[valid], zs[valid])
+            m1_pts, m2_pts = refl.blocks(pts, geom)
+            rhs[:nn, :] += (m2_pts / delt).T
         eis = lu_solve(lu, rhs)  # (2nn, m_valid)
 
         # Representation formula, each source evaluated at its own position.
@@ -182,6 +213,11 @@ def relative_ldos_map(
             wnum_bg**2 * arg2 * (h1 / arg) * eis[:nn, :].T - h0 * eis[nn:, :].T
         ) * delt
         field = (1j / 4.0) * integrand.sum(axis=1)
+        if refl is not None:
+            # Each source's own reflected field: its particle's image term and
+            # its direct reflection G_ind(r_s, r_s).
+            field -= np.sum(m1_pts * eis[:nn, :].T + m2_pts * eis[nn:, :].T, axis=1)
+            field += refl.green(xs[valid], zs[valid], xs[valid], zs[valid])[0]
         out[np.flatnonzero(valid) + lo] = 1.0 + 4.0 * field.imag
 
     return out.reshape(x_arr.shape)

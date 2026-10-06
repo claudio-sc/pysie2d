@@ -1,5 +1,5 @@
 class BIESolver
-BIESolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material) -> None
+BIESolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, background: pysie2d.background.HalfSpace | None = None) -> None
 BIESolver.assemble(self, wavelength: float | complex) -> numpy.ndarray
 BIESolver.assemble_derivative(self, wavelength: float | complex) -> numpy.ndarray
 BIESolver.scatter(self, wavelength: float, angle: float = 0.0, incident_rhs: collections.abc.Callable[[int, complex, numpy.ndarray, numpy.ndarray], numpy.ndarray] | None = None) -> pysie2d.solver.ScatterResult
@@ -71,7 +71,7 @@ QNMSolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.
 QNMSolver.modes(self, z_lo: complex, z_hi: complex, *, n_quad_per_side: int = 12, n_probe: int = 12, rank_tol: float = 1e-08, rng_seed: int = 0) -> pysie2d.qnm.QNMResult
 SHAPE_STEP: float = 1e-05
 class ScatterResult
-ScatterResult.__init__(self, ei: numpy.ndarray, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float, angle: float = 0.0) -> None
+ScatterResult.__init__(self, ei: numpy.ndarray, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float, angle: float = 0.0, background: pysie2d.background.HalfSpace | None = None) -> None
 ScatterResult.cross_sections(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.efficiencies(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
