@@ -112,7 +112,8 @@ named module constants, each with a comment giving the measurement behind it.
 | clearance C1 fails on ∂B̄ (branch points ±k₁, ±k₂; TM plasmon q_sp classified with the code's own α) | raise, naming the singularity and the offending corner | holomorphy §3–5 |
 | `λi_max/λr_min > tan 45°` | raise | holomorphy §8 |
 | `δ·D > ln(10)·3` after the depth floor | warn: expected digits lost | holomorphy §7, study "open" |
-| `spacing/(2·gap) > 0.25` (TE) or `> 0.2` (TM) | warn, like `ClusterGapWarning` | study trap 4 |
+| `abs(ε_cover + ε_sub)` at round-off (lossless surface-plasmon resonance: R_∞ and q_sp infinite) | raise | study t13 |
+| `spacing/(2·gap) > 0.25` (TE) or `> 0.2` (TM), with spacing the **local** node spacing on the nodes nearest the interface (not the mean), so a flat facet near the interface is caught | warn, like `ClusterGapWarning` | study trap 4, t14 |
 | x not centred | never exposed: `reflected_blocks` always centres on the particle or cluster centroid | study trap 3 |
 
 ## 4. Validation gates (each a test; tolerances quote the study's measured floors)
