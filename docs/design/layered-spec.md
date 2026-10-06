@@ -179,9 +179,13 @@ Also recorded there:
    v0.8.2** (PR #24): `nc` is now the principal root of the complex ε.
 8. `Material.from_eps(eps, n_clad, pol)`: additive classmethod taking an absolute
    complex ε (Re ε < 0 allowed, `nc = √ε` principal root), anchored on Mie for a
-   metal cylinder. It is needed for the tungsten heater below.
-9. **README figure (LDOS only; the multipole comparison is dropped).** A heater
-   cross-section at 1550 nm:
+   metal cylinder. It was needed for the tungsten heater below. With that
+   figure parked, it is optional for v0.9 (metal particles over a substrate).
+9. **Parked 2026-10-06; not a v0.9 deliverable.** The v0.9 README section
+   needs a figure, still to be chosen. The heater design below is kept for a
+   later release.
+
+   The parked design (LDOS only) is a heater cross-section at 1550 nm:
    - Si half-space substrate under an SiO₂ cover (n = 1.444);
    - a rounded-square (Gielis) SiN core 200 nm above the substrate;
    - a horizontally elongated tungsten heater 1 µm above the SiN;
