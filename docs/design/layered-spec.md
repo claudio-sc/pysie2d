@@ -72,8 +72,10 @@ named module constants, each with a comment giving the measurement behind it.
   `relative_ldos_map` add the second term from `reflected_green` at each source. `relative_ldos_map` keeps its single LU factorisation.
 - **QNM:** `QNMSolver(geometry, material, background=None)`. `modes(box)` builds
   one `SommerfeldPath.for_box` and reuses it for every contour point and every
-  Newton step. `assemble_derivative` adds `reflected_blocks_dk` with the §2 chain
-  factor.
+  Newton step. `assemble_derivative` adds `reflected_blocks_dk` to `dm_dk` **before**
+  the existing single chain factor `−(k/λ)` is applied, so there is still exactly one
+  conversion point (conventions §2). The path is fixed per box, so d/dk at fixed
+  nodes is the exact derivative.
 
 ## 2a. Far field with a substrate (D9)
 
@@ -132,7 +134,7 @@ named module constants, each with a comment giving the measurement behind it.
 | G6 | End-to-end: circle over PEC equals `ClusterBIESolver` particle + mirror, for φ, χ, near field and LDOS; TE/TM; real/complex λ; n_clad ∈ {1, 1.33} | v0.8 reference; pins the sign wiring |
 | G7 | `ε_sub = n_clad²` gives v0.8 bit-identity (G_ind ≡ 0 path short-circuited) and `background=None` gives v0.8 bit-identity | regression |
 | G8 | QNM over PEC: poles of the half-space solver equal the poles of the mirror-cluster matrix (Beyn on both). The gap → ∞ limit recovers the Mie roots. | v0.8 reference plus analytic Mie |
-| G9 | QNM over a dielectric or Ag substrate: continuation from a large gap (Mie-labelled) to a small gap is smooth (conventions §8), and the poles are unchanged when `for_box` depth is varied | consistency only. **The independent anchor for dielectric-substrate QNMs is external (MEEP) and is listed as open** |
+| G9 | QNM over Ag: the §8.7 continuation from the isolated-circle poles down to a 5 nm gap succeeds at every step, and the poles are unchanged when the `for_box` depth is varied (§8.7) | consistency only. **The independent anchor for dielectric-substrate QNMs is external (MEEP) and is listed as open** |
 | G10 | Scale covariance: M(s·rad, s·λ) = M(rad, λ) with a background, and z_int scaled too | conventions §9 |
 | G12 | Upward far field over PEC equals the mirror-cluster far field on the upper half circle | v0.8 reference |
 | G13 | `σ_abs` from boundary flux equals `qext − qsca` (v0.8) with no background and equals Mie `Q_abs` on a lossy circle | analytic Mie |
@@ -267,7 +269,7 @@ and M2 = h·G.
 | `ScatterResult.multipoles` | `NotImplementedError` |
 | `ScatterResult.eval_field` | §2 near field |
 | `ClusterScatterResult.far_field / cross_sections / eval_field` | same as the single-particle rows |
-| `self_green`, `relative_ldos`, `relative_ldos_map` | add `G_ind(r_s, r_s)` (§2). `BIESolver` only, as in v0.8 |
+| `self_green`, `relative_ldos`, `relative_ldos_map` | add `G_ind(r_s, r_s)` (§2). `BIESolver` only, as in v0.8. `self_green` / `relative_ldos` raise `ValueError` at or below `z_int`; `relative_ldos_map` returns NaN there, as it already does inside the particle |
 | `QNMSolver(geometry, material, background=None)` | single particle only; a callable `eps_sub` raises `ValueError` |
 | `QNMResult.refine` | works (analytic dM/dλ) |
 | `QNMResult.sensitivity` | `NotImplementedError` |
