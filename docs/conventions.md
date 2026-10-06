@@ -570,6 +570,10 @@ solution vector, far field and near field — which is what
 `tests/test_cluster.py` asserts with `np.array_equal` rather than `allclose`.
 If that assertion ever degrades to "close", this layout has been changed and
 this section is no longer true; that, not the number, is what the test guards.
+Interior field points are the one exception: the cluster's vectorised
+representation helper rounds differently with the number of points per batch,
+so there the test asserts a round-off bound (measured 1.7e-16). That is
+arithmetic, not layout.
 
 **This section does not extend §4, and must not be read as reordering it.**
 The alternative grouping `[φ_0 … φ_{Np−1}, χ_0 … χ_{Np−1}]` — the legacy

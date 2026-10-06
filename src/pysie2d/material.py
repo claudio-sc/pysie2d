@@ -71,19 +71,12 @@ class Material:
         ``n_core/n_clad`` for a lossless particle. This is the ``m`` of Mie
         theory; do not divide it by ``n_clad`` again at the call site.
 
-        The closed form takes the principal root, which is ``√eps`` only for
-        ``epsi ≥ 0``: it reconstructs ``Im nc`` from ``|eps|`` and so returns a
-        *lossy* index for a gain medium (``epsi < 0``). Gain is outside the
-        validated scope — the analytic anchor is a passive Mie cylinder — and
-        nothing in the package guards against it.
+        The principal root of the complex ``eps`` keeps the sign of its
+        imaginary part, so a gain medium (``epsi < 0``) gets ``Im nc < 0``. A
+        closed form that rebuilt ``Im nc`` from ``|eps|`` would return a
+        *lossy* index for gain, silently mirroring gain into loss.
         """
-        er = self.epsr
-        ei = self.epsi_rel
-        aeps = np.sqrt(er**2 + ei**2)
-        return complex(
-            np.sqrt(0.5 * (er + aeps)),
-            np.sqrt(0.5 * (-er + aeps)),
-        )
+        return complex(np.sqrt(self.eps))
 
     @property
     def eps(self) -> complex:
