@@ -331,3 +331,38 @@ def test_driven_observables_are_scale_covariant_over_a_substrate(pol, make_bg):
     bars = (RTOL_SCALE_OBS, RTOL_SCALE_CHI, RTOL_SCALE_OBS, RTOL_SCALE_OBS)
     for a, b, bar in zip(base, observables(1.7), bars, strict=True):
         assert np.abs(b - a).max() / np.abs(a).max() < bar
+
+
+# --- G11: the reflected blocks cost less than the free-space assembly ---------------
+
+
+def test_reflected_block_assembly_is_cheaper_than_the_free_space_assembly():
+    # D6 claims the banded separable GEMM is the cheap part at complex k: 7 ms
+    # against 85 ms at nn = 256 on the measured machine (ratio 0.09; 0.05–0.31
+    # over R = 100/500 nm, gaps 5/20 nm, nn = 64–256, both polarisations). The
+    # spec's bar is "≤", and a factor of eleven sits between the two, so a loaded
+    # machine cannot flip it. Best of five, to take scheduling noise off both.
+    import time
+
+    from pysie2d import layered
+
+    geo = Geometry.gielis(RAD, 256, m=0, x0=0.0, z0=RAD + 20.0)
+    mat = Material(n_core=3.0, pol=1)
+    wavelength = 633.0 * (1 + 0.05j)
+    k, eps = mat.wnum_bg(wavelength), -18.3 + 0.48j
+    path = layered.SommerfeldPath.for_wavenumber(k, eps, 1, np.ptp(geo.f), 40.0)
+    free = BIESolver(geo, mat)
+
+    def best(fn):
+        times = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            fn()
+            times.append(time.perf_counter() - t0)
+        return min(times)
+
+    t_blocks = best(
+        lambda: layered.reflected_blocks(path, 1, k, eps, geo, geo, 0.0, 0.0)
+    )
+    t_free = best(lambda: free.assemble(wavelength))
+    assert t_blocks <= t_free
