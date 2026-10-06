@@ -38,8 +38,9 @@ divergent integral.
 ## 2. Permittivity, branch labels, and gain
 
 - `k_j := k₀·√ε_j` with the **principal root of the complex ε_j**, never of
-  |ε_j|. `Material.nc` rebuilds Im n from |ε| and cannot express `Re ε < 0`, so
-  it must not be used for layers.
+  |ε_j|. `Material` must not be used for layers. Its `nc` has taken the
+  principal root of the complex ε since v0.8.2, but it builds `Re ε = n_core²`
+  from a real index, so it cannot express `Re ε < 0`.
 - For passive media (`Im ε_j ≥ 0`), `+k_j` stays in the open right half-plane
   over the whole box, metals included. The labelling is continuous in λ.
   [proved]

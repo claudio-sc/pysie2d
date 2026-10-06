@@ -18,7 +18,7 @@ Inputs:
 |---|---|---|
 | D1 | A `Background` enters as an optional keyword, `background=None`, on `BIESolver`, `QNMSolver`, `ClusterBIESolver` and `relative_ldos_map`. `None` is the homogeneous cladding and is bit-identical to v0.8. | Additive, with no signature change. One solver family serves both integrated-photonics and scattering users. |
 | D2 | v0.9 ships `HalfSpace(eps_sub, z_int)` only. The multilayer later adds a `Multilayer` that supplies a different R(q) and nothing else. | The Sommerfeld functionals depend on the stack only through R(q). |
-| D3 | Layer permittivities are **absolute complex ε**, not `Material`. Layers use `k = k₀·√ε` (principal complex root, signed zero normalised). `Im ε ≥ 0` is asserted on every layer. | `Material.nc` rebuilds Im n from abs(ε) and cannot express Re ε < 0; gain breaks the continuation argument (holomorphy §2). |
+| D3 | Layer permittivities are **absolute complex ε**, not `Material`. Layers use `k = k₀·√ε` (principal complex root, signed zero normalised). `Im ε ≥ 0` is asserted on every layer. | `Material` builds Re ε from a real `n_core`, so it cannot express Re ε < 0; gain breaks the continuation argument (holomorphy §2). |
 | D4 | Everything below the facade takes `wnum_bg` and the **background-relative** `eps_sub/n_clad²`, never a wavelength. `Background` exposes `eps_rel(n_clad)`. | Conventions §2.3: one conversion point. It also preserves scale covariance (§9), since the path is built in units of k. |
 | D5 | The particle (and every source and observation point) lies strictly in the cover, `min(g) > z_int`. Fields in the substrate are out of scope. | That is the only Green-function cell the milestone needs. The others need transmission functionals. |
 | D6 | The reflected blocks are assembled as a **banded separable GEMM** on a deformed path, with no surrogate and no tabulation. | Measured at 4–14 ms per block at nn ≤ 256, the same at real and complex k, and about 10× cheaper than the free-space assembly at complex k. |
@@ -175,7 +175,8 @@ Also recorded there:
    (real λ, evaluated once per call at the facade). `QNMSolver` rejects a
    callable, because tabulated data is not holomorphic (holomorphy C0).
    Analytic Drude/Lorentz models are deferred.
-7. `Material.nc` gain fix ships separately to main (PR #24), before v0.9.
+7. The `Material.nc` gain fix ships separately to main, before v0.9. **Shipped in
+   v0.8.2** (PR #24): `nc` is now the principal root of the complex ε.
 8. `Material.from_eps(eps, n_clad, pol)`: additive classmethod taking an absolute
    complex ε (Re ε < 0 allowed, `nc = √ε` principal root), anchored on Mie for a
    metal cylinder. It is needed for the tungsten heater below.

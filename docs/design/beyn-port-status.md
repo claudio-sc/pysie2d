@@ -253,12 +253,12 @@ has nothing to do with Beyn. TE `n=3` at `760.69 + 7.95j` is far more forgiving.
    committed file predated the code; regeneration was re-confirmed
    deterministic (two consecutive runs, identical md5, differing from the
    committed blob) and the current output is now committed.
-3. `Material.nc` is wrong for gain (`epsi < 0`): the principal-root closed form
-   reconstructs `Im nc` from `|eps|`, returning a lossy index and `nc² ≠ eps`.
-   Pre-existing; docstring and test scope the identity to passive materials.
-4. Weak-loss cancellation in `Material.nc`: `aeps - epsr` underflows
-   (`Im nc == 0.0` at `epsi_rel ≈ 5e-15`). Pre-existing, but `/n_clad²` shifts
-   where the threshold sits.
+3. ~~`Material.nc` is wrong for gain (`epsi < 0`).~~ **Closed in v0.8.2**
+   (PR #24). `nc = √eps`, the principal root of the complex ε, so gain gives
+   `Im nc < 0` and `nc² = eps`.
+4. ~~Weak-loss cancellation in `Material.nc`.~~ **Closed by the same change.**
+   There is no `aeps - epsr` subtraction left: `Im nc` at `epsi_rel = 5e-15` is
+   now 1.7e-15, not 0.
 5. `material.py`'s doctest never runs — pytest has `testpaths = ["tests"]` and no
    `--doctest-modules`. Value verified by hand.
 6. `Geometry.is_circle` is sensitive to absolute position: a 200 nm circle at
