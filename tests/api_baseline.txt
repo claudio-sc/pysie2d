@@ -8,7 +8,7 @@ class Cluster
 Cluster.__init__(self, geometries: collections.abc.Sequence[pysie2d.geometry.Geometry]) -> None
 Cluster.slice(self, p: int) -> slice
 class ClusterBIESolver
-ClusterBIESolver.__init__(self, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int = 2) -> None
+ClusterBIESolver.__init__(self, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int = 2, background: pysie2d.background.HalfSpace | None = None) -> None
 ClusterBIESolver.scatter(self, wavelength: float, angle: float = 0.0) -> 'ClusterScatterResult'
 ClusterBIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float) -> 'ClusterScatterResult'
 class ClusterGapWarning
@@ -18,7 +18,7 @@ ClusterOverlapError.__init__(self, /, *args, **kwargs)
 class ClusterResolutionWarning
 ClusterResolutionWarning.__init__(self, /, *args, **kwargs)
 class ClusterScatterResult
-ClusterScatterResult.__init__(self, ei: numpy.ndarray, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int, wavelength: float, angle: float, excitation: str) -> None
+ClusterScatterResult.__init__(self, ei: numpy.ndarray, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int, wavelength: float, angle: float, excitation: str, background: pysie2d.background.HalfSpace | None = None) -> None
 ClusterScatterResult.cross_sections(self, n_angles: int = 500) -> dict[str, float]
 ClusterScatterResult.ei_particle(self, p: int) -> numpy.ndarray
 ClusterScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
