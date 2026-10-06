@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.8.2 (2026-10-06)
+
+### Bug Fixes
+
+- Material.nc keeps the sign of Im ε for gain media
+  ([`d6a4453`](https://github.com/claudio-sc/pysie2d/commit/d6a4453da367fece61889948bad32bf51653a46d))
+
+
 ## v0.8.1 (2026-09-26)
 
 ### Bug Fixes
