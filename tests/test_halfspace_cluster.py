@@ -144,13 +144,6 @@ def test_substrate_equal_to_the_cladding_is_bit_identical_for_a_cluster():
     assert np.array_equal(plain.scatter(633.0).ei, same.scatter(633.0).ei)
 
 
-def test_cluster_far_field_family_is_refused_until_implemented():
-    res = solve_pair(2, 633.0, 1.0, "plane")[0]
-    for method in ("far_field", "cross_sections"):
-        with pytest.raises(NotImplementedError):
-            getattr(res, method)()
-
-
 def test_cluster_below_the_interface_is_refused():
     geo = Geometry.gielis(100.0, 64, m=0, x0=0.0, z0=50.0)
     with pytest.raises(ValueError, match="strictly above the interface"):

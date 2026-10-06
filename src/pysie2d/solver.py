@@ -18,6 +18,8 @@ from .fields import (
     _cross_sections,
     _far_field_at,
     _is_outside,
+    _upward_cross_sections,
+    _upward_far_field,
     eval_field,
     far_field,
 )
@@ -131,8 +133,9 @@ class ScatterResult:
         wavelength: **Vacuum** wavelength (nm) this was solved at.
         angle: Incident plane-wave angle (degrees).
         background: The substrate the particle sits on, or ``None`` for the
-            homogeneous cladding. With one, ``far_field``, ``efficiencies``,
-            ``cross_sections`` and ``multipoles`` are not yet available.
+            homogeneous cladding. With one, ``far_field`` is the upward
+            amplitude, ``cross_sections`` and ``efficiencies`` carry the
+            ``*_up`` keys, and ``multipoles`` raises ``NotImplementedError``.
     """
 
     def __init__(
@@ -152,11 +155,21 @@ class ScatterResult:
         self.angle = angle
         self.background = background
 
-    def _refuse_background(self, what: str) -> None:
-        # Not yet implemented over a substrate: the free-space formulas would
-        # silently return the wrong numbers, so refuse rather than approximate.
-        if self.background is not None:
-            raise NotImplementedError(f"{what} is not available with a background")
+    def _upward(self, n_angles: int) -> dict[str, float]:
+        """``σ_sca,up`` and ``σ_abs`` over the substrate; see ``fields``."""
+        return _upward_cross_sections(n_angles, *self._substrate())
+
+    def _substrate(self) -> tuple:
+        """Arguments the half-space far-field helpers share."""
+        g = self.geometry
+        assert self.background is not None
+        return (
+            [(g.f, g.g, g.df, g.dg, g.delt, self.ei)],
+            self.wnum_bg,
+            self.background.eps_rel(self.material.n_clad, self.wavelength),
+            self.material.pol,
+            self.background.z_int,
+        )
 
     @property
     def wnum_bg(self) -> complex:
@@ -267,7 +280,11 @@ class ScatterResult:
                 the coefficients are meaningless (measured: 58 % error at
                 0.9 × the circumscribing radius, with nothing else to warn you).
         """
-        self._refuse_background("multipoles")
+        if self.background is not None:
+            raise NotImplementedError(
+                "multipoles is not available with a background: the expansion "
+                "is of the free-space scattered field"
+            )
         geo = self.geometry
         r_circ = float(np.hypot(geo.f - geo.x0, geo.g - geo.z0).max())
         if r0 is None:
@@ -298,14 +315,20 @@ class ScatterResult:
     def far_field(self, n_angles: int = 3000) -> tuple[np.ndarray, np.ndarray]:
         """Far-field scattering amplitude.
 
+        With a background this is the **upward** amplitude ``a_up(θ)`` — the
+        particle's own plus its reflection off the interface — on a uniform grid
+        over ``[−π/2, π/2]`` inclusive. There is no transmitted far field.
+
         Args:
             n_angles: Number of observation angles.
 
         Returns:
             amplitude: complex (n_angles,) far-field amplitude.
-            angles: float (n_angles,) observation angles (rad), from −π to π.
+            angles: float (n_angles,) observation angles (rad), from −π to π
+                (``−π/2`` to ``π/2`` with a background), measured from +z.
         """
-        self._refuse_background("far_field")
+        if self.background is not None:
+            return _upward_far_field(n_angles, *self._substrate())
         g = self.geometry
         return far_field(
             g.n_pts,
@@ -334,9 +357,16 @@ class ScatterResult:
                 particles. Q_ext does not depend on it.
 
         Returns:
-            dict with keys 'qsca', 'qext', 'qabs'.
+            dict with keys 'qsca', 'qext', 'qabs'. With a background, instead
+            ``{'qsca_up', 'qabs'}`` — the :meth:`cross_sections` values over
+            ``2·rad``. The free-space keys are absent rather than raising:
+            ``qext`` and the total ``qsca`` are not defined over a substrate,
+            since power also goes into it and the incident wave is reflected.
         """
-        self._refuse_background("efficiencies")
+        if self.background is not None:
+            c = self._upward(n_angles)
+            norm = 2.0 * self.geometry.rad
+            return {"qsca_up": c["c_sca_up"] / norm, "qabs": c["c_abs"] / norm}
         wnum_bg = self.wnum_bg
         norfac = 8.0 * PI * wnum_bg
         delthe = 2.0 * PI / (n_angles - 1.0)
@@ -382,9 +412,16 @@ class ScatterResult:
                 depend on it.
 
         Returns:
-            dict with keys 'c_sca', 'c_ext', 'c_abs', in nm.
+            dict with keys 'c_sca', 'c_ext', 'c_abs', in nm. With a background,
+            instead ``{'c_sca_up', 'c_abs'}``: the power scattered **into the
+            cover**, by Gauss–Legendre over ``[−π/2, π/2]`` (``n_angles`` nodes),
+            and the absorption from the boundary flux. ``c_sca_up`` is incomplete
+            by construction — it omits the power sent into the substrate and the
+            specularly reflected incident beam. The free-space keys are absent
+            rather than raising.
         """
-        self._refuse_background("cross_sections")
+        if self.background is not None:
+            return self._upward(n_angles)
         g = self.geometry
         wnum_bg = self.wnum_bg
         amp, _ = self.far_field(n_angles)

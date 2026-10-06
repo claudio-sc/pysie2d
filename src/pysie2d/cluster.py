@@ -26,7 +26,13 @@ import numpy as np
 
 from . import layered
 from .background import HalfSpace
-from .fields import _cross_sections, _far_field_at, _representation_at
+from .fields import (
+    _cross_sections,
+    _far_field_at,
+    _representation_at,
+    _upward_cross_sections,
+    _upward_far_field,
+)
 from .geometry import Geometry
 from .kernels import _real_if_real, assemble_cross_block, assemble_matrix
 from .material import Material
@@ -594,7 +600,8 @@ class ClusterScatterResult:
         wavelength: Vacuum wavelength λ_vac in nm.
         angle: Plane-wave incidence angle in degrees (0.0 for a dipole solve).
         background: The substrate the cluster sits on, or ``None``. With one,
-            ``far_field`` and ``cross_sections`` are not yet available.
+            ``far_field`` is the upward amplitude and ``cross_sections`` returns
+            ``{'c_sca_up', 'c_abs'}``.
     """
 
     def __init__(
@@ -629,11 +636,20 @@ class ClusterScatterResult:
         self._excitation = excitation
         self.background = background
 
-    def _refuse_background(self, what: str) -> None:
-        # Not yet implemented over a substrate: the free-space formulas would
-        # silently return the wrong numbers, so refuse rather than approximate.
-        if self.background is not None:
-            raise NotImplementedError(f"{what} is not available with a background")
+    def _substrate(self) -> tuple:
+        """Arguments the half-space far-field helpers share."""
+        assert self.background is not None
+        boundaries = [
+            (gp.f, gp.g, gp.df, gp.dg, gp.delt, self.ei_particle(p))
+            for p, gp in enumerate(self.cluster.geometries)
+        ]
+        return (
+            boundaries,
+            self.wnum_bg,
+            self.background.eps_rel(self.materials[0].n_clad, self.wavelength),
+            self.pol,
+            self.background.z_int,
+        )
 
     @property
     def wnum_bg(self) -> complex:
@@ -660,9 +676,11 @@ class ClusterScatterResult:
 
         Returns:
             ``(amp, angles)``: complex ``(n_angles,)`` amplitude and the
-            observation angles in radians, measured from +z.
+            observation angles in radians, measured from +z. With a background
+            this is the upward amplitude on ``[−π/2, π/2]`` inclusive.
         """
-        self._refuse_background("far_field")
+        if self.background is not None:
+            return _upward_far_field(n_angles, *self._substrate())
         angles = -PI + np.arange(n_angles) * 2.0 * PI / (n_angles - 1.0)
         return self._amp_at(angles), angles
 
@@ -705,18 +723,22 @@ class ClusterScatterResult:
             n_angles: Far-field grid size for the C_sca quadrature.
 
         Returns:
-            ``{"c_sca", "c_ext", "c_abs"}`` in nm.
+            ``{"c_sca", "c_ext", "c_abs"}`` in nm. With a background, instead
+            ``{"c_sca_up", "c_abs"}`` (see
+            :meth:`pysie2d.solver.ScatterResult.cross_sections`); the free-space
+            keys are absent rather than raising.
 
         Raises:
             ValueError: If this result did not come from plane-wave excitation.
         """
-        self._refuse_background("cross_sections")
         if self._excitation != "plane_wave":
             raise ValueError(
                 "cross_sections() is defined against a unit-amplitude "
                 "incident plane wave; this result came from "
                 f"{self._excitation} excitation"
             )
+        if self.background is not None:
+            return _upward_cross_sections(n_angles, *self._substrate())
         amp, _ = self.far_field(n_angles)
         # π − α lands on the far-field grid only by accident, so the forward
         # direction is evaluated exactly rather than picked off it.

@@ -198,13 +198,12 @@ def test_interior_field_is_unchanged_by_the_substrate_term():
     assert np.array_equal(res.eval_field(*inside), ref)
 
 
-@pytest.mark.parametrize(
-    "method", ["far_field", "efficiencies", "cross_sections", "multipoles"]
-)
-def test_far_field_family_is_refused_until_it_is_implemented_over_a_substrate(method):
+def test_multipoles_are_refused_over_a_substrate():
+    # The expansion is of the free-space scattered field; over a substrate it
+    # would silently omit the reflected one.
     res = pec_pair(2, 633.0)["res"]
-    with pytest.raises(NotImplementedError):
-        getattr(res, method)()
+    with pytest.raises(NotImplementedError, match="multipoles"):
+        res.multipoles()
 
 
 # LDOS map against the single-source path: the same physics through the batched
