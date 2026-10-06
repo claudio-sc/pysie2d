@@ -85,8 +85,42 @@ the reflected blocks are about 10× cheaper than the free-space assembly.
 
 ## Open
 
-- ε₂ → −ε₁ (q_sp → ∞) is not probed.
-- A flat facet lying on the interface (Z_min → 0 over a span) is not probed; the
-  `M ∝ D/Z_min` scaling would dominate.
 - The δ floor can override the 6/D cap at large kD and low Q (kD = 100, Q = 10
   loses about 3 digits).
+
+## Probed after the first pass (2026-10-06)
+
+**ε₂ → −ε₁, TM (`t13_plasmon_limit.py`, `.txt`).** Benign. Any `Im ε₂ > 0`
+keeps q_sp finite. Over Re ε₂ ∈ [−18.3, −0.5] with Im ε₂ = 0.5 down to 0.001,
+the path matches the real-axis QUADPACK reference to 1e-15–2e-11, with the worst
+case exactly at the resonance (|R_∞| = 2000). T grows to 15·k₁ and M only from
+1730 to 2470.
+- The one 1e-1 row (−18.3 + 0.001i) is the **reference** failing, not the path.
+  Its pole sits 3e-6·k₁ above the axis, and quad misses it. With breakpoints at
+  the pole the reference agrees with the path to 6e-13, and the path agrees with
+  itself (s = 1 vs 3) to 5e-16.
+- At complex λ (Q = 10 and 3), s = 1 vs 3 agree to ≤ 5e-11.
+- The holomorphy note's [not settled] band, −ε₁ < Re ε₂ < 0: at Re ε₂ ≥ −0.9,
+  q_sp is **not** a zero of the code's denominator (|den|/|α₁| ≈ 2), i.e. it is
+  not on the proper sheet and there is nothing to clear. Near −1 it is a proper
+  zero and stays ≥ 0.2·|k₁| above the path for Q ≥ 3.
+- Remaining guard: a lossless `ε₂ = −ε₁` exactly makes R_∞ infinite. Raise on
+  it (|ε₁ + ε₂| at round-off).
+
+**Flat facet on the interface (`t14_flat_facet.py`, `.txt`).** The path is not
+the cost; the boundary is. A superellipse (exponent 8, D = 200 nm) with its flat
+bottom 50 → 2 nm above PEC was solved against the v0.8 mirror cluster.
+- At equal nn the two agree to 1e-15 at every gap, in TE and TM, at real and
+  complex λ. The Sommerfeld blocks add no error even at D/gap = 100.
+- M grows like 1/gap (482 → 3362), but banding keeps it at 11–46 ms.
+- Glass, Si and Ag at gaps of 10, 5 and 2 nm (nn = 512): s = 1 vs 2 agree to
+  ≤ 4e-14.
+- The error left is boundary discretisation, which the mirror reference has
+  equally. It is trap 4's spacing/(2·gap) rule, now applied along the whole
+  facet. To reach 1e-10 needs nn = 128 at 20 nm, 256 at 5 nm and 512 at 2 nm
+  (TE; TM reaches 2e-8 at 2 nm). This is the cluster code's cost, not something
+  new to the half-space.
+- Implication for the spec: the trap-4 warning must use the **local** node
+  spacing on the lowest nodes, not the mean. Pushing below ~2 nm needs a
+  node map that crowds nodes towards the interface (a non-default
+  `Parametrisation`), which is out of v0.9.
