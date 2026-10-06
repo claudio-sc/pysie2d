@@ -1,4 +1,4 @@
-"""pysie2d — 2-D boundary-integral scattering solver (homogeneous background).
+"""pysie2d — 2-D boundary-integral scattering solver.
 
 Public API:
     Geometry: Gielis-superformula boundary, sampled on a Parametrisation.
@@ -6,7 +6,15 @@ Public API:
         (a ``ValueError``) when the superformula does not close.
     Parametrisation: the frozen node map θ = w(t); ``uniform_theta()`` is the
         default, ``gielis(...)`` places nodes near-uniformly in arc length.
-    Material: optical properties of the scatterer.
+    Material: optical properties of the scatterer. ``Material.from_eps`` takes
+        an absolute complex permittivity, so Re ε < 0 (a metal) is expressible.
+    HalfSpace: a substrate below ``z = z_int`` (absolute complex ε, a callable
+        ε(λ_vac) for driven solves, or ``HalfSpace.pec``). The reflected Green
+        function is a Sommerfeld integral on a deformed path, valid at complex
+        wavelength.
+    InterfaceGapWarning, SommerfeldPrecisionWarning: the half-space guards — a
+        boundary too coarse for its distance to the interface, and a reflected
+        block expected to lose digits.
     BIESolver: solver façade; call ``scatter``/``scatter_dipole`` to obtain a
         ``ScatterResult``.
     ScatterResult: carries the solution and exposes far/near-field analysis.
@@ -57,6 +65,7 @@ take a background wavenumber
 ``wnum_bg = 2π·n_clad/λ_vac`` instead. See ``docs/conventions.md`` §2.
 """
 
+from .background import HalfSpace
 from .cluster import (
     Cluster,
     ClusterBIESolver,
@@ -73,6 +82,7 @@ from .kernels import (
     assemble_matrix,
     assemble_matrix_reference,
 )
+from .layered import InterfaceGapWarning, SommerfeldPrecisionWarning
 from .material import Material
 from .multipole import Multipoles
 from .multipole import decompose as multipole_decompose
@@ -105,12 +115,15 @@ __all__ = [
     "ClusterScatterResult",
     "DEGENERATE_COND",
     "Geometry",
+    "HalfSpace",
+    "InterfaceGapWarning",
     "Material",
     "Multipoles",
     "Parametrisation",
     "QNMResult",
     "QNMSolver",
     "SHAPE_STEP",
+    "SommerfeldPrecisionWarning",
     "richardson_limit",
     "ScatterResult",
     "assemble_cross_block",
