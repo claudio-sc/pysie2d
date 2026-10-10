@@ -1,0 +1,21 @@
+# Environment for the MEEP external-validation driver.
+#
+#   mamba env create -f validation/meep/environment.yml
+#
+# Separate from the dolfinx environment on purpose: the two carry MPI stacks
+# that do not coexist, and neither driver needs the other's tool. Neither
+# needs pysie2d either — the drivers write a frozen spectrum file, and the
+# comparison happens back in the uv environment.
+#
+# This resolves to the single-process `nompi` build. A 2-D broadband run is
+# cheap enough that this is not yet the bottleneck; if the gate-2 resolution
+# sweep changes that, pin `pymeep=*=mpi_mpich*` and add `mpi4py`. The ceiling
+# is the machine's physical core count, not its logical one.
+name: pysie2d-meep
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pymeep
+  - numpy
+  - scipy

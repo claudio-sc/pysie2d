@@ -202,3 +202,41 @@ def test_gain_particle_is_not_mirrored_into_loss(circle, pol):
     # round-off floors carry over unchanged.
     assert eff["qsca"] == pytest.approx(ref[f"Q_sca_{tag}"], rel=RTOL_QSCA)
     assert eff["qabs"] == pytest.approx(ref[f"Q_abs_{tag}"], rel=RTOL_QABS)
+
+
+# Metals, Re ε < 0 (docs/design/absorption-scope.md §7). Measured at nn = 300,
+# λ = 600 nm, |Q_abs/Q_abs^Mie − 1|, as the worst of both polarisations:
+#   2.25 + 0.5i  ≤ 8.9e-16  — round-off, as for the n_core fixture above.
+#   −16 + 0.5i   ≤ 5.5e-11  — Q_abs ≈ 0.02 is Q_ext − Q_sca with Q_ext ≈ 2, so
+#                  Q_ext's ~1e-12 round-off reaches Q_abs amplified ~100×.
+#   −40 + 1.5i   ≤ 7.4e-07  — a floor, not convergence: flat at 2e-7–1e-6 from
+#                  nn = 60 to 300, and 1e-8 of Q_ext before the same ~100×
+#                  amplification. Flat in nn, so not the quadrature; the
+#                  likely cause, unmeasured, is the interior field decaying as
+#                  exp(−|m|·k·r) with |m|·x = 13, in the solve or in the
+#                  reference's Bessel functions.
+# Bounds leave ~10× over the measured value.
+METALS = [
+    (2.25 + 0.5j, 1e-12),
+    (-16.0 + 0.5j, 1e-9),
+    (-40.0 + 1.5j, 1e-5),
+]
+
+
+@pytest.mark.parametrize("pol", [1, 2])
+@pytest.mark.parametrize(("eps", "rtol"), METALS, ids=["lossy", "metal16", "metal40"])
+def test_metal_absorption_matches_mie(circle, eps, rtol, pol):
+    # The reference index is √ε/n_clad, built from the permittivity directly and
+    # not from Material.nc, so a wrong index reconstruction cannot cancel.
+    # Flipping Re ε to +16 gives Q_abs ≈ 0.62–0.74 against the metal's
+    # 0.015–0.026 — 25× off, which no bound here admits.
+    wavelength = 600.0
+    mat = Material.from_eps(eps, n_clad=N_CLAD, pol=pol)
+    eff = BIESolver(circle(300), mat).scatter(wavelength=wavelength).efficiencies()
+
+    m = np.sqrt(complex(eps)) / N_CLAD
+    ref = mie.efficiencies(size_parameter(wavelength), m)
+    tag = POL_TAG[pol]
+
+    assert eff["qabs"] > 0.0
+    assert eff["qabs"] == pytest.approx(ref[f"Q_abs_{tag}"], rel=rtol)
