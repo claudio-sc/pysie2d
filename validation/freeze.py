@@ -141,11 +141,13 @@ def _meep_cases() -> list[Case]:
                 coarse_label="40",
                 fine_label="50",
                 note=(
-                    "The pml, box and decay isolation groups were run at "
-                    "resolution 25, where grid error dominates them, so they "
-                    "bound those systematics at 25 and not at 50. This drift "
-                    "is therefore a bounded systematic, not a converged floor "
-                    "(design doc §5 gate 6)."
+                    "Gate 6 re-ran the pml, box and decay isolations at "
+                    "resolution 50. Transform truncation is negligible "
+                    "(<= 7e-06); flux-contour placement costs ~1.4e-04 in both "
+                    "polarisations; in TE the sheet source's ends in the PML "
+                    "make the illumination non-uniform, worth ~3.5e-04. "
+                    "Attributed and bounded, not eliminated, and never a "
+                    "converged floor (design doc, Gate 6 as measured)."
                 ),
                 **res,
             )

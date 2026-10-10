@@ -12,17 +12,14 @@ on the maintainer machine only.
   The gate-4 star and the skew shape are compared, with the incidence
   direction pinned via MEEP's far-field pattern (`direction_check.py`). The
   spectra are frozen with measured tolerances (gate 5).
-- Open: **gate 6**, re-running MEEP's `pml` / `box` / `decay` isolation groups
-  at resolution 50. Until that runs, MEEP's tolerance is worded as a bounded,
-  unlocalised systematic.
+- **Gate 6 done 2026-10-10**: MEEP's systematics at resolution 50 are
+  attributed (design doc, *Gate 6, as measured*).
 - Open: the absorption check for lossy dielectrics and metals is scoped
   (`a9ed659`) but not run.
 
 ## When resuming
 
-1. Merge `main` in. The branch last merged it at v0.8.1, and v0.9 will have
-   landed by then.
-2. Run gate 6, which needs the conda MEEP environment (`validation/meep/`).
+1. ~~Merge `main` in~~ — done at v0.9.0 (`ee30335`).
 3. Add the v0.9 item that belongs here: MEEP as the independent anchor for
    QNMs over a dielectric substrate (layered-spec G9, owner decision 1).
 4. Merging this is the 1.0 release, so ask before merging.

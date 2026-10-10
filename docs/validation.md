@@ -153,11 +153,13 @@ evidence.
   negative real permittivity has been run or checked. What it would take is
   scoped in
   [docs/design/absorption-scope.md](design/absorption-scope.md).
-- **MEEP's systematics are bounded, not localised.** Its absorber, flux-contour
-  and transform-truncation sensitivities were measured at resolution 25 and the
-  frozen spectra are at 50 (circle) and 32 (star). They bound those effects
-  where they were measured; they are documented as *a bounded systematic we did
-  not eliminate*, never as a converged floor.
+- **MEEP's systematics are attributed, not eliminated.** At its production
+  resolution 50: transform truncation is negligible (≤ 7e-06); the flux
+  contour's placement on the grid costs ~1.4e-04 in both polarisations and is
+  what flattens the order near 50; in TE the sheet source's ends in the PML
+  make the illumination non-uniform (~0.3 % across the box), worth ~3.5e-04.
+  The last two are bounded, not removed, and never read as a converged floor
+  (design doc, *Gate 6, as measured*).
 - **MEEP on the star is first order, not second.** Six near-cusps on a Yee grid,
   which subpixel averaging cannot rescue. Measured separately, the cusps cost
   9.6× and the `n_core = 2.0` contrast 4.2×; their product is the observed 40×
