@@ -323,6 +323,47 @@ MEEP_JOBS = [
         for tag, tol, budget in (("1e-9", 1e-9, 0.7), ("1e-13", 1e-13, 2.0))
         for case in ("te", "tm")
     ],
+    # Gate 6: the same three isolations at resolution 50, the production level.
+    # At 25 grid error dominates them ~10×, so they bound nothing there about
+    # what flattens the res-40 → res-50 step to first order. Costs scale from
+    # the measured res-50 runs (TE 2456 s, TM 795 s ≈ 17 and 5.6 units); the
+    # decay-1e-13 budget uses the ~23× the res-25 run took over its baseline.
+    *[
+        _meep(
+            "pml50",
+            f"pml-{d}-r50-{case}",
+            case,
+            17.0 if case == "te" else 5.6,
+            resolution=50,
+            dpml=d,
+        )
+        for d in (3.0, 8.0)
+        for case in ("te", "tm")
+    ],
+    *[
+        _meep(
+            "box50",
+            f"box-{r}-r50-{case}",
+            case,
+            17.0 if case == "te" else 5.6,
+            resolution=50,
+            r_flux=r,
+        )
+        for r in (3.0, 5.0)
+        for case in ("te", "tm")
+    ],
+    *[
+        _meep(
+            "decay50",
+            f"decay-{tag}-r50-{case}",
+            case,
+            budget * (17.0 if case == "te" else 5.6),
+            resolution=50,
+            dft_decay=tol,
+        )
+        for tag, tol, budget in (("1e-9", 1e-9, 0.7), ("1e-13", 1e-13, 23.0))
+        for case in ("te", "tm")
+    ],
 ]
 
 JOBS = {"dolfinx": DOLFINX_JOBS, "meep": MEEP_JOBS}
@@ -358,6 +399,12 @@ COMPARISONS = [
     ("meep", "res-25", "box-5.0", "flux contour further out"),
     ("meep", "res-25", "decay-1e-9", "DFT truncated earlier"),
     ("meep", "res-25", "decay-1e-13", "DFT accumulated longer"),
+    ("meep", "res-50", "pml-3.0-r50", "thinner absorber, res 50"),
+    ("meep", "res-50", "pml-8.0-r50", "thicker absorber, res 50"),
+    ("meep", "res-50", "box-3.0-r50", "flux contour nearer, res 50"),
+    ("meep", "res-50", "box-5.0-r50", "flux contour further, res 50"),
+    ("meep", "res-50", "decay-1e-9-r50", "DFT truncated earlier, res 50"),
+    ("meep", "res-50", "decay-1e-13-r50", "DFT accumulated longer, res 50"),
 ]
 
 OBSERVABLES = ("c_ext", "c_sca", "c_abs")
