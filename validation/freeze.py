@@ -55,6 +55,7 @@ MATERIAL = {
     ("circle", False): {"n_core": 1.5, "n_clad": 1.0, "epsi": 0.0},
     ("circle", True): {"n_core": 1.5, "n_clad": 1.33, "epsi": 0.5},
     ("star", False): {"n_core": 2.0, "n_clad": 1.0, "epsi": 0.0},
+    ("star", True): {"n_core": 2.0, "n_clad": 1.33, "epsi": 0.5},
 }
 
 
@@ -82,7 +83,7 @@ class Case:
 
 
 def _dolfinx_cases() -> list[Case]:
-    """The FEM anchors: the circle in all four cases, the star in two."""
+    """The FEM anchors: the circle and the star, each in all four cases."""
     mesh = {
         "parameter": "(h_particle nm, h_outer nm, Lagrange degree)",
         "coarse_label": "(6, 18, 3)",
@@ -119,6 +120,24 @@ def _dolfinx_cases() -> list[Case]:
                 coarse=f"star-L3-lossless-{pol_key}",
                 fine=f"star-L4-lossless-{pol_key}",
                 **mesh,
+            )
+        )
+        # Absorption off a circle, which nothing else checks. Both levels ran
+        # on the full grid, so this drift is a worst case over every frozen
+        # point rather than the study grid's subset.
+        out.append(
+            Case(
+                "dolfinx",
+                "star",
+                pol_key,
+                True,
+                npz=f"final-star-L4-lossy-{pol_key}",
+                coarse=f"final-star-L3-lossy-{pol_key}",
+                fine=f"final-star-L4-lossy-{pol_key}",
+                **{
+                    **mesh,
+                    "note": "Drift measured on the full 51-point grid frozen here.",
+                },
             )
         )
     return out
