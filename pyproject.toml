@@ -1,6 +1,6 @@
 [project]
 name = "pysie2d"
-version = "0.8.1"
+version = "0.9.0"
 description = "2-D surface-integral solver for electromagnetic scattering from a cylinder in a homogeneous background."
 readme = "README.md"
 license = { text = "MIT" }
@@ -47,6 +47,12 @@ convention = "google"
 # Same: R, PI and the Graf translation block keep the notation of the addition
 # theorem as written in spec §3.8.
 "src/pysie2d/reference/two_cylinder.py" = ["N806"]
+# Same: X and Z are the horizontal and image-height separations of the Sommerfeld
+# integral as written in the holomorphy note.
+"src/pysie2d/reference/sommerfeld.py" = ["N803", "N806"]
+# Same, and T, D, X, Z are the hump length, extent and separations of the
+# holomorphy note's path construction.
+"src/pysie2d/layered.py" = ["N803", "N806"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

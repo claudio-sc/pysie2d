@@ -352,7 +352,11 @@ def test_one_particle_cluster_is_bit_identical_to_BIESolver(m: int, pol: int):
 
     `eval_field` is compared too, because the cluster evaluates the
     representation through a different helper than the single-particle point
-    loop; equality is what pins the two against drift.
+    loop. Exterior points are compared bitwise. Interior points are not: the
+    vectorised helper's complex arithmetic rounds differently with the batch
+    size (the same point differs in the last bit between a 1-point and a
+    2-point batch), so their agreement is a round-off bound, not a layout
+    guarantee.
 
     The particle is awkward on purpose — off-centre, `n_clad ≠ 1`, lossy,
     oblique incidence — so that a convention that happens to cancel at the
@@ -373,7 +377,13 @@ def test_one_particle_cluster_is_bit_identical_to_BIESolver(m: int, pol: int):
     # exterior one k_bg, so both sides of the representation are exercised.
     x = np.array([13.0, 100.0, 13.0, 900.0, -700.0])
     z = np.array([-7.0, -7.0, 120.0, 400.0, -250.0])
-    assert np.array_equal(multi.eval_field(x, z), single.eval_field(x, z))
+    inside = np.array([True, True, True, False, False])
+    f_multi, f_single = multi.eval_field(x, z), single.eval_field(x, z)
+    assert np.array_equal(f_multi[~inside], f_single[~inside])
+    # Interior: batch-size-dependent rounding only. Measured ≤ 1.7e-16 relative
+    # (TM, epsi = 0.4); 1e-14 leaves ~60× margin and still rejects any
+    # convention error (eps·χ, k_core, sign), each of which is O(1).
+    np.testing.assert_allclose(f_multi[inside], f_single[inside], rtol=1e-14)
 
 
 def test_coupling_decays_at_the_two_dimensional_Green_function_rate():

@@ -26,6 +26,8 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
+from . import layered
+from .background import HalfSpace
 from .beyn import beyn_modes, newton_refine
 from .geometry import Geometry
 from .material import Material
@@ -116,6 +118,8 @@ class QNMResult:
         z_hi: complex top-right corner.
         geometry: The scatterer boundary.
         material: The scatterer optical properties.
+        background: The substrate the particle sits on, or ``None``. With one,
+            :meth:`sensitivity` raises ``NotImplementedError``.
     """
 
     wavelengths: np.ndarray
@@ -133,6 +137,7 @@ class QNMResult:
     z_hi: complex
     geometry: Geometry
     material: Material
+    background: HalfSpace | None = None
 
     @property
     def quality_factors(self) -> np.ndarray:
@@ -219,7 +224,11 @@ class QNMResult:
             vectors untouched, along with their wavelengths. Unit-norm is still
             not a *mode* normalisation: a QNM norm remains out of scope (D4).
         """
-        bie = BIESolver(self.geometry, self.material)
+        # The same box path modes() integrated on, rebuilt from the box alone: it
+        # depends on the geometry and the box and nothing else, so it is identical.
+        bie = _box_solver(
+            self.geometry, self.material, self.background, self.z_lo, self.z_hi
+        )
         lams = self.wavelengths.copy()
         vectors = self.vectors.copy()
         converged = np.zeros(self.n_modes, dtype=bool)
@@ -327,7 +336,14 @@ class QNMResult:
         Raises:
             ValueError: If a perturbed geometry does not carry the base node
                 set.
+            NotImplementedError: With a background: the shape derivative of the
+                reflected blocks is not provided.
         """
+        if self.background is not None:
+            raise NotImplementedError(
+                "sensitivity is not available with a background: only the "
+                "wavelength derivative of the reflected blocks is provided"
+            )
         base = BIESolver(self.geometry, self.material)
         plus = self._perturbed_solver(at, +step)
         minus = self._perturbed_solver(at, -step)
@@ -412,6 +428,11 @@ class QNMSolver:
     Attributes:
         geometry: Discretized particle boundary.
         material: Optical properties of the scatterer.
+        background: A :class:`~pysie2d.background.HalfSpace` the particle sits
+            above, or ``None`` (default) for the homogeneous cladding. The
+            Sommerfeld path is built **once per search box**, sized on the
+            shadow box, and reused for every contour point and Newton step, so
+            ``M(λ)`` is one holomorphic function on the box.
 
     Examples:
         >>> geom = Geometry.gielis(rad=200, n_pts=200, m=0)
@@ -422,14 +443,32 @@ class QNMSolver:
         >>> res.quality_factors
     """
 
-    def __init__(self, geometry: Geometry, material: Material) -> None:
-        """Compose a geometry and a material into a reusable mode solver."""
+    def __init__(
+        self,
+        geometry: Geometry,
+        material: Material,
+        background: HalfSpace | None = None,
+    ) -> None:
+        """Compose a geometry and a material into a reusable mode solver.
+
+        Raises:
+            ValueError: With a background whose ``eps_sub`` is a callable —
+                tabulated data is not holomorphic, so Beyn would break
+                silently — or a boundary node at or below the interface.
+        """
+        if background is not None and callable(background.eps_sub):
+            raise ValueError(
+                "a callable eps_sub is not holomorphic in the wavelength, which "
+                "the contour argument needs (holomorphy note C0); pass a constant "
+                "permittivity for a QNM search"
+            )
         self.geometry = geometry
         self.material = material
+        self.background = background
         # Deliberately the driven solver's own assembly rather than a parallel
         # path: a QNM is a singularity of the *scattering* operator, and that
         # claim only holds if the two are literally the same matrix.
-        self._bie = BIESolver(geometry, material)
+        self._bie = BIESolver(geometry, material, background)
 
     def modes(
         self,
@@ -467,12 +506,16 @@ class QNMSolver:
         Raises:
             ValueError: If the rectangle is not strictly inside the physical
                 quadrant ``Re λ > 0``, ``Im λ > 0``, or if the modes inside
-                outnumber ``n_probe``.
+                outnumber ``n_probe``; with a background, if a singularity of
+                the reflected Green function comes within reach of the
+                Sommerfeld path anywhere on the shadow box, or ``Im λ/Re λ``
+                exceeds 1 (Q < 0.5).
         """
         self._validate_region(z_lo, z_hi)
+        bie = _box_solver(self.geometry, self.material, self.background, z_lo, z_hi)
 
         found = beyn_modes(
-            self._bie.assemble,
+            bie.assemble,
             z_lo,
             z_hi,
             n_quad_per_side=n_quad_per_side,
@@ -486,7 +529,7 @@ class QNMSolver:
             wavelengths=lams,
             vectors=found.vectors,
             multiplicity=_multiplicity(lams),
-            sigma_ratio=np.array([_sigma_ratio(self._bie, lam) for lam in lams]),
+            sigma_ratio=np.array([_sigma_ratio(bie, lam) for lam in lams]),
             sv_ratio=found.sv_ratio,
             max_gap=found.max_gap,
             rank=found.rank,
@@ -501,6 +544,7 @@ class QNMSolver:
             z_hi=z_hi,
             geometry=self.geometry,
             material=self.material,
+            background=self.background,
         )
 
     def _sigma_ratio(self, wavelength: complex) -> float:
@@ -542,6 +586,79 @@ class QNMSolver:
                 f"a decaying mode has Im(lambda) > 0, so a box reaching "
                 f"Im(lambda) = {z_lo.imag} is searching for growing modes"
             )
+
+
+# Samples per edge of the shadow box's boundary when sizing the Sommerfeld path.
+# Im k₁ and Im q_sp are harmonic in λ, so their worst case is on the boundary; the
+# clearance Im s + γ(Re s) is not harmonic, so the boundary is sampled rather than
+# assumed to be extremal at the corners. The clearance is smooth over a box of
+# Q ≥ 0.5, so 16 per edge resolves it with room.
+SHADOW_SAMPLES_PER_EDGE = 16
+
+
+def _box_solver(
+    geometry: Geometry,
+    material: Material,
+    background: HalfSpace | None,
+    z_lo: complex,
+    z_hi: complex,
+    depth_scale: float = 1.0,
+) -> BIESolver:
+    """Driven solver whose Sommerfeld path is fixed for one search box.
+
+    Beyn needs one holomorphic ``M(λ)`` on the box, so the path is built once,
+    sized on the **shadow box** ``[Re z_lo, Re z_hi] × [0, Im z_hi]`` — the box
+    extended down to the real axis, where the physical continuation is anchored
+    (holomorphy note §4) — and reused for every contour point and Newton step.
+    Because the nodes are then fixed, ``d/dk`` at fixed nodes is the exact
+    derivative that :meth:`BIESolver.assemble_derivative` returns.
+
+    Args:
+        geometry: Particle boundary.
+        material: Particle properties.
+        background: The substrate, or ``None``.
+        z_lo: Bottom-left corner of the search rectangle (vacuum nm).
+        z_hi: Top-right corner.
+        depth_scale: Multiplies the hump depth. Only for checking that the poles
+            do not depend on the path (G9); the default is the measured rule.
+
+    Returns:
+        A :class:`BIESolver` with the box path installed (or none, for no
+        background, a PEC, or a substrate equal to the cladding, where there is
+        no integral to size).
+
+    Raises:
+        ValueError: If a singularity comes within reach of the path on the shadow
+            box (clearance C1), naming it and the offending corner.
+    """
+    bie = BIESolver(geometry, material, background)
+    if background is None or background.is_pec:
+        return bie
+    eps_rel = background.eps_rel(material.n_clad)
+    if eps_rel == 1.0:
+        return bie
+    edge = np.linspace(0.0, 1.0, SHADOW_SAMPLES_PER_EDGE, endpoint=False)
+    lo, hi = z_lo.real, z_hi.real
+    top = z_hi.imag
+    lam = np.concatenate(
+        [
+            lo + (hi - lo) * edge,
+            hi + 1j * top * edge,
+            hi - (hi - lo) * edge + 1j * top,
+            lo + 1j * top * (1.0 - edge),
+        ]
+    )
+    k = np.array([material.wnum_bg(x) for x in lam])
+    z_min = 2.0 * float((geometry.g - background.z_int).min())
+    bie._path = layered.SommerfeldPath.for_box(
+        k,
+        eps_rel,
+        material.pol,
+        max(float(np.ptp(geometry.f)), z_min),
+        z_min,
+        depth_scale,
+    )
+    return bie
 
 
 def _sigma_ratio(bie: BIESolver, wavelength: complex) -> float:

@@ -550,3 +550,38 @@ list comprehension), but the honest ranking above `Np ≈ 8` puts the solve firs
 An iterative solver, an FMM or a block preconditioner remain **unimplemented and
 speculative** (handoff §4.7); this measurement says where they would have to be
 aimed — at `np.linalg.solve`, not at the kernel — not that they are warranted.
+
+
+## 7. The half-space reflected blocks (v0.9)
+
+**The Sommerfeld term is the cheap part of a half-space assembly at complex λ,
+not the expensive one.** The reflected blocks are a banded separable GEMM,
+`A·diag(w·R/α₁)·Bᵀ`, with no Hankel evaluation, so the special-function bound
+of the free-space assembly does not apply to them (measured on this machine,
+`VECLIB_MAXIMUM_THREADS=4`, complex `λ = 633(1+0.05i)`, best of seven):
+
+| case | nn | reflected blocks | free-space assembly | ratio | path nodes (±q) |
+|---|---|---|---|---|---|
+| R = 100, gap 5 | 64 / 128 / 256 | 1.5 / 3.2 / 7.3 ms | 5.4 / 21 / 85 ms | 0.28 / 0.15 / 0.09 | 1734 |
+| R = 500, gap 5 | 64 / 128 / 256 | 2.7 / 4.9 / 10.7 ms | 8.6 / 35 / 141 ms | 0.31 / 0.14 / 0.08 | 7446 |
+| R = 500, gap 20 | 64 / 128 / 256 | 1.5 / 3.0 / 7.0 ms | 8.7 / 35 / 140 ms | 0.17 / 0.08 / 0.05 | 1974 |
+
+TM silver and TE glass agree to within 4 % in every row, and the study found a real
+`k` costs the same. So a half-space solve is ≈ 1.05–1.3× a free-space one, and a
+QNM search over a substrate costs ≈ the same as without: the 95 % `hankel1` share
+of §3.1 is untouched. `tests/test_halfspace.py` asserts the claim at nn = 256 with
+a factor of eleven of margin.
+
+**What does scale.** The path is sized by `D` and `Z_min = 2·gap`: the nodes grow
+like `T/δ` for the hump and like `1/Z_min` for the banded tail, so a flat facet
+5 nm over the interface (R = 500) is 4× the nodes of one at 20 nm. Banding holds
+the cost: the tail panels act only on the sub-block of nodes with `h_i + h_j <
+38/q`. The near-field and LDOS-map terms use the same GEMM with the observation
+points as the target (`layered.Points`), so a grid of `M` points costs one
+`(M, nn)` block, not an `M·nn·n_q` loop of exponentials; `relative_ldos_map` keeps
+its single LU factorisation.
+
+**One path per call, one path per box.** A driven solve builds its path once; a QNM
+search builds it once per box. Building it costs 1.5 ms at `D = 200 nm, Z_min =
+40 nm` and 17 ms at `D = 1 µm, Z_min = 10 nm` (the panel loop is Python), which is
+below one assembly at nn ≥ 64 and not worth caching further.

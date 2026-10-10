@@ -2,6 +2,60 @@
 
 <!-- version list -->
 
+## v0.9.0 (2026-10-10)
+
+### Documentation
+
+- Material.nc no longer rebuilds Im n from |ε| after v0.8.2
+  ([`83ea555`](https://github.com/claudio-sc/pysie2d/commit/83ea55543dcf232f7a5d1b0d2d95742cf7e82741))
+
+- Park the v0.9 heater figure; G9's MEEP anchor stays with v1.0
+  ([`6e2e13f`](https://github.com/claudio-sc/pysie2d/commit/6e2e13f8209a11aa95e1ed544dc58da0a550f77a))
+
+- Pin the QNM chain factor, G9 procedure and LDOS map below the interface
+  ([`7525c25`](https://github.com/claudio-sc/pysie2d/commit/7525c255cef8e3f5730c27d301e1120329881dc4))
+
+- Probe the plasmon limit and a flat facet on the interface
+  ([`95a7368`](https://github.com/claudio-sc/pysie2d/commit/95a73689f2a1dca2faefd1d6b3da08697b6c732c))
+
+- V0.9 builder contract with verified far-field, absorption and power formulas
+  ([`87f3a7d`](https://github.com/claudio-sc/pysie2d/commit/87f3a7d6cf367786c219f5fd595082afc00a7da5))
+
+- V0.9 half-space conventions, performance, README, roadmap
+  ([`6af34c6`](https://github.com/claudio-sc/pysie2d/commit/6af34c69de39e913a5bde63f967306dbd64dbc79))
+
+- V0.9 spec guards for the lossless plasmon limit and local facet spacing
+  ([`8e63f09`](https://github.com/claudio-sc/pysie2d/commit/8e63f09e31dea6501ef51479f4e8e129e22b5bf1))
+
+### Features
+
+- Background= on BIESolver (matrix, sources, near field, LDOS)
+  ([`f5d5dcc`](https://github.com/claudio-sc/pysie2d/commit/f5d5dcc2411260bbe2323e78750a77543870508a))
+
+- Background= on ClusterBIESolver, every particle pair coupled
+  ([`3bdb38d`](https://github.com/claudio-sc/pysie2d/commit/3bdb38d26931c53fa503f579e0e6b2a17d06148a))
+
+- Background= on QNMSolver, one Sommerfeld path per search box
+  ([`da4087b`](https://github.com/claudio-sc/pysie2d/commit/da4087b9c319b3108b8addb412025b1d43c23701))
+
+- Half-space reflected Green function on a deformed Sommerfeld path
+  ([`5ff0a0e`](https://github.com/claudio-sc/pysie2d/commit/5ff0a0e5f03b25f4b21fee6ff351a5ab3da84425))
+
+- Material.from_eps for absolute complex permittivity
+  ([`e9d133f`](https://github.com/claudio-sc/pysie2d/commit/e9d133f4bf4336288678bb8e05de86a37eb1621a))
+
+- Upward far field, sigma_sca_up and flux absorption over a half-space
+  ([`873b3f3`](https://github.com/claudio-sc/pysie2d/commit/873b3f332329a323ce78e036be2bcfeb191609b1))
+
+
+## v0.8.2 (2026-10-06)
+
+### Bug Fixes
+
+- Material.nc keeps the sign of Im ε for gain media
+  ([`d6a4453`](https://github.com/claudio-sc/pysie2d/commit/d6a4453da367fece61889948bad32bf51653a46d))
+
+
 ## v0.8.1 (2026-09-26)
 
 ### Bug Fixes

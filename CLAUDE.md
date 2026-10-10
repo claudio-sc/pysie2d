@@ -211,6 +211,18 @@ particle, anchored on a two-cylinder addition-theorem reference. **Additive**
 *beside* `BIESolver`/`ScatterResult`, whose signatures do not change — the
 one API-breaking design the handoff assumed was rejected.
 
+**v0.9, on `v0.9-halfspace`: a half-space substrate.** Code-spec:
+[layered-spec.md](docs/design/layered-spec.md); theory:
+[sommerfeld-holomorphy.md](docs/design/sommerfeld-holomorphy.md); measured
+prototype: [studies/halfspace/](docs/design/studies/halfspace/README.md).
+Additive `background=` on the existing solvers (single particles and clusters):
+reflected Green function by Sommerfeld integrals on a **deformed** path, valid
+at complex λ. The legacy real-axis argument computes the incoming wave there.
+Near field, LDOS, QNM, upward far field, σ_sca,up and σ_abs are in scope.
+Anchored on the PEC mirror-cluster reference and closed forms; the MEEP check
+of dielectric-substrate QNMs belongs to v1.0. It is the procedural base for
+multilayers: those only change R(q).
+
 **v1.0 — external validation for non-circular shapes.** Scoping:
 [v1.0-external-validation.md](docs/design/v1.0-external-validation.md). Every
 anchor in the repo is circular; this is the first independent check of a Gielis
@@ -225,8 +237,8 @@ v1.0; under D1 it is additive, so **it no longer gates the release by forcing a
 surface freeze**. What still gates v1.0 is external validation itself: a 1.0
 promises a stable surface *and* answers that have been checked against
 something that is neither circular nor ours, and this milestone is where that
-check happens — there is no separate v0.9 step. Longer term: slab-waveguide
-backgrounds.
+check happens. It also carries the MEEP comparison for the v0.9 substrate.
+**v1.1 — multilayer and slab-waveguide backgrounds** on the v0.9 machinery.
 
 ## How to work here
 

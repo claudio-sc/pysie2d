@@ -29,6 +29,10 @@ class Material:
             referred to vacuum, matching ``n_core``). The relative permittivity
             that enters the operator is ``(n_core² + i·epsi)/n_clad²``, so
             ``epsi`` is divided by ``n_clad²`` — see :attr:`eps`. Default 0.
+        epsr_abs: Real part of the particle permittivity, **absolute**, or
+            ``None`` (default) to derive it as ``n_core²``. Set by
+            :meth:`from_eps`; it is what lets Re ε < 0 (a metal) be expressed,
+            since ``n_core`` is a real index and ``n_core²`` is never negative.
 
     Examples:
         >>> mat = Material(n_core=1.5, n_clad=1.0, pol=2)
@@ -44,13 +48,46 @@ class Material:
     n_clad: float = 1.0
     pol: int = 2
     epsi: float = 0.0
+    epsr_abs: float | None = None
+
+    @classmethod
+    def from_eps(cls, eps: complex, n_clad: float = 1.0, pol: int = 2) -> "Material":
+        """Build a material from an **absolute** complex permittivity.
+
+        This is the constructor for Re ε < 0 (silver, gold), which a real
+        ``n_core`` cannot express. Absolute means referred to vacuum, like
+        ``n_core`` and ``epsi``; the operator still sees ``eps/n_clad²``.
+
+        ``n_core`` is set to ``|√eps|`` and is **only** the length scale that
+        :func:`wavelength_over_ds` reads to size the boundary sampling. It does
+        not enter :attr:`eps` or :attr:`nc`.
+
+        Args:
+            eps: Absolute complex permittivity ε = ε' + iε''.
+            n_clad: Absolute background index. Default 1.0.
+            pol: Polarisation: 2 = TE (default), 1 = TM.
+
+        Returns:
+            A :class:`Material` with ``epsr_abs = Re ε`` and ``epsi = Im ε``.
+        """
+        eps = complex(eps)
+        return cls(
+            n_core=float(abs(np.sqrt(eps))),
+            n_clad=n_clad,
+            pol=pol,
+            epsi=eps.imag,
+            epsr_abs=eps.real,
+        )
 
     @property
     def epsr(self) -> float:
         """Real part of the permittivity **relative** to the background.
 
-        ``(n_core/n_clad)²``.
+        ``(n_core/n_clad)²``, or ``epsr_abs/n_clad²`` when built by
+        :meth:`from_eps`.
         """
+        if self.epsr_abs is not None:
+            return self.epsr_abs / self.n_clad**2
         return (self.n_core / self.n_clad) ** 2
 
     @property
@@ -71,19 +108,12 @@ class Material:
         ``n_core/n_clad`` for a lossless particle. This is the ``m`` of Mie
         theory; do not divide it by ``n_clad`` again at the call site.
 
-        The closed form takes the principal root, which is ``√eps`` only for
-        ``epsi ≥ 0``: it reconstructs ``Im nc`` from ``|eps|`` and so returns a
-        *lossy* index for a gain medium (``epsi < 0``). Gain is outside the
-        validated scope — the analytic anchor is a passive Mie cylinder — and
-        nothing in the package guards against it.
+        The principal root of the complex ``eps`` keeps the sign of its
+        imaginary part, so a gain medium (``epsi < 0``) gets ``Im nc < 0``. A
+        closed form that rebuilt ``Im nc`` from ``|eps|`` would return a
+        *lossy* index for gain, silently mirroring gain into loss.
         """
-        er = self.epsr
-        ei = self.epsi_rel
-        aeps = np.sqrt(er**2 + ei**2)
-        return complex(
-            np.sqrt(0.5 * (er + aeps)),
-            np.sqrt(0.5 * (-er + aeps)),
-        )
+        return complex(np.sqrt(self.eps))
 
     @property
     def eps(self) -> complex:
