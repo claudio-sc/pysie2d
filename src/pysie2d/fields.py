@@ -3,6 +3,7 @@
 import numpy as np
 
 from .kernels import _real_if_real, hank0, hank1
+from .layered import fresnel_r
 
 PI = np.pi
 
@@ -101,6 +102,119 @@ def _cross_sections(
     c_sca = float(np.sum(np.abs(amp[:-1]) ** 2) / (8.0 * PI * wnum_bg) * delthe)
     c_ext = float(amp_fwd.imag / wnum_bg)
     return {"c_sca": c_sca, "c_ext": c_ext, "c_abs": c_ext - c_sca}
+
+
+# ---------------------------------------------------------------------------
+# Far field over a half-space substrate
+# ---------------------------------------------------------------------------
+
+# One boundary's data, in the argument order of ``_far_field_at``:
+# (f, g, df, dg, delt, ei) with ``ei`` that boundary's (2nn,) sub-vector.
+_Boundary = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]
+
+
+def _upward_amplitude(
+    angles: np.ndarray,
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    eps_rel: complex | None,
+    pol: int,
+    z_int: float,
+) -> np.ndarray:
+    """Upward far-field amplitude ``a_up(θ)`` of particles over a half-space.
+
+    ``a_up(θ) = A(θ) + r(k sin θ)·A(π − θ; g → g − 2·z_int)``, about the
+    **origin**, with ``A`` the free-space amplitude of the same boundary data and
+    ``r`` the real-axis Fresnel coefficient. The image term is the reflected
+    wave's source seen through the interface: it shifts only the z coordinates,
+    not ``dg``, and needs no extra phase factor (spec §2a). θ is from +z, as in
+    :func:`far_field`, and is upward for ``|θ| < π/2``.
+
+    Args:
+        angles: (M,) upward angles ``|θ| ≤ π/2`` (rad).
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        wnum_bg: Background wavenumber.
+        eps_rel: Substrate permittivity relative to the cover, or ``None``.
+        pol: 2 = TE, 1 = TM.
+        z_int: Interface height (nm).
+
+    Returns:
+        complex (M,) amplitude.
+    """
+    direct = np.zeros(len(angles), dtype=complex)
+    image = np.zeros(len(angles), dtype=complex)
+    for f, g, df, dg, delt, ei in boundaries:
+        nn = f.size
+        direct += _far_field_at(angles, nn, wnum_bg, f, g, df, dg, delt, ei)
+        image += _far_field_at(
+            PI - angles, nn, wnum_bg, f, g - 2.0 * z_int, df, dg, delt, ei
+        )
+    if eps_rel is not None and eps_rel == 1.0:
+        return direct  # no interface: r ≡ 0, and 0/0 at grazing is avoided
+    r = fresnel_r(wnum_bg * np.sin(angles), wnum_bg, eps_rel, pol)
+    return direct + r * image
+
+
+def _upward_far_field(
+    n_angles: int,
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    eps_rel: complex | None,
+    pol: int,
+    z_int: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """``a_up`` on a uniform grid over ``[−π/2, π/2]`` inclusive."""
+    angles = np.linspace(-0.5 * PI, 0.5 * PI, n_angles)
+    return _upward_amplitude(angles, boundaries, wnum_bg, eps_rel, pol, z_int), angles
+
+
+def _upward_cross_sections(
+    n_angles: int,
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    eps_rel: complex | None,
+    pol: int,
+    z_int: float,
+) -> dict[str, float]:
+    """``σ_sca,up`` and ``σ_abs`` (nm) of particles over a half-space.
+
+    ``σ_sca,up = (1/(8πk))·∫|a_up|² dθ`` over ``[−π/2, π/2]`` by Gauss–Legendre.
+    It excludes the specularly reflected incident beam (background, not
+    scattering) and the power sent into the substrate, so it is incomplete by
+    construction. ``σ_abs`` comes from the boundary flux and needs no far field,
+    so it is exact with a substrate.
+
+    Args:
+        n_angles: Gauss–Legendre nodes for the angular integral.
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        wnum_bg: Background wavenumber.
+        eps_rel: Substrate permittivity relative to the cover, or ``None``.
+        pol: 2 = TE, 1 = TM.
+        z_int: Interface height (nm).
+
+    Returns:
+        ``{"c_sca_up", "c_abs"}`` in nm.
+    """
+    x, w = np.polynomial.legendre.leggauss(n_angles)
+    amp = _upward_amplitude(0.5 * PI * x, boundaries, wnum_bg, eps_rel, pol, z_int)
+    c_sca_up = float(
+        np.sum(0.5 * PI * w * np.abs(amp) ** 2) / (8.0 * PI * np.real(wnum_bg))
+    )
+    return {"c_sca_up": c_sca_up, "c_abs": _absorbed_cross_section(boundaries, wnum_bg)}
+
+
+def _absorbed_cross_section(boundaries: list[_Boundary], wnum_bg: complex) -> float:
+    """``σ_abs = −(1/k)·Im Σ_j delt·conj(φ_j)·χ_j``, from the boundary flux.
+
+    φ and χ are the exterior-side values (conventions §4), so there is no ε
+    factor: the exterior medium is the background. It needs no far field, which
+    is why it stays exact over a substrate.
+    """
+    flux = 0.0
+    for f, _, _, _, delt, ei in boundaries:
+        nn = f.size
+        flux += delt * np.sum(np.conj(ei[:nn]) * ei[nn:])
+    return float(-np.imag(flux) / np.real(wnum_bg))
 
 
 # ---------------------------------------------------------------------------

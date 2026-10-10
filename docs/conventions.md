@@ -593,6 +593,103 @@ coupling enters only through the exterior background kernel. That argument
 needs the interior domains disjoint, which is why overlapping boundaries are
 rejected by the formulation and not merely by an implementation limit.
 
+## 15. A half-space background (v0.9)
+
+`HalfSpace(eps_sub, z_int)` puts a substrate **below** the horizontal plane
+`z = z_int` and the cladding above it; every particle, source and observation
+point lies strictly above (`z > z_int`), and `layered.Reflection.build` raises on
+anything at or below. The reflected Green function, with `X = x − x'` and
+`Z = z + z' − 2·z_int > 0`, is
+
+    G_ind = (i/4π) ∫_Γ R(q)/α₁ · exp(i q X + i α₁ Z) dq,     α_j = √(k_j² − q²)
+
+and **adds to the exterior rows only**, with the sign of `assemble_cross_block`:
+`M1 = h·(∂x'G·dg − ∂z'G·df)` and `M2 = h·G`, `h = 2π/nn_src`. In a cluster every
+(q, p) pair gets it, `q = p` included.
+
+**Permittivity is absolute and complex, and is not a `Material`.** `eps_sub` is
+referred to vacuum like `Material.epsi`; the primitives see only
+`eps_rel = eps_sub/n_clad²` (§2.3: the one conversion is `HalfSpace.eps_rel`).
+`k₂ = k₁·√eps_rel` takes the principal root of the **complex** ε, after the
+signed-zero normalisation `complex(ε.real, ε.imag + 0.0)` — `np.sqrt(complex(-4,
+-0.0))` is `−2j`, the wrong half-plane, silently. `Im ε ≥ 0` is asserted:
+gain breaks the continuation argument behind the QNM contour. `Material.from_eps`
+exists because `Material` builds `Re ε = n_core²` from a real index and so cannot
+express a metal.
+
+**The α sheet is the vertical-cut one.** `α(q) = i·√(i(q−k))·√(−i(q+k))`, so
+`α(0) = +k` and `α → i|q|` on both tails, with the cuts running up from `+k` and
+down from `−k`. The real-axis rule `Im α ≥ 0` is **wrong at complex k**: it
+computes the incoming wave `−(i/4)·H₀^{(2)}`, not the outgoing one
+*(measured: `legacy_pec_green` is 1.1–1.7 away from `(i/4)·H₀^{(1)}`, and equal to
+the incoming wave to 2.3e-16)*; the path winds between the branch points
+instead.
+
+**Reflection sign per polarisation.** In the PEC limit `R ≡ −1` for TE (`E_y`
+vanishes on a conductor) and `+1` for TM (`H_y` has zero normal derivative).
+`HalfSpace.pec()` is public and evaluated as the exact image term
+`∓(i/4)·H₀^{(1)}(k·ρ_img)` — no integral, no path. TM uses the admittance form
+`(α₁ − α₂/ε)/(α₁ + α₂/ε)` with `ε` relative.
+
+**The path is fixed per call context, and per search box for QNMs.** For a QNM
+the path is built **once** from the **shadow box** `[Re z_lo, Re z_hi] × [0,
+Im z_hi]` — the search box extended down to the real axis, where the physical
+continuation is anchored — and reused for every contour point and Newton step.
+It must be: Beyn needs one holomorphic `M(λ)`, and a path that moved with `λ`
+would give a matrix whose singularities are not the operator's (§13.2, the same
+failure by another route). `Im k₁` and `Im q_sp` are harmonic in λ, so the worst
+clearance is on the boundary, which `for_box` samples 16 times per edge and
+**asserts** (clearance C1), naming the singularity. A crossing is a cut that rank
+detection does not see. Because the nodes are then fixed, `d/dk` at fixed nodes
+is the exact derivative `assemble_derivative` returns, added **before** the single
+chain factor `−k/λ` (§2: one conversion point).
+
+**Centre `x` on the particle set.** `reflected_blocks` takes the centroid of the
+**whole cluster** as `x_c`, never user-supplied: an origin 200 µm away overflows
+`exp(−iqx)` once `|Im q|·|x| ≳ 700`. `D`, the horizontal extent the path is sized
+for, is the cluster's, not one particle's.
+
+**LDOS is normalised to the unbounded cover (D10).** `relative_ldos = 1 + 4·Im S`
+still, where `S` now includes `G_ind(r_s, r_s)`, so it equals the
+substrate-only enhancement with no particle. The normalisation to the bare
+interface is a one-line ratio the user can take.
+
+**Far field and absorption over a substrate.** `far_field` is the **upward**
+amplitude `a_up(θ) = A(θ) + r(k sin θ)·A(π − θ; g → g − 2·z_int)` on
+`[−π/2, π/2]`, about the origin; `r` is the real-axis Fresnel coefficient and the
+image term shifts only `g`, not `dg`. `cross_sections()` returns
+`{'c_sca_up', 'c_abs'}` and `efficiencies()` `{'qsca_up', 'qabs'}`; the v0.8 keys
+are **absent**, not raising, because `c_ext` and the total `c_sca` are not defined
+when power also enters the substrate and the incident wave is reflected.
+`c_sca_up` omits both, so it is incomplete by construction. `c_abs =
+−(1/k)·Im Σ delt·conj(φ)·χ` is the boundary flux with no ε factor (the exterior
+medium is the background) and is exact with a substrate. Over PEC a dipole's
+power balances, `P_up + P_abs = P_in` *(measured: 3.7e-14)*; over any dielectric
+or metal it comes up short.
+
+**This is a 2-D, line-source model.** Absolute LDOS near an interface is not a
+3-D number; `Q`, detunings and ratios carry over.
+
+**Non-dispersive ε only for QNMs.** A callable `eps_sub` is evaluated once per
+driven call at a real wavelength; `QNMSolver` rejects it, because interpolated
+tabulated data is not holomorphic and Beyn then breaks *silently* (holomorphy
+note C0). Analytic Drude/Lorentz models are deferred.
+
+**Scale covariance (§9) holds with a background**, with `z_int` and every
+position scaled too: the path is built in units of `k`, so `M(s·rad, s·λ)` is
+bit-identical at `s` a power of 4 and 3e-15 at a generic ratio *(measured, PEC,
+glass and silver, real and complex λ)*.
+
+**Two things this section deliberately does not claim.** The `gap → ∞` limit of
+a *QNM* is not the isolated Mie root: a quasi-normal field grows like
+`e^{|Im k|·ρ}`, so the image coupling grows exponentially with distance instead
+of vanishing, and the poles of the coupled problem are cavity-like. *(Measured:
+the TE `n = 0` mode of a rad = 100 nm, `n = 3` circle, isolated at
+473.1+43.2i nm, sits at 468.7+22.3i and 506.3+59.1i nm over PEC at a gap of
+1 µm.)* And over a lossy or dielectric substrate there is no independent anchor
+for QNMs in this repository: the checks are consistency (the poles do not move
+when the hump depth is scaled by 1.5) until the MEEP comparison of v1.0.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

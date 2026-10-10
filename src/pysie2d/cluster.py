@@ -24,7 +24,15 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from .fields import _cross_sections, _far_field_at, _representation_at
+from . import layered
+from .background import HalfSpace
+from .fields import (
+    _cross_sections,
+    _far_field_at,
+    _representation_at,
+    _upward_cross_sections,
+    _upward_far_field,
+)
 from .geometry import Geometry
 from .kernels import _real_if_real, assemble_cross_block, assemble_matrix
 from .material import Material
@@ -241,6 +249,10 @@ class ClusterBIESolver:
         cluster: The arrangement being solved.
         materials: Per-particle optical properties, in DOF order.
         pol: Polarisation: 1 = TM (H_y), 2 = TE (E_y).
+        background: A :class:`~pysie2d.background.HalfSpace` the whole cluster
+            sits above, or ``None`` (default) for the homogeneous cladding,
+            bit-identical to a solver without the argument. Every particle pair
+            is coupled through the substrate, including a particle with itself.
     """
 
     def __init__(
@@ -248,6 +260,7 @@ class ClusterBIESolver:
         cluster: Cluster,
         materials: Sequence[Material],
         pol: int = 2,
+        background: HalfSpace | None = None,
     ) -> None:
         """Bind materials and a polarisation to an arrangement.
 
@@ -256,11 +269,17 @@ class ClusterBIESolver:
             materials: One :class:`~pysie2d.material.Material` per particle, in
                 the cluster's own order.
             pol: Polarisation: 1 = TM, 2 = TE.
+            background: A half-space substrate below the cluster, or ``None``.
 
         Raises:
             ValueError: If the number of materials does not match the number of
                 particles, if any material's ``pol`` differs from ``pol``, or
-                if the materials disagree on ``n_clad``.
+                if the materials disagree on ``n_clad``; with a background, a
+                boundary node at or below the interface.
+
+        Warns:
+            InterfaceGapWarning: With a background, if a boundary is too coarse
+                for its distance to the interface.
         """
         if len(materials) != len(cluster):
             raise ValueError(f"{len(materials)} materials for {len(cluster)} particles")
@@ -283,6 +302,38 @@ class ClusterBIESolver:
         self.cluster = cluster
         self.materials = tuple(materials)
         self.pol = pol
+        self.background = background
+        if background is not None:
+            layered.check_interface_gap(cluster.geometries, background.z_int, pol)
+
+    def _reflection(
+        self,
+        wavelength: float | complex,
+        f: np.ndarray | None = None,
+        g: np.ndarray | None = None,
+    ) -> layered.Reflection | None:
+        """Reflected-field context for the whole cluster, or ``None`` without one.
+
+        One path serves every particle pair, so it is sized for the **cluster's**
+        horizontal extent, not any one particle's (holomorphy note §7).
+
+        Args:
+            wavelength: Vacuum wavelength λ_vac in nm.
+            f: x coordinates of every point to serve; every node by default.
+            g: Their z coordinates.
+        """
+        if self.background is None:
+            return None
+        geoms = self.cluster.geometries
+        mat = self.materials[0]
+        return layered.Reflection.build(
+            self.pol,
+            mat.wnum_bg(wavelength),
+            self.background.eps_rel(mat.n_clad, wavelength),
+            self.background.z_int,
+            np.concatenate([gp.f for gp in geoms]) if f is None else f,
+            np.concatenate([gp.g for gp in geoms]) if g is None else g,
+        )
 
     def _assemble(self, wavelength: float | complex) -> np.ndarray:
         """Build the coupled system matrix at one wavelength.
@@ -337,6 +388,18 @@ class ClusterBIESolver:
             # that is the M3/M4 result of §3.1, not an omission. Particle p's
             # interior Green function is confined to p's own volume, so
             # coupling enters only through the exterior background kernel.
+
+        refl = self._reflection(wavelength)
+        if refl is not None:
+            # The substrate couples every pair, q = p included, and only in the
+            # exterior rows, like the free-space cross blocks.
+            for q in range(len(cl)):
+                for p in range(len(cl)):
+                    gq, gp = cl.geometries[q], cl.geometries[p]
+                    m1, m2 = refl.blocks(gq, gp)
+                    r0, c0 = cl.offsets[q], cl.offsets[p]
+                    me[r0 : r0 + gq.n_pts, c0 : c0 + gp.n_pts] += m1
+                    me[r0 : r0 + gq.n_pts, c0 + gp.n_pts : c0 + 2 * gp.n_pts] += m2
         return me
 
     def scatter(self, wavelength: float, angle: float = 0.0) -> "ClusterScatterResult":
@@ -362,9 +425,22 @@ class ClusterBIESolver:
         rhs = np.zeros(cl.n_dof, dtype=complex)
         for p, gp in enumerate(cl.geometries):
             rhs[cl.slice(p)] = plane_wave_rhs(gp.n_pts, angle, k_bg, gp.f, gp.g)
+        refl = self._reflection(wavelength)
+        if refl is not None:
+            for p, gp in enumerate(cl.geometries):
+                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += refl.plane_wave(
+                    angle, gp.f, gp.g
+                )
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
-            ei, cl, self.materials, self.pol, wavelength, angle, "plane_wave"
+            ei,
+            cl,
+            self.materials,
+            self.pol,
+            wavelength,
+            angle,
+            "plane_wave",
+            self.background,
         )
 
     def scatter_dipole(
@@ -401,9 +477,26 @@ class ClusterBIESolver:
             # lie outside every particle. No extra check is needed here and
             # none should be added.
             rhs[cl.slice(p)] = line_dipole_rhs(gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s)
+        refl = self._reflection(
+            wavelength,
+            np.append(np.concatenate([gp.f for gp in cl.geometries]), x_s),
+            np.append(np.concatenate([gp.g for gp in cl.geometries]), z_s),
+        )
+        if refl is not None:
+            for p, gp in enumerate(cl.geometries):
+                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += refl.green(
+                    gp.f, gp.g, x_s, z_s
+                )[0]
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
-            ei, cl, self.materials, self.pol, wavelength, 0.0, "dipole"
+            ei,
+            cl,
+            self.materials,
+            self.pol,
+            wavelength,
+            0.0,
+            "dipole",
+            self.background,
         )
 
     def _check_gap(self, wavelength: float) -> None:
@@ -506,6 +599,9 @@ class ClusterScatterResult:
         pol: Polarisation: 1 = TM, 2 = TE.
         wavelength: Vacuum wavelength λ_vac in nm.
         angle: Plane-wave incidence angle in degrees (0.0 for a dipole solve).
+        background: The substrate the cluster sits on, or ``None``. With one,
+            ``far_field`` is the upward amplitude and ``cross_sections`` returns
+            ``{'c_sca_up', 'c_abs'}``.
     """
 
     def __init__(
@@ -517,6 +613,7 @@ class ClusterScatterResult:
         wavelength: float,
         angle: float,
         excitation: str,
+        background: HalfSpace | None = None,
     ) -> None:
         """Store a coupled solution and the problem that produced it.
 
@@ -528,6 +625,7 @@ class ClusterScatterResult:
             wavelength: Vacuum wavelength λ_vac in nm.
             angle: Plane-wave incidence angle in degrees.
             excitation: ``"plane_wave"`` or ``"dipole"``.
+            background: The substrate the cluster sits on, or ``None``.
         """
         self.ei = ei
         self.cluster = cluster
@@ -536,6 +634,22 @@ class ClusterScatterResult:
         self.wavelength = wavelength
         self.angle = angle
         self._excitation = excitation
+        self.background = background
+
+    def _substrate(self) -> tuple:
+        """Arguments the half-space far-field helpers share."""
+        assert self.background is not None
+        boundaries = [
+            (gp.f, gp.g, gp.df, gp.dg, gp.delt, self.ei_particle(p))
+            for p, gp in enumerate(self.cluster.geometries)
+        ]
+        return (
+            boundaries,
+            self.wnum_bg,
+            self.background.eps_rel(self.materials[0].n_clad, self.wavelength),
+            self.pol,
+            self.background.z_int,
+        )
 
     @property
     def wnum_bg(self) -> complex:
@@ -562,8 +676,11 @@ class ClusterScatterResult:
 
         Returns:
             ``(amp, angles)``: complex ``(n_angles,)`` amplitude and the
-            observation angles in radians, measured from +z.
+            observation angles in radians, measured from +z. With a background
+            this is the upward amplitude on ``[−π/2, π/2]`` inclusive.
         """
+        if self.background is not None:
+            return _upward_far_field(n_angles, *self._substrate())
         angles = -PI + np.arange(n_angles) * 2.0 * PI / (n_angles - 1.0)
         return self._amp_at(angles), angles
 
@@ -606,7 +723,10 @@ class ClusterScatterResult:
             n_angles: Far-field grid size for the C_sca quadrature.
 
         Returns:
-            ``{"c_sca", "c_ext", "c_abs"}`` in nm.
+            ``{"c_sca", "c_ext", "c_abs"}`` in nm. With a background, instead
+            ``{"c_sca_up", "c_abs"}`` (see
+            :meth:`pysie2d.solver.ScatterResult.cross_sections`); the free-space
+            keys are absent rather than raising.
 
         Raises:
             ValueError: If this result did not come from plane-wave excitation.
@@ -617,6 +737,8 @@ class ClusterScatterResult:
                 "incident plane wave; this result came from "
                 f"{self._excitation} excitation"
             )
+        if self.background is not None:
+            return _upward_cross_sections(n_angles, *self._substrate())
         amp, _ = self.far_field(n_angles)
         # π − α lands on the far-field grid only by accident, so the forward
         # direction is evaluated exactly rather than picked off it.
@@ -649,10 +771,30 @@ class ClusterScatterResult:
 
         Returns:
             complex (M,) field at each point.
+
+        Raises:
+            ValueError: With a background, a point at or below the interface.
+
+        With a background this is the **scattered** field: outside every
+        particle the representation integral gains the reflected-image term of
+        each boundary, ``−Σ delt·((∂x'G_ind·dg − ∂z'G_ind·df)·φ + G_ind·χ)``.
+        Interior points are unchanged. The total exterior field is scattered +
+        incident + reflected incident; the last two are the caller's.
         """
         x = np.asarray(x, dtype=float).ravel()
         z = np.asarray(z, dtype=float).ravel()
         k = _real_if_real(self.wnum_bg)
+        refl = None
+        if self.background is not None:
+            geoms = self.cluster.geometries
+            refl = layered.Reflection.build(
+                self.pol,
+                self.wnum_bg,
+                self.background.eps_rel(self.materials[0].n_clad, self.wavelength),
+                self.background.z_int,
+                np.concatenate([gp.f for gp in geoms] + [x]),
+                np.concatenate([gp.g for gp in geoms] + [z]),
+            )
         inside = np.full(len(x), -1, dtype=int)
         for p, gp in enumerate(self.cluster.geometries):
             for j in range(len(x)):
@@ -674,6 +816,12 @@ class ClusterScatterResult:
                     x[out],
                     z[out],
                 )
+            if refl is not None:
+                pts = layered.Points(x[out], z[out])
+                for p, gp in enumerate(self.cluster.geometries):
+                    m1, m2 = refl.blocks(pts, gp)
+                    ei_p = self.ei_particle(p)
+                    field[out] -= m1 @ ei_p[: gp.n_pts] + m2 @ ei_p[gp.n_pts :]
         for p, gp in enumerate(self.cluster.geometries):
             sel = inside == p
             if sel.any():

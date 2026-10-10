@@ -177,8 +177,8 @@ def test_epsi_is_absolute():
     mat = Material(n_core=1.95, n_clad=1.3, epsi=0.5)
     assert mat.eps.real == pytest.approx((1.95 / 1.3) ** 2)
     assert mat.eps.imag == pytest.approx(0.5 / 1.3**2)
-    # nc² == eps holds for a passive material; the principal-root form does not
-    # reproduce a gain medium (epsi < 0), which is outside the validated scope.
+    # nc is the principal root of the complex eps, so nc² == eps for loss and
+    # gain alike (gain: test_gain_particle_is_not_mirrored_into_loss).
     assert complex(mat.nc) ** 2 == pytest.approx(mat.eps)
 
     # At n_clad = 1 the absolute and relative readings coincide — which is why
