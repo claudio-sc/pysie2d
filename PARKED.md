@@ -20,6 +20,6 @@ on the maintainer machine only.
 ## When resuming
 
 1. ~~Merge `main` in~~ — done at v0.9.0 (`ee30335`).
-3. Add the v0.9 item that belongs here: MEEP as the independent anchor for
+2. Add the v0.9 item that belongs here: MEEP as the independent anchor for
    QNMs over a dielectric substrate (layered-spec G9, owner decision 1).
-4. Merging this is the 1.0 release, so ask before merging.
+3. Merging this is the 1.0 release, so ask before merging.
