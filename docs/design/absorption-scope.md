@@ -1,6 +1,8 @@
 # Scope: an absorption check for lossy dielectrics and metals
 
-**Status: scoped, not implemented.** This document decides *what* the check is
+**Status: done 2026-10-10.** `Material.from_eps` shipped in v0.9; the test is
+`test_metal_absorption_matches_mie` in `tests/test_efficiencies.py`, with the
+measured floors in its comments. Original status: scoped, not implemented. This document decides *what* the check is
 and *what it needs*; no code, no runs. Written 2026-09-23, after the v1.0
 freeze.
 
