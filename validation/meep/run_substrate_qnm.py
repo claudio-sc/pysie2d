@@ -53,15 +53,27 @@ TARGET_NM = {
 }
 
 
-def run(case: str, eps_sub: float, resolution: int, until: float) -> dict:
+def run(
+    case: str,
+    eps_sub: float,
+    resolution: int,
+    until: float,
+    target: complex | None = None,
+    df_frac: float = 0.8,
+    src: tuple[float, float] = (0.0, 0.0),
+    probe: tuple[float, float] = (0.3, 0.2),
+    parity: int = 0,
+) -> dict:
     """One ringdown. Returns every harminv mode, as vacuum wavelengths in nm."""
     _pol, component = CASES[case]
-    target = TARGET_NM[(case, eps_sub)]
+    if target is None:
+        target = TARGET_NM[(case, eps_sub)]
     f0 = NM_PER_A / target.real
     # A band ±40 % about the target: wide enough that a Q ≈ 4 line (relative
     # width 1/Q ≈ 25 %) sits well inside it, narrow enough to keep the n = 2
     # neighbours out of the fit.
-    df = 0.8 * f0
+    # A high-Q mode passes a narrower df_frac to keep its neighbours out.
+    df = df_frac * f0
 
     yc = RAD + GAP
     half_x = RAD + PAD + DPML
@@ -93,11 +105,33 @@ def run(case: str, eps_sub: float, resolution: int, until: float) -> dict:
 
     # Source at the centre excites the n = 0 family (and even n); the probe is
     # off-centre so it also sees the odd modes harminv must then separate.
+    # parity ±1 adds the mirror source at −x with amplitude ±1, so the field
+    # component itself is even/odd in x and only that member of a substrate-
+    # split ±n pair rings. The pair's lines overlap (split ≪ linewidth), which
+    # is what made the low-Q fit spurious; one pole per run removes the fit's
+    # choice. Explicit sources, not mp.Mirror: its phase refers to E, so for
+    # H_z it would mean the opposite parity.
+    sources = [
+        mp.Source(
+            mp.GaussianSource(f0, fwidth=df),
+            component,
+            at(src[0] * RAD, yc + src[1] * RAD),
+        )
+    ]
+    if parity:
+        sources.append(
+            mp.Source(
+                mp.GaussianSource(f0, fwidth=df),
+                component,
+                at(-src[0] * RAD, yc + src[1] * RAD),
+                amplitude=float(parity),
+            )
+        )
     sim = mp.Simulation(
         cell_size=size,
         boundary_layers=[mp.PML(DPML)],
         geometry=geometry,
-        sources=[mp.Source(mp.GaussianSource(f0, fwidth=df), component, at(0, yc))],
+        sources=sources,
         resolution=resolution,
         default_material=mp.Medium(index=N_CLAD),
     )
@@ -105,7 +139,7 @@ def run(case: str, eps_sub: float, resolution: int, until: float) -> dict:
     # and harminv then reports nothing at all. Q < 0.5 is outside the contour's
     # domain anyway (holomorphy §8), so that is the floor. It is an attribute,
     # not a constructor argument, in MEEP 1.34.
-    h = mp.Harminv(component, at(0.3 * RAD, yc + 0.2 * RAD), f0, df)
+    h = mp.Harminv(component, at(probe[0] * RAD, yc + probe[1] * RAD), f0, df)
     h.Q_thresh = 0.5
     # Harminv from the pulse peak, not from source cut-off: at Q ≈ 4–6 the line
     # e-folds in ~2 periods, and the Gaussian tail (5 widths) outlasts it.
@@ -145,11 +179,34 @@ def main() -> None:
     p.add_argument(
         "--pad", type=float, default=PAD, help="clearance before the PML, in a"
     )
+    p.add_argument("--target", default=None, help="pysie2d pole 're,im' in nm")
+    p.add_argument("--df-frac", type=float, default=0.8, help="source band / f0")
+    p.add_argument(
+        "--src",
+        default="0,0",
+        help="source offset from the centre 'x,y', in units of rad; a WGM "
+        "(n ≥ 1) vanishes at the centre, so it needs one near the rim",
+    )
+    p.add_argument("--probe", default="0.3,0.2", help="harminv point 'x,y', in rad")
+    p.add_argument("--parity", type=int, choices=(-1, 0, 1), default=0)
     p.add_argument("--out", default=None)
     a = p.parse_args()
     DPML, PAD = a.dpml, a.pad
 
-    res = run(a.case, a.eps_sub, a.resolution, a.until)
+    target = complex(*map(float, a.target.split(","))) if a.target else None
+    src = tuple(map(float, a.src.split(",")))
+    probe = tuple(map(float, a.probe.split(",")))
+    res = run(
+        a.case,
+        a.eps_sub,
+        a.resolution,
+        a.until,
+        target,
+        a.df_frac,
+        src,
+        probe,
+        a.parity,
+    )
     lam = res["lam_nm"]
     tgt = res["target_nm"]
     print(
@@ -167,6 +224,10 @@ def main() -> None:
         "n_core": N_CORE,
         "pad": PAD,
         "dpml": DPML,
+        "df_frac": a.df_frac,
+        "src": a.src,
+        "probe": a.probe,
+        "parity": a.parity,
     }
     print(
         "JSONLINE " + json.dumps({**knobs, "lam": [lam.real, lam.imag], "q": res["q"]})
