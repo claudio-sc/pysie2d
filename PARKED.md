@@ -20,6 +20,7 @@ on the maintainer machine only.
 ## When resuming
 
 1. ~~Merge `main` in~~ — done at v0.9.0 (`ee30335`).
-2. Add the v0.9 item that belongs here: MEEP as the independent anchor for
-   QNMs over a dielectric substrate (layered-spec G9, owner decision 1).
+2. Substrate QNMs vs MEEP (layered-spec G9): driver in, low-Q TE anchor
+   failed on harminv; next is a high-Q mode (design doc, *Substrate QNMs
+   against MEEP, as measured so far*).
 3. Merging this is the 1.0 release, so ask before merging.
