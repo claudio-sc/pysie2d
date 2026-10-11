@@ -14,8 +14,8 @@ on the maintainer machine only.
   spectra are frozen with measured tolerances (gate 5).
 - **Gate 6 done 2026-10-10**: MEEP's systematics at resolution 50 are
   attributed (design doc, *Gate 6, as measured*).
-- **Metal absorption check done 2026-10-10** (Mie, in CI). Still open: lossy
-  absorption on the star (dolfinx raw runs from 2026-09-25 exist, not frozen).
+- **Metal absorption check done 2026-10-10** (Mie, in CI). Lossy star frozen
+  2026-10-11 (dolfinx).
 
 ## When resuming
 

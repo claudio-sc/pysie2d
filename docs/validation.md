@@ -93,6 +93,8 @@ geometry.
 | `dolfinx-circle-lossy-tm` | circle | TM | lossy | 1e-05 | 2e-05 | 1.12e-07 |
 | `dolfinx-star-lossless-te` | star | TE | lossless | 2e-06 | 5e-05 | 3.94e-06 |
 | `dolfinx-star-lossless-tm` | star | TM | lossless | 2e-06 | 2e-05 | 2.49e-06 |
+| `dolfinx-star-lossy-te` | star | TE | lossy | 1e-05 | 5e-04 | 5.62e-07 |
+| `dolfinx-star-lossy-tm` | star | TM | lossy | 1e-05 | 5e-04 | 9.35e-07 |
 | `meep-circle-lossless-te` | circle | TE | lossless | 5e-04 | 5e-01 | 3.29e-04 |
 | `meep-circle-lossless-tm` | circle | TM | lossless | 5e-04 | 5e-01 | 6.75e-04 |
 | `meep-star-lossless-te` | star | TE | lossless | 5e-02 | 5e-01 | 1.03e-02 |
@@ -142,8 +144,10 @@ evidence.
 
 - **One non-circular shape.** Everything non-circular rests on a single Gielis
   star. It is a demanding one — six near-cusps — but it is one.
-- **Absorption on a non-circular shape has no external anchor.** Every star run
-  is lossless. `C_abs` off a circle is checked by nothing.
+- **Absorption on a non-circular shape has one external anchor.** The lossy
+  star (`n_core = 2.0`, `epsi = 0.5`, `n_clad = 1.33`) is checked against
+  dolfinx alone: worst `C_abs` deviation 8e-08 of peak `C_ext` at L4, falling
+  ~5× from L3, so it is a bound and not a floor.
 - **Absorption anywhere rests on a single external tool.** MEEP has no
   frequency-independent `Im ε`, so the lossy cases are dolfinx alone, against
   the closed-form lossy Mie series. The two externals do not cross-check each

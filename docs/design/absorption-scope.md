@@ -20,7 +20,7 @@ Stating this first so the check does not re-buy evidence already in the repo.
 | Lossy dielectric, circle | analytic Mie series (bootstrap) | `tests/data/mie-circle-lossy-{te,tm}.json` |
 | Lossy dielectric, circle | dolfinx, external | `tests/data/dolfinx-circle-lossy-{te,tm}.json` |
 | Lossy dielectric, circle | optical theorem, energy balance | `tests/test_efficiencies.py` |
-| Lossy dielectric, **non-circular** | *nothing* | — |
+| Lossy dielectric, **non-circular** | dolfinx, external (added 2026-10-11) | `tests/data/dolfinx-star-lossy-{te,tm}.json` |
 | **Metal**, any shape | *nothing* | — |
 
 So absorption in a weakly lossy dielectric on a circle is genuinely
