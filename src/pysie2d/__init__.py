@@ -103,7 +103,7 @@ from .solver import (
 )
 from .sources import line_dipole_rhs, plane_wave_rhs
 
-__version__ = "0.9.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "BIESolver",

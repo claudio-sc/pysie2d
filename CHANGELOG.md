@@ -2,6 +2,29 @@
 
 <!-- version list -->
 
+## v1.0.0 (2026-10-12)
+
+### Documentation
+
+- Record gate 6, MEEP's systematics attributed at resolution 50
+  ([`051e6df`](https://github.com/claudio-sc/pysie2d/commit/051e6dffc685db8adeb6bee24ad5ccdb1c20fad2))
+
+- Renumber PARKED steps
+  ([`ea37e72`](https://github.com/claudio-sc/pysie2d/commit/ea37e72764e5e6645e98763b2fdad5c93bd400be))
+
+- Substrate QNMs vs MEEP, low-Q TE anchor fails, high-Q plan
+  ([`646496d`](https://github.com/claudio-sc/pysie2d/commit/646496d884fc768932d2895ed885962b51d25a3b))
+
+### Features
+
+- V1.0, externally validated
+  ([`93fd8d8`](https://github.com/claudio-sc/pysie2d/commit/93fd8d80797d20994b2a3d6567b29fb1727294ff))
+
+### Breaking Changes
+
+- The public API is declared stable at 1.0.
+
+
 ## v0.9.0 (2026-10-10)
 
 ### Documentation
