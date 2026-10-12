@@ -11,3 +11,9 @@ __pycache__/
 # OS
 .DS_Store
 *.log
+
+# Raw driver output, kept between refinement levels during gate 2.
+validation/**/_last-*.npz
+
+# Gate-2 convergence-study output: raw, large, and regenerable.
+validation/_study/

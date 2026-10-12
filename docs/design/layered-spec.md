@@ -157,7 +157,7 @@ named module constants, each with a comment giving the measurement behind it.
 | G6 | End-to-end: circle over PEC equals `ClusterBIESolver` particle + mirror, for φ, χ, near field and LDOS; TE/TM; real/complex λ; n_clad ∈ {1, 1.33} | v0.8 reference; pins the sign wiring |
 | G7 | `ε_sub = n_clad²` gives v0.8 bit-identity (G_ind ≡ 0 path short-circuited) and `background=None` gives v0.8 bit-identity | regression |
 | G8 | QNM over PEC: poles of the half-space solver equal the poles of the mirror-cluster matrix (Beyn on both). The gap → ∞ limit recovers the Mie roots. | v0.8 reference plus analytic Mie |
-| G9 | QNM over Ag: the §8.7 continuation from the isolated-circle poles down to a 5 nm gap succeeds at every step, and the poles are unchanged when the `for_box` depth is varied (§8.7) | consistency only. **The independent anchor for dielectric-substrate QNMs is external (MEEP) and is listed as open** |
+| G9 | QNM over Ag: the §8.7 continuation from the isolated-circle poles down to a 5 nm gap succeeds at every step, and the poles are unchanged when the `for_box` depth is varied (§8.7) | consistency only. **The independent anchor for dielectric-substrate QNMs is MEEP, closed on `v1.0-external-validation` 2026-10-12** (`tests/test_external_substrate_qnm.py`) |
 | G10 | Scale covariance: M(s·rad, s·λ) = M(rad, λ) with a background, and z_int scaled too | conventions §9 |
 | G12 | Upward far field over PEC equals the mirror-cluster far field on the upper half circle | v0.8 reference |
 | G13 | `σ_abs` from boundary flux equals `qext − qsca` (v0.8) with no background and equals Mie `Q_abs` on a lossy circle | analytic Mie |

@@ -1,0 +1,35 @@
+# Environment for the dolfinx external-validation driver.
+#
+#   mamba env create -f validation/dolfinx/environment.yml
+#   conda run -n pysie2d-dolfinx python validation/dolfinx/run_cylinder.py
+#
+# Conda-first and unapologetically so: dolfinx is not installable under uv,
+# which is exactly why it is not in pyproject.toml and why no test in this
+# repo needs it (docs/design/v1.0-external-validation.md §6).
+#
+# THE TRAP, and it is silent: `fenics-dolfinx` resolves by default to a
+# REAL-SCALAR PETSc build. It installs cleanly, imports cleanly, and is
+# useless here — frequency-domain scattering with PML is a complex problem,
+# and a real build will quietly discard every imaginary part. The
+# `petsc=*=*complex*` pin below is not optional. Check it before trusting a
+# number:
+#
+#   python -c "from petsc4py import PETSc; print(PETSc.ScalarType)"
+#   -> <class 'numpy.complex128'>
+#
+# Pins are deliberately loose apart from that variant and the dolfinx minor
+# version, whose Python API still moves between releases. The exact versions
+# that produced each committed spectrum are recorded in that file's `tool`
+# field, so this recipe stays followable while the record stays exact.
+name: pysie2d-dolfinx
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - fenics-dolfinx=0.11.*
+  - petsc=*=*complex*   # NOT optional — see above
+  - mpich
+  - gmsh
+  - python-gmsh
+  - numpy
+  - scipy
