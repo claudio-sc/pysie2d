@@ -1,0 +1,60 @@
+{
+ "claim": "The shift a glass half-space (eps_sub = 2.25, 50 nm gap) imposes on the split +-n whispering-gallery QNM pair of an n_core = 3.0, rad = 100 nm circle agrees with MEEP, an FDTD ringdown fitted by harminv that shares no equation, discretisation or contour with pysie2d's Beyn search over the Sommerfeld operator.",
+ "tool": {
+  "name": "meep",
+  "version": "1.34.0",
+  "driver": "validation/meep/run_substrate_qnm.py"
+ },
+ "geometry": {
+  "rad_nm": 100.0,
+  "gap_nm": 50.0,
+  "n_core": 3.0,
+  "n_clad": 1.0,
+  "eps_sub": 2.25
+ },
+ "modes": {
+  "te": "pol=2, isolated pole 380.343+3.974i nm (Q 48)",
+  "tm": "pol=1, isolated pole 312.394+4.338i nm (Q 36)"
+ },
+ "driver_args": "--df-frac 0.2 --src=0.62,0.48 --probe=-0.55,0.6 --until 400 --resolution 100 --parity {+1,-1}; one parity per run, so harminv fits one pole",
+ "poles_nm": {
+  "te,+1,1.0": [
+   380.362317,
+   3.972937
+  ],
+  "te,+1,2.25": [
+   379.735314,
+   4.570684
+  ],
+  "te,-1,1.0": [
+   380.362122,
+   3.97137
+  ],
+  "te,-1,2.25": [
+   379.366846,
+   4.981752
+  ],
+  "tm,+1,1.0": [
+   312.488014,
+   4.327964
+  ],
+  "tm,+1,2.25": [
+   312.194874,
+   4.638083
+  ],
+  "tm,-1,1.0": [
+   312.486946,
+   4.33151
+  ],
+  "tm,-1,2.25": [
+   312.655497,
+   5.049155
+  ]
+ },
+ "tolerance": {
+  "shift_abs_nm": 0.01,
+  "justification": "Compared quantity is the substrate-induced shift lambda(2.25) - lambda(1.0), each code against itself, which cancels MEEP's grid error (0.019 nm TE, 0.094 nm TM at resolution 100) to first order. Measured |delta shift| at resolutions 64/80/100: even poles 8e-5 to 1.2e-3 nm and converging; odd poles 2.2e-3 to 4.7e-3 nm, flat in resolution, a MEEP-side floor. 1e-2 nm is ~2x the worst, against shifts of 0.4-1.4 nm."
+ },
+ "convergence": "Absolute |delta lambda| vs pysie2d falls 0.30 -> 0.019 nm (TE) and 0.58 -> 0.094 nm (TM) over resolution 25 -> 100, identically with and without the substrate; PML 2-8 a and padding 1.5-6 a move nothing at 1e-3 nm.",
+ "study": "validation/_study/substrate-qnm-highq-2026-10-11/ (gitignored); design doc v1.0-external-validation.md, Substrate QNMs against MEEP"
+}

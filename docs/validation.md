@@ -101,6 +101,13 @@ geometry.
 | `meep-star-lossless-tm` | star | TM | lossless | 2e-02 | 1e+00 | 2.32e-03 |
 | `mie-circle-*` (4 files) | circle | both | both | 1e-12 | 1e-10 | — |
 
+One external check is not a spectrum: the **substrate QNMs** (layered-spec
+G9). `tests/data/qnm/meep-substrate-qnm.json` freezes MEEP harminv poles of a
+split whispering-gallery pair over glass, and
+`tests/test_external_substrate_qnm.py` compares the substrate-induced shift at
+1e-2 nm against shifts of 0.4–1.4 nm (measured worst 4.7e-3). Details in the
+design doc, *Substrate QNMs against MEEP, as measured*.
+
 **Every one of these is computed, not chosen.** `validation/freeze.py` measures
 the worst pointwise deviation between pysie2d and the external spectrum and
 rounds it up to the next clean number; the justification string inside each
