@@ -62,8 +62,13 @@ def test_committed_contour_is_what_the_module_generates(shape_name):
     stored = validation_gielis.load(shape_name)
     theta, x, z = validation_gielis.contour(stored["theta"].size, **shape)
     np.testing.assert_array_equal(stored["theta"], theta)
-    np.testing.assert_array_equal(stored["x"], x)
-    np.testing.assert_array_equal(stored["z"], z)
+    # Not bit for bit: the .npz was generated on macOS and Linux's libm rounds
+    # pow/sin/cos differently, measured ≤ 2 ulp (max |Δ| 1.1e-13 nm, CI
+    # 2026-10-12). 16 ulp of the largest radius bounds that; any real change of
+    # shape moves the boundary by ≥ 1e-6 relative, nine orders above it.
+    atol = 16 * np.finfo(float).eps * np.max(np.hypot(x, z))
+    np.testing.assert_allclose(stored["x"], x, rtol=0.0, atol=atol)
+    np.testing.assert_allclose(stored["z"], z, rtol=0.0, atol=atol)
     for key, value in shape.items():
         assert stored[key] == value
 
