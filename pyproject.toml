@@ -71,7 +71,9 @@ version_variables = ["src/pysie2d/__init__.py:__version__"]
 # until then the lockfile lags one release and CI installs with --frozen.
 commit_parser = "conventional"
 commit_parser_options = { ignore_merge_commits = true }
-major_on_zero = false
+# true from v1.0: a 0.x breaking change still bumps the minor, but the 1.0
+# release itself needs a BREAKING CHANGE footer to cross into 1.x.
+major_on_zero = true
 allow_zero_version = true
 
 [tool.semantic_release.branches.main]
