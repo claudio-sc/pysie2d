@@ -246,5 +246,5 @@
     "justification": "Measured, not assumed. Worst pointwise relative deviation of pysie2d from the analytic Mie series over this grid is 3.0e-14 in C_sca and C_ext, at n_pts = 200; the committed rel = 1e-12 is that value rounded up. Under Kress product quadrature the circle reaches round-off by nn ≈ 30–40, so this is a round-off floor and not a convergence order, and refining n_pts does not move it. abs_nm = 1e-10 is the floor on C_abs, which is exactly zero in the lossless cases where a relative tolerance has no meaning; it sits 5e+01 above the worst lossless C_abs this repo produces (1.9e-12 nm against a C_ext of order 595 nm)."
   },
   "notes": "Bootstrap case: the reference is the repo's own analytic Mie series, not an independent tool. It fixes the file format and proves the consuming test; it is not evidence of external validation, and docs/validation.md says so.",
-  "schema": "pysie2d-external-validation/1"
+  "schema": "pysie2d-external-validation/2"
 }

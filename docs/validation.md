@@ -85,21 +85,21 @@ geometry.
 
 ## 4. The committed tolerances
 
-| file | shape | pol | material | `rtol` | `atol` (nm) | tool's own drift |
-|---|---|---|---|---|---|---|
-| `dolfinx-circle-lossless-te` | circle | TE | lossless | 2e-06 | 1e-09 | 1.82e-07 |
-| `dolfinx-circle-lossless-tm` | circle | TM | lossless | 3e-06 | 1e-09 | 2.39e-07 |
-| `dolfinx-circle-lossy-te` | circle | TE | lossy | 1e-05 | 2e-05 | 1.04e-07 |
-| `dolfinx-circle-lossy-tm` | circle | TM | lossy | 1e-05 | 2e-05 | 1.12e-07 |
-| `dolfinx-star-lossless-te` | star | TE | lossless | 2e-06 | 5e-05 | 3.94e-06 |
-| `dolfinx-star-lossless-tm` | star | TM | lossless | 2e-06 | 2e-05 | 2.49e-06 |
-| `dolfinx-star-lossy-te` | star | TE | lossy | 1e-05 | 5e-04 | 5.62e-07 |
-| `dolfinx-star-lossy-tm` | star | TM | lossy | 1e-05 | 5e-04 | 9.35e-07 |
-| `meep-circle-lossless-te` | circle | TE | lossless | 5e-04 | 5e-01 | 3.29e-04 |
-| `meep-circle-lossless-tm` | circle | TM | lossless | 5e-04 | 5e-01 | 6.75e-04 |
-| `meep-star-lossless-te` | star | TE | lossless | 5e-02 | 5e-01 | 1.03e-02 |
-| `meep-star-lossless-tm` | star | TM | lossless | 2e-02 | 1e+00 | 2.32e-03 |
-| `mie-circle-*` (4 files) | circle | both | both | 1e-12 | 1e-10 | — |
+| file | shape | pol | material | `rtol` C_ext | `rtol` C_sca | `rtol` C_abs | `atol` C_abs (nm) | null bound (nm) |
+|---|---|---|---|---|---|---|---|---|
+| `dolfinx-circle-lossless-te` | circle | TE | lossless | 5e-08 | 2e-06 | — | 1e-09 | 3e-12 |
+| `dolfinx-circle-lossless-tm` | circle | TM | lossless | 1e-07 | 3e-06 | — | 1e-09 | 5e-12 |
+| `dolfinx-circle-lossy-te` | circle | TE | lossy | 3e-08 | 1e-05 | 3e-08 | 2e-05 | — |
+| `dolfinx-circle-lossy-tm` | circle | TM | lossy | 3e-08 | 1e-05 | 3e-08 | 2e-05 | — |
+| `dolfinx-star-lossless-te` | star | TE | lossless | 1e-06 | 2e-06 | — | 5e-05 | 5e-05 |
+| `dolfinx-star-lossless-tm` | star | TM | lossless | 1e-06 | 2e-06 | — | 2e-05 | 2e-05 |
+| `dolfinx-star-lossy-te` | star | TE | lossy | 2e-07 | 1e-05 | 2e-07 | 5e-04 | — |
+| `dolfinx-star-lossy-tm` | star | TM | lossy | 3e-07 | 1e-05 | 3e-07 | 5e-04 | — |
+| `meep-circle-lossless-te` | circle | TE | lossless | 5e-04 | 5e-04 | — | 5e-01 | 3e-12 |
+| `meep-circle-lossless-tm` | circle | TM | lossless | 5e-04 | 2e-04 | — | 5e-01 | 5e-12 |
+| `meep-star-lossless-te` | star | TE | lossless | 5e-02 | 5e-02 | — | 5e-01 | 5e-05 |
+| `meep-star-lossless-tm` | star | TM | lossless | 2e-02 | 2e-02 | — | 1e+00 | 2e-05 |
+| `mie-circle-*` (4 files) | circle | both | both | 1e-12 | 1e-12 | 1e-12 | 1e-10 | 1e-10 |
 
 One external check is not a spectrum: the **substrate QNMs** (layered-spec
 G9). `tests/data/qnm/meep-substrate-qnm.json` freezes MEEP harminv poles of a
@@ -109,17 +109,26 @@ split whispering-gallery pair over glass, and
 design doc, *Substrate QNMs against MEEP, as measured*.
 
 **Every one of these is computed, not chosen.** `validation/freeze.py` measures
-the worst pointwise deviation between pysie2d and the external spectrum and
-rounds it up to the next clean number; the justification string inside each
-file states that measurement, names the observable that set it, and gives the
-external tool's own convergence drift beside it. Nobody can widen one to make a
-test pass without editing the measurement it was derived from, which is
-reviewable in a diff.
+the worst pointwise deviation between pysie2d and the external spectrum *per
+observable* and rounds it up to the next clean number; the justification
+string inside each file gives each measurement beside the external tool's own
+convergence drift **on the same observable**, and words the attribution from
+the ratio rather than asserting it. Nobody can widen one to make a test pass
+without editing the measurement it was derived from, which is reviewable in a
+diff.
 
-The last column is the point. In every row the tool's own level-to-level drift
-is the *same order* as its disagreement with pysie2d — which is what it means
-to say the tolerance bounds the external solver's discretisation error rather
-than ours.
+In every row each observable's deviation is within 3× of the tool's own drift
+on that observable — which is what it means to say the tolerance bounds the
+external solver's discretisation error rather than ours. Per observable
+matters: dolfinx's `C_sca` is a flux of `∇u_s` over a facet set and converges
+~60× slower than its volume-integral `C_ext`, so one shared `rtol` set by
+`C_sca` used to give `C_ext` 40–230× slack, and quoting the `C_ext` drift beside
+a `C_sca`-limited deviation made the gap look unexplained.
+
+`atol` applies to `C_abs` only — never as a floor under `C_sca`/`C_ext`, where
+for MEEP it would be the 0.5–1 nm absorption leak and would widen the stated
+`rtol` up to 4×. The null bound is pysie2d's own lossless `C_abs` floor (×3),
+not the reference tool's leak.
 
 ### Why the star files say `n_pts = 400`
 

@@ -237,14 +237,20 @@
     "parameter": "(h_particle nm, h_outer nm, Lagrange degree)",
     "coarse": "(6, 18, 3)",
     "fine": "(4, 12, 3)",
-    "max_rel_drift": 1.117658203971414e-07,
+    "max_rel_drift": 2.417985207216611e-05,
     "note": "Drift measured on the 13-point study grid, which is a subset of the 51-point grid frozen here — gate 2 measures where the tool stops moving, gate 5 runs the full grid at that level."
   },
   "tolerance": {
     "rel": 9.999999999999999e-06,
     "abs_nm": 2e-05,
-    "justification": "Measured, not chosen. Worst pointwise relative deviation between pysie2d (n_pts = 200) and this spectrum is 5.94e-06, on c_sca, rounded up to 1e-05. The tool's own (h_particle nm, h_outer nm, Lagrange degree) drift from (6, 18, 3) to (4, 12, 3) is 1.12e-07 — the same order, so what this bounds is the external tool's discretisation error and not pysie2d's, which at this n_pts sits orders below. abs_nm is a floor only: this material absorbs, so C_abs (peak 351 nm) is carried by the relative tolerance."
+    "justification": "Measured, not chosen, per observable: worst pointwise relative deviation between pysie2d (n_pts = 200) and this spectrum, rounded up, beside the tool's own (h_particle nm, h_outer nm, Lagrange degree) drift from (6, 18, 3) to (4, 12, 3) on the same observable. c_ext: 2.74e-08 -> rtol 3e-08; drift 1.12e-07, the same order, so it bounds the external tool's discretisation. c_sca: 5.94e-06 -> rtol 1e-05; drift 2.42e-05, the same order, so it bounds the external tool's discretisation. c_abs: 2.30e-08 -> rtol 3e-08; drift 9.36e-08, the same order, so it bounds the external tool's discretisation. pysie2d's own error at this n_pts sits orders below. abs_nm is a floor only: this material absorbs, so C_abs (peak 351 nm) is carried by the relative tolerance.",
+    "rel_by": {
+      "c_ext": 3.0000000000000004e-08,
+      "c_sca": 9.999999999999999e-06,
+      "c_abs": 3.0000000000000004e-08
+    },
+    "null_abs_nm": null
   },
   "notes": "Produced by validation/freeze.py from validation/_study. The driver that generated the spectrum is validation/dolfinx/run_cylinder.py and does not import pysie2d; the boundary comes from validation/gielis.py, which tests/test_gielis_contour.py pins to the package's own gielis() bit for bit.",
-  "schema": "pysie2d-external-validation/1"
+  "schema": "pysie2d-external-validation/2"
 }

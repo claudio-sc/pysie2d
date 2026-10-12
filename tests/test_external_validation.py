@@ -78,11 +78,14 @@ def test_cross_section_spectrum_matches_frozen(frozen, observable):
     # means editing the recorded justification, which is reviewable.
     spec, ours = frozen
     reference = getattr(spec, f"{observable}_nm")
+    tol = spec.tolerance
+    # Relative only, per observable. abs_nm is C_abs's tolerance; as a floor
+    # here it was MEEP's 0.5 nm leak and widened the stated rtol up to 4×.
     np.testing.assert_allclose(
         ours[observable],
         reference,
-        rtol=spec.tolerance.rel,
-        atol=spec.tolerance.abs_nm,
+        rtol=tol.rel_by[observable] if tol.rel_by else tol.rel,
+        atol=0.0,
         err_msg=f"{spec.case_id}: {observable} disagrees with the frozen "
         f"spectrum. Tolerance justification: {spec.tolerance.justification}",
     )
@@ -93,10 +96,11 @@ def test_absorption_matches_frozen(frozen):
     # where a relative tolerance is meaningless — this is §5's null test, and
     # the only tolerance that can carry it is the absolute floor.
     spec, ours = frozen
+    tol = spec.tolerance
     np.testing.assert_allclose(
         ours["c_abs"],
         spec.c_abs_nm,
-        rtol=spec.tolerance.rel,
+        rtol=tol.rel_by.get("c_abs", tol.rel) if tol.rel_by else tol.rel,
         atol=spec.tolerance.abs_nm,
         err_msg=f"{spec.case_id}: C_abs disagrees with the frozen spectrum.",
     )
@@ -109,7 +113,10 @@ def test_lossless_case_absorbs_nothing(frozen):
     spec, ours = frozen
     if spec.material["epsi"] != 0.0:
         pytest.skip("lossy case")
-    assert np.max(np.abs(ours["c_abs"])) < spec.tolerance.abs_nm
+    # pysie2d's own floor, not the reference tool's: MEEP leaks ~0.1 nm, so its
+    # abs_nm would pass a pysie2d leak eleven orders above the real one.
+    bound = spec.tolerance.null_abs_nm or spec.tolerance.abs_nm
+    assert np.max(np.abs(ours["c_abs"])) < bound
 
 
 def test_frozen_file_is_self_describing(frozen):

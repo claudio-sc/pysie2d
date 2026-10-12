@@ -243,8 +243,13 @@
   "tolerance": {
     "rel": 0.0005,
     "abs_nm": 0.5,
-    "justification": "Measured, not chosen. Worst pointwise relative deviation between pysie2d (n_pts = 200) and this spectrum is 4.53e-04, on c_ext, rounded up to 5e-04. The tool's own resolution (pixels per 100 nm) drift from 40 to 50 is 6.75e-04 — the same order, so what this bounds is the external tool's discretisation error and not pysie2d's, which at this n_pts sits orders below. abs_nm bounds *this tool's* residual absorption leak, 1.17e-01 nm, against pysie2d's 1.14e-12 nm — an independent flux tally that never reads the material, so a non-zero reading is the tool's own error."
+    "justification": "Measured, not chosen, per observable: worst pointwise relative deviation between pysie2d (n_pts = 200) and this spectrum, rounded up, beside the tool's own resolution (pixels per 100 nm) drift from 40 to 50 on the same observable. c_ext: 4.53e-04 -> rtol 5e-04; drift 6.75e-04, the same order, so it bounds the external tool's discretisation. c_sca: 1.77e-04 -> rtol 2e-04; drift 1.19e-04, the same order, so it bounds the external tool's discretisation. pysie2d's own error at this n_pts sits orders below. abs_nm bounds *this tool's* residual absorption leak, 1.17e-01 nm, against pysie2d's 1.14e-12 nm — an independent flux tally that never reads the material, so a non-zero reading is the tool's own error. null_abs_nm bounds pysie2d's own lossless C_abs, 1.14e-12 nm, for the null test.",
+    "rel_by": {
+      "c_ext": 0.0005,
+      "c_sca": 0.0002
+    },
+    "null_abs_nm": 5e-12
   },
   "notes": "Produced by validation/freeze.py from validation/_study. The driver that generated the spectrum is validation/meep/run_cylinder.py and does not import pysie2d; the boundary comes from validation/gielis.py, which tests/test_gielis_contour.py pins to the package's own gielis() bit for bit.",
-  "schema": "pysie2d-external-validation/1"
+  "schema": "pysie2d-external-validation/2"
 }

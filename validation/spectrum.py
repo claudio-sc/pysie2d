@@ -32,7 +32,7 @@ from typing import Any
 
 import numpy as np
 
-SCHEMA = "pysie2d-external-validation/1"
+SCHEMA = "pysie2d-external-validation/2"
 """Schema tag written into every file.
 
 Bumped when a field changes meaning. ``read`` refuses anything else rather
@@ -74,18 +74,30 @@ class Tolerance:
     """The agreement the repo's test asserts, and where the number came from.
 
     Attributes:
-        rel: Relative tolerance on ``c_sca_nm`` and ``c_ext_nm``.
-        abs_nm: Absolute floor (nm) added to the relative tolerance, and the
-            sole tolerance on ``c_abs_nm`` — which is zero for a lossless
-            particle, where a relative tolerance is meaningless (§5 gate 3).
-        justification: Prose tying both numbers to a measurement. Not
+        rel: Relative tolerance on ``c_sca_nm`` and ``c_ext_nm`` — the
+            loosest of ``rel_by`` when that is given.
+        abs_nm: Absolute tolerance (nm) on ``c_abs_nm`` only — which is zero
+            for a lossless particle, where a relative tolerance is
+            meaningless (§5 gate 3). Never a floor on ``c_sca``/``c_ext``:
+            for MEEP it is MEEP's own absorption leak, 0.5–1 nm, which would
+            silently widen their relative tolerance several-fold.
+        justification: Prose tying the numbers to a measurement. Not
             optional: a tolerance without one is a tolerance that will be
             widened later to make a test pass.
+        rel_by: Per-observable relative tolerance, ``{"c_ext": …, "c_sca":
+            …}`` plus ``"c_abs"`` for a lossy material. Each is set by its
+            own observable's deviation: one shared ``rel`` set by the worst
+            (a flux-integral ``c_sca``) gave ``c_ext`` 40–230× slack.
+        null_abs_nm: pysie2d's *own* lossless ``c_abs`` floor (nm), for the
+            null test — not the external tool's, whose leak is 1e11× larger
+            for MEEP and so would let any pysie2d leak through.
     """
 
     rel: float
     abs_nm: float
     justification: str
+    rel_by: dict[str, float] | None = None
+    null_abs_nm: float | None = None
 
 
 @dataclass(frozen=True)

@@ -237,14 +237,19 @@
     "parameter": "resolution (pixels per 100 nm)",
     "coarse": "25",
     "fine": "32",
-    "max_rel_drift": 0.010313371139752883,
+    "max_rel_drift": 0.010354939125671304,
     "note": "First order, not second: six near-cusps on a Yee grid, which subpixel averaging cannot rescue. Measured separately, the cusps cost 9.6x and the n_core = 2.0 contrast 4.2x, and their product is the observed 40x gap against MEEP's own circle. A bounded systematic we did not eliminate, never a converged floor."
   },
   "tolerance": {
     "rel": 0.05,
     "abs_nm": 0.5,
-    "justification": "Measured, not chosen. Worst pointwise relative deviation between pysie2d (n_pts = 400) and this spectrum is 4.84e-02, on c_sca, rounded up to 5e-02. The tool's own resolution (pixels per 100 nm) drift from 25 to 32 is 1.03e-02 — the same order, so what this bounds is the external tool's discretisation error and not pysie2d's, which at this n_pts sits orders below. abs_nm bounds *this tool's* residual absorption leak, 1.63e-01 nm, against pysie2d's 1.25e-05 nm — an independent flux tally that never reads the material, so a non-zero reading is the tool's own error."
+    "justification": "Measured, not chosen, per observable: worst pointwise relative deviation between pysie2d (n_pts = 400) and this spectrum, rounded up, beside the tool's own resolution (pixels per 100 nm) drift from 25 to 32 on the same observable. c_ext: 4.83e-02 -> rtol 5e-02; drift 1.03e-02, 5x smaller than the deviation, so refinement does NOT explain this gap; it is an unattributed systematic, bounded only. c_sca: 4.84e-02 -> rtol 5e-02; drift 1.04e-02, 5x smaller than the deviation, so refinement does NOT explain this gap; it is an unattributed systematic, bounded only. pysie2d's own error at this n_pts sits orders below. abs_nm bounds *this tool's* residual absorption leak, 1.63e-01 nm, against pysie2d's 1.25e-05 nm — an independent flux tally that never reads the material, so a non-zero reading is the tool's own error. null_abs_nm bounds pysie2d's own lossless C_abs, 1.25e-05 nm, for the null test.",
+    "rel_by": {
+      "c_ext": 0.05,
+      "c_sca": 0.05
+    },
+    "null_abs_nm": 5e-05
   },
   "notes": "Produced by validation/freeze.py from validation/_study. The driver that generated the spectrum is validation/meep/run_cylinder.py and does not import pysie2d; the boundary comes from validation/gielis.py, which tests/test_gielis_contour.py pins to the package's own gielis() bit for bit.",
-  "schema": "pysie2d-external-validation/1"
+  "schema": "pysie2d-external-validation/2"
 }

@@ -251,10 +251,27 @@ def _ceil_clean(x: float) -> float:
     return float(10.0 ** (exp + 1))
 
 
-def _drift(case: Case) -> float:
-    """Worst pointwise relative change in C_ext between the two levels."""
+def _drift(case: Case, key: str) -> float:
+    """Worst pointwise relative change in one observable between the levels.
+
+    Per observable, because they converge at different rates: dolfinx's
+    ``C_sca`` is a flux of ``∇u_s`` over a facet set and drifts ~60× more than
+    its volume-integral ``C_ext`` between L3 and L4. Quoting the ``C_ext``
+    drift beside a ``C_sca``-limited deviation made the gap look unexplained.
+    """
     a, b = _load(case.coarse, case.tool), _load(case.fine, case.tool)
-    return float(np.max(np.abs(a["c_ext"] - b["c_ext"]) / np.abs(b["c_ext"])))
+    return float(np.max(np.abs(a[key] - b[key]) / np.abs(b[key])))
+
+
+def _attribution(dev: float, drift: float) -> str:
+    """Say what the measurement supports, not what it was hoped to show."""
+    ratio = dev / drift if drift > 0 else float("inf")
+    if ratio <= 3.0:
+        return "the same order, so it bounds the external tool's discretisation"
+    return (
+        f"{ratio:.0f}x smaller than the deviation, so refinement does NOT "
+        "explain this gap; it is an unattributed systematic, bounded only"
+    )
 
 
 def build(case: Case, meta: dict) -> tuple[Spectrum, dict]:
@@ -282,6 +299,8 @@ def build(case: Case, meta: dict) -> tuple[Spectrum, dict]:
     }
     limiting = max(per_key, key=per_key.get)
     rel_dev = per_key[limiting]
+    rel_by = {k: _ceil_clean(v) for k, v in per_key.items()}
+    drift_by = {k: _drift(case, k) for k in keys}
 
     # abs_nm carries C_abs where a relative tolerance cannot. Which side's
     # residual it bounds depends on the tool: dolfinx's lossless C_abs is a
@@ -298,7 +317,10 @@ def build(case: Case, meta: dict) -> tuple[Spectrum, dict]:
     # deterministic relative deviation above does not.
     abs_nm = max(_ceil_clean(3.0 * abs_dev), 1e-9)
     rel = _ceil_clean(rel_dev)
-    drift = _drift(case)
+    drift = drift_by[limiting]
+    # The null test's own bound: pysie2d's lossless C_abs, with the same 3x
+    # headroom as abs_nm. None for a lossy material, which has no null.
+    null_abs_nm = None if case.lossy else max(_ceil_clean(3.0 * ours_abs), 1e-12)
 
     if case.lossy:
         abs_story = (
@@ -348,15 +370,29 @@ def build(case: Case, meta: dict) -> tuple[Spectrum, dict]:
         tolerance=Tolerance(
             rel=rel,
             abs_nm=abs_nm,
+            rel_by=rel_by,
+            null_abs_nm=null_abs_nm,
             justification=(
-                f"Measured, not chosen. Worst pointwise relative deviation "
-                f"between pysie2d (n_pts = {int(geom['n_pts'])}) and this "
-                f"spectrum is {rel_dev:.2e}, on {limiting}, rounded up to "
-                f"{rel:.0e}. The tool's own {case.parameter} drift from "
-                f"{case.coarse_label} to {case.fine_label} is {drift:.2e} — "
-                "the same order, so what this bounds is the external tool's "
-                "discretisation error and not pysie2d's, which at this n_pts "
-                f"sits orders below. {abs_story}"
+                f"Measured, not chosen, per observable: worst pointwise "
+                f"relative deviation between pysie2d (n_pts = "
+                f"{int(geom['n_pts'])}) and this spectrum, rounded up, beside "
+                f"the tool's own {case.parameter} drift from "
+                f"{case.coarse_label} to {case.fine_label} on the same "
+                "observable. "
+                + " ".join(
+                    f"{k}: {per_key[k]:.2e} -> rtol {rel_by[k]:.0e}; drift "
+                    f"{drift_by[k]:.2e}, "
+                    f"{_attribution(per_key[k], drift_by[k])}."
+                    for k in keys
+                )
+                + " pysie2d's own error at this n_pts sits orders below. "
+                f"{abs_story}"
+                + (
+                    ""
+                    if null_abs_nm is None
+                    else f" null_abs_nm bounds pysie2d's own lossless C_abs, "
+                    f"{ours_abs:.2e} nm, for the null test."
+                )
             ),
         ),
         notes=(
