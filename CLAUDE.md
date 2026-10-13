@@ -238,7 +238,15 @@ surface freeze**. What still gates v1.0 is external validation itself: a 1.0
 promises a stable surface *and* answers that have been checked against
 something that is neither circular nor ours, and this milestone is where that
 check happens. It also carries the MEEP comparison for the v0.9 substrate.
-**v1.1 — multilayer and slab-waveguide backgrounds** on the v0.9 machinery.
+
+**v1.1, on `v1.1-transmitted-fields`: the field below the interface.** Near
+field, downward far field, power into the substrate by interface flux, and an
+`incident_field` helper, written against a generic τ = T/α₁ so a multilayer
+plugs in later. Spec **in draft**, not builder-ready:
+[transmitted-spec.md](docs/design/transmitted-spec.md) — its §7 is the resume
+point. It also records a v0.9 `c_sca_up` defect over low-index substrates.
+
+**v1.2 — multilayer and slab-waveguide backgrounds** on the v0.9 machinery.
 
 ## How to work here
 
