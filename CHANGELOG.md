@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.0.1 (2026-10-14)
+
+### Bug Fixes
+
+- Split c_sca_up at the critical angle over low-index substrates
+  ([`9f65e7a`](https://github.com/claudio-sc/pysie2d/commit/9f65e7a78bab99cc5c9788794e310efc4ac3e7c0))
+
+### Documentation
+
+- Remove the stale v1.0 parking note
+  ([`05f6032`](https://github.com/claudio-sc/pysie2d/commit/05f603276ca93c675baa381a75128d224b7866f6))
+
+
 ## v1.0.0 (2026-10-12)
 
 ### Documentation
