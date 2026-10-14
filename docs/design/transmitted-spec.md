@@ -184,7 +184,11 @@ yet prototyped**.
    **Fix (prototyped, `t2b.p_up_split`):** split at ±θ_c and use the sine map on
    each panel. The balance then closes to 5e-15, and 200 vs 400 nodes per panel
    agree to 1.2e-14. Without a critical angle the v1.0 path stays bit-identical.
-   **Decided (D11):** a patch on `main`, before v1.1.
+   **Shipped in v1.0.1 (D11, PR #26).** The default error was worse than above:
+   up to 1.3e-3 (TM, ε_sub = 1.5), and weak loss does not cure it (ε_sub =
+   1 + 1e-3i: 6.5e-4), so the split applies whenever `0 < Re ε_rel < 1`, at
+   `asin √(Re ε_rel)`. 500 vs 2000 nodes: ≤ 2.5e-14. G14's test helper
+   `_powers` still uses plain Gauss–Legendre; GT7 must use the split rule.
 2. **A lossless metal in TM (`Im ε = 0`, `Re ε < −n_clad²`) leaks power into a
    surface plasmon** that runs along the interface to infinity. That power is in
    none of `P_up`, `P_down` or `P_abs`: the balance is short by 2.5% at ε = −4.
@@ -235,8 +239,8 @@ contract.
    GT5's near-to-far half then uses only angles away from θ_c.
 2. Prototype the banded transmitted GEMM, and time a 100 × 100 substrate map
    against the cover map. Prototype the transmitted plane wave, including TIR.
-3. ~~Owner calls~~: done, D11–D21 (2026-10-14). D11 adds a prerequisite: the
-   v1.0.1 `c_sca_up` patch on `main`, merged before the v1.1 builder starts.
+3. ~~Owner calls~~: done, D11–D21 (2026-10-14). The D11 patch shipped as
+   v1.0.1 and is merged into this branch.
 4. Write the builder contract: exact signatures for `layered.py`, `fields.py`,
    `solver.py`, `cluster.py` and `__init__.py`; the behaviour table (as v0.9
    §8.4); the order of work as commits; the measure-then-10× tolerance rule with
