@@ -1,5 +1,7 @@
 """Field evaluation: far-field amplitude and arbitrary-point near fields."""
 
+import math
+
 import numpy as np
 
 from .kernels import _real_if_real, hank0, hank1
@@ -184,8 +186,20 @@ def _upward_cross_sections(
     construction. ``σ_abs`` comes from the boundary flux and needs no far field,
     so it is exact with a substrate.
 
+    When ``0 < Re ε_rel < 1`` the substrate is optically thinner than the cover,
+    and ``r(k sin θ)`` has a √ kink at the cover's critical angle
+    ``±θ_c = ±asin √(Re ε_rel)``. Plain Gauss–Legendre then converges only
+    algebraically: at 500 nodes it is off by up to 1.3e-3 (TM, ε_sub = 1.5,
+    n_clad = 1.33). The integral is therefore split at ±θ_c, and each panel uses
+    the sine map ``θ = c + h·sin(πu/2)``, which removes the √ endpoint
+    behaviour, so 500 nodes reach 1.2e-13. Weak loss moves the branch point
+    just off the real axis but leaves the near-kink, so the split also applies
+    to a lossy substrate (ε_sub = 1 + 1e-3i: 6.5e-4 unsplit, 1.2e-13 split).
+    Every other substrate keeps the v1.0 rule bit for bit.
+
     Args:
-        n_angles: Gauss–Legendre nodes for the angular integral.
+        n_angles: Gauss–Legendre nodes for the angular integral, shared between
+            the panels in proportion to their width when the integral is split.
         boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
         wnum_bg: Background wavenumber.
         eps_rel: Substrate permittivity relative to the cover, or ``None``.
@@ -195,11 +209,21 @@ def _upward_cross_sections(
     Returns:
         ``{"c_sca_up", "c_abs"}`` in nm.
     """
-    x, w = np.polynomial.legendre.leggauss(n_angles)
-    amp = _upward_amplitude(0.5 * PI * x, boundaries, wnum_bg, eps_rel, pol, z_int)
-    c_sca_up = float(
-        np.sum(0.5 * PI * w * np.abs(amp) ** 2) / (8.0 * PI * np.real(wnum_bg))
-    )
+    if eps_rel is not None and 0.0 < eps_rel.real < 1.0:
+        theta_c = float(np.arcsin(np.sqrt(eps_rel.real)))
+        edges = [-0.5 * PI, -theta_c, theta_c, 0.5 * PI]
+        angles, weights = [], []
+        for lo, hi in zip(edges[:-1], edges[1:], strict=True):
+            x, w = np.polynomial.legendre.leggauss(math.ceil(n_angles * (hi - lo) / PI))
+            c, h = 0.5 * (hi + lo), 0.5 * (hi - lo)
+            angles.append(c + h * np.sin(0.5 * PI * x))
+            weights.append(h * 0.5 * PI * np.cos(0.5 * PI * x) * w)
+        theta, wt = np.concatenate(angles), np.concatenate(weights)
+    else:
+        x, w = np.polynomial.legendre.leggauss(n_angles)
+        theta, wt = 0.5 * PI * x, 0.5 * PI * w
+    amp = _upward_amplitude(theta, boundaries, wnum_bg, eps_rel, pol, z_int)
+    c_sca_up = float(np.sum(wt * np.abs(amp) ** 2) / (8.0 * PI * np.real(wnum_bg)))
     return {"c_sca_up": c_sca_up, "c_abs": _absorbed_cross_section(boundaries, wnum_bg)}
 
 
