@@ -29,41 +29,21 @@ multilayer plugs in its own.
 | D9 | The old `v1.1-layered` branch is deleted (it was identical to main). Multilayers become v1.2, on a new branch when they start. |
 | D10 | No MEEP check. The anchors are closed forms and energy conservation, all in CI. |
 
-### Technical choices made without objection (confirm when resuming)
+### Owner decisions (2026-10-14)
 
-- Below `z_int`, `eval_field` returns the **scattered** (transmitted) field, matching
-  v0.9's convention above it. Over PEC it is exactly 0.
-- The near field accepts complex λ (non-negotiable 1). Powers are real-λ only.
-- Extinction is still not provided.
-- `far_field_down` at complex λ over a real `ε_sub > 0` returns the analytic
-  continuation, as `far_field` already does.
-
-### Proposals not yet put to the owner
-
-- **`incident_field` contract:** `eval_field + incident_field` is the total field
-  at **every** point. `incident_field` therefore returns 0 inside particles,
-  classified exactly as that result class's `eval_field` classifies them
-  (`_is_outside` for `ScatterResult`, ray casting for clusters). It works without
-  a background too: a plane wave, or `0.25j·H₀` for a dipole. A custom
-  `incident_rhs` makes it raise `ValueError`. The result therefore records its
-  excitation: `ScatterResult.__init__` gains keyword-only `excitation: str =
-  "plane_wave"` and `source: tuple[float, float] | None = None`, and
-  `ClusterScatterResult.__init__` gains `source`. `scatter` with a custom
-  `incident_rhs` sets `"custom"`, and `scatter_dipole` re-wraps the result with
-  `"dipole"` and the source position. `tests/api_baseline.txt` is regenerated.
-- **Points exactly at `z_int`** use the transmitted formula. ψ is continuous
-  there (verified, §3), and the transmitted integrand decays through the source
-  height alone. v0.9 raised `ValueError` at `z = z_int`.
-- **`eps_rel == 1` exactly:** substrate points go through the free-space
-  representation (G7-style bit-identity), and `a_down` returns the free-space
-  `_far_field_at`. The formula's `2α₂/(α₁+α₂)` is 0/0 at grazing there.
-- **`c_sca_down` at complex λ:** the key is **absent**. The real-axis flux is
-  undefined there, because the vertical cuts cross the real axis when `Im k < 0`.
-  This follows v0.9's "absent rather than raising".
-- `far_field_down` without a background raises `ValueError` ("`far_field()`
-  already covers the full circle").
-- Lossless `Re ε_sub ≤ 0` gives `c_sca_down = 0.0` exactly, with no integral,
-  and so does PEC.
+| # | Decision |
+|---|---|
+| D11 | **Finding 1 ships first as a patch on `main`** (v1.0.1): a short fix branch and PR, merged before v1.1, then `main` is merged into `v1.1-transmitted-fields`. GT7's low-index gate builds on it. |
+| D12 | **Finding 2: documentation and gate exclusion only.** The `c_sca_down` docstring and conventions §16 state the plasmon leak, and GT7 excludes TM over a lossless `Re ε < −n_clad²`. There is no runtime warning. `P_guided` by residues belongs to v1.2. |
+| D13 | **`incident_field` contract:** `eval_field + incident_field` is the total field at **every** point. `incident_field` therefore returns 0 inside particles, classified exactly as that result class's `eval_field` classifies them (`_is_outside` for `ScatterResult`, ray casting for clusters). It works without a background too: a plane wave, or `0.25j·H₀` for a dipole. A custom `incident_rhs` makes it raise `ValueError`. The result therefore records its excitation: `ScatterResult.__init__` gains keyword-only `excitation: str = "plane_wave"` and `source: tuple[float, float] \| None = None`, and `ClusterScatterResult.__init__` gains `source`. `scatter` with a custom `incident_rhs` sets `"custom"`, and `scatter_dipole` re-wraps the result with `"dipole"` and the source position. `tests/api_baseline.txt` is regenerated. |
+| D14 | Below `z_int`, `eval_field` returns the **scattered** (transmitted) field, matching v0.9's convention above it. Over PEC it is exactly 0. |
+| D15 | Extinction is still not provided. |
+| D16 | `far_field_down` at complex λ over a real `ε_sub > 0` returns the analytic continuation, as `far_field` already does. |
+| D17 | **Points exactly at `z = z_int` keep raising `ValueError`**, as in v0.9. The field is continuous there (§3), but the user steps off the interface explicitly. GT4 checks continuity at `z_int ± δ`. |
+| D18 | The near field accepts complex λ (non-negotiable 1). At complex λ the `c_sca_down` key is **absent**, because the real-axis flux is undefined when `Im k < 0` (the vertical cuts cross the real axis). This follows v0.9's "absent rather than raising". |
+| D19 | `eps_rel == 1` exactly: substrate points go through the free-space representation (G7-style bit-identity), and `a_down` returns the free-space `_far_field_at`. The formula's `2α₂/(α₁+α₂)` is 0/0 at grazing there. |
+| D20 | `far_field_down` without a background raises `ValueError` ("`far_field()` already covers the full circle"). |
+| D21 | Lossless `Re ε_sub ≤ 0` and PEC give `c_sca_down = 0.0` exactly, with no integral. |
 
 ## 1. Generic interface (D3)
 
@@ -204,14 +184,13 @@ yet prototyped**.
    **Fix (prototyped, `t2b.p_up_split`):** split at ±θ_c and use the sine map on
    each panel. The balance then closes to 5e-15, and 200 vs 400 nodes per panel
    agree to 1.2e-14. Without a critical angle the v1.0 path stays bit-identical.
-   **Owner decision pending:** fix it inside v1.1 as a `fix:` commit first (the
-   low-index balance gate depends on it), or separately on main.
+   **Decided (D11):** a patch on `main`, before v1.1.
 2. **A lossless metal in TM (`Im ε = 0`, `Re ε < −n_clad²`) leaks power into a
    surface plasmon** that runs along the interface to infinity. That power is in
    none of `P_up`, `P_down` or `P_abs`: the balance is short by 2.5% at ε = −4.
    With any loss the plasmon is absorbed, and the flux captures it (silver
    closes to 1e-13). The docstrings must say this, and the balance gate excludes
-   the case. It is the half-space instance of v1.2's guided-mode channel
+   the case (D12). It is the half-space instance of v1.2's guided-mode channel
    (`P_guided`, by residues).
 3. **Trap: size the path for the actual smallest Z.** A reflected path sized at
    `2·h'` but used at an observation point on the interface (Z = h') truncates
@@ -227,7 +206,7 @@ yet prototyped**.
 | GT1 | `ε_rel = 1`: G_t and its derivatives equal `(i/4)H₀`, at real and complex k | closed form |
 | GT2 | G_t vs the real-axis reference (extended to τ in `reference/sommerfeld.py`), glass, lossy, silver and low-n, TE/TM, real k | second quadrature, different branch rule |
 | GT3 | Complex k: G_t unchanged when the hump depth is × 1.5 | consistency (GT1 is the complex-k anchor) |
-| GT4 | Continuity `G_free + G_ind = G_t` at the interface (finding 3 for the sizing) | pins the z_top/z_bot phase references and the sign wiring |
+| GT4 | Continuity `G_free + G_ind = G_t` across the interface, at `z_int ± δ` (D17; finding 3 for the sizing) | pins the z_top/z_bot phase references and the sign wiring |
 | GT5 | `ε = 1`: `a_down` = free-space far field on the lower half; near-to-far consistency at angles away from θ_c (§7.1) | free space is Mie-anchored |
 | GT6 | Lossless: flux `P_down` = far-field integral | two quadratures of different form |
 | GT7 | **G14 becomes an equality:** `P_up + P_down + P_abs = P_in` over glass, low-n, lossy, silver and a lossless metal with −n_clad² < ε < 0; TE/TM. It replaces the shortfall test, and TM over ε < −n_clad² lossless is excluded (finding 2) | energy conservation |
@@ -256,8 +235,8 @@ contract.
    GT5's near-to-far half then uses only angles away from θ_c.
 2. Prototype the banded transmitted GEMM, and time a 100 × 100 substrate map
    against the cover map. Prototype the transmitted plane wave, including TIR.
-3. Owner: finding 1 (where the fix lands), finding 2 (documentation and gate
-   exclusion), and the proposals in §D.
+3. ~~Owner calls~~: done, D11–D21 (2026-10-14). D11 adds a prerequisite: the
+   v1.0.1 `c_sca_up` patch on `main`, merged before the v1.1 builder starts.
 4. Write the builder contract: exact signatures for `layered.py`, `fields.py`,
    `solver.py`, `cluster.py` and `__init__.py`; the behaviour table (as v0.9
    §8.4); the order of work as commits; the measure-then-10× tolerance rule with
