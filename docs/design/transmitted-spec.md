@@ -165,7 +165,8 @@ yet prototyped**.
 | Flux, 24 vs 48 nodes per panel | ~5e-15; silver TM 5.6e-13; silver+1e-4i TM 2.3e-12 | t2_power, t2c |
 | Lossless metal, `P_down = 0` | ε = −1 (no plasmon on the sheet): 7.1e-15 / 5.9e-15. ε = −4: TE 1.8e-14, **TM −2.5e-2** (finding 2) | t2b, t2c |
 | `ε = 1`: `a_down` vs free-space `_far_field_at` on the lower half | 5.1e-14 / 3.7e-14 | t3_far |
-| Near field at ρ = 20, 40, 80 µm vs `a_down` (normalisation and phase) | low-n: 2e-3 at 80 µm, Richardson 7e-5 → 1.8e-5 (TE) and 1.3e-4 → 3.2e-5 (TM), i.e. the residual is O(1/ρ²). **glass: 4e-2 at 80 µm, Richardson does not converge — open** (§7.1) | t3_far |
+| Near field at ρ = 20, 40, 80 µm vs `a_down` (normalisation and phase), offsets 0, ±0.3, ±0.6 rad from −z (inside glass θ_c) | glass: 9.2e-4 / 1.0e-3 at 80 µm, Richardson (20/40 → 40/80) 6.7e-6 → 1.7e-6 (TE) and 1.3e-5 → 3.2e-6 (TM). low-n: 5.7e-4 / 6.3e-4, Richardson 6.8e-6 → 1.7e-6 and 7.5e-6 → 1.9e-6. The residual falls 4× per doubling, so it is O(1/ρ²). 15 s | t3_far |
+| Per-angle near-to-far error, glass, ρ = 20 / 80 / 320 µm (2026-10-14) | Inside θ_c = 1.09 rad (offsets 0–0.9): exactly 4.0× per 4× depth in both polarisations, θ = π included, so pure O(1/ρ). Beyond θ_c (offsets 1.3, 1.45): TE 8.4e-2 → 2.5e-2 → 3.1e-3 and 1.1e-1 → 3.2e-2 → 3.7e-3; TM 6.2e-2 → 2.0e-2 → 7.1e-3 and 5.5e-2 → 1.7e-2 → 8.9e-3. Falling, but irregularly: the lateral wave from the k₁ branch point carries its own ρ-dependent phase, so `a + c/ρ` Richardson does not apply there. That is what the earlier "4e-2 stall" was. **6 min**, almost all of it at 320 µm (15,689 path nodes) | t3b |
 
 ## 4. Findings
 
@@ -211,7 +212,7 @@ yet prototyped**.
 | GT2 | G_t vs the real-axis reference (extended to τ in `reference/sommerfeld.py`), glass, lossy, silver and low-n, TE/TM, real k | second quadrature, different branch rule |
 | GT3 | Complex k: G_t unchanged when the hump depth is × 1.5 | consistency (GT1 is the complex-k anchor) |
 | GT4 | Continuity `G_free + G_ind = G_t` across the interface, at `z_int ± δ` (D17; finding 3 for the sizing) | pins the z_top/z_bot phase references and the sign wiring |
-| GT5 | `ε = 1`: `a_down` = free-space far field on the lower half; near-to-far consistency at angles away from θ_c (§7.1) | free space is Mie-anchored |
+| GT5 | `ε = 1`: `a_down` = free-space far field on the lower half. Near-to-far: Richardson of the near field at ρ = 40 and 80 µm equals `a_down` at offsets 0, ±0.3, ±0.6 rad from −z, glass and low-n, TE/TM (measured ≤ 3.2e-6; never beyond θ_c, §3 `t3b`) | free space is Mie-anchored; the near field and `a_down` are different integrals |
 | GT6 | Lossless: flux `P_down` = far-field integral | two quadratures of different form |
 | GT7 | **G14 becomes an equality:** `P_up + P_down + P_abs = P_in` over glass, low-n, lossy, silver and a lossless metal with −n_clad² < ε < 0; TE/TM. It replaces the shortfall test, and TM over ε < −n_clad² lossless is excluded (finding 2) | energy conservation |
 | GT8 | PEC: field below = 0, `c_sca_down = 0`; `NoFarFieldError` for PEC, lossy and `Re ε ≤ 0`, each with its message | guard tests |
@@ -229,14 +230,11 @@ contract.
 
 ## 7. Left to do before this is builder-ready
 
-1. **Glass near-to-far stalls at 4e-2** (`t3_far.py`; angles π−0.3, π, π+0.7,
-   π+1.2; the substrate critical angle is 1.09 rad from −z, so π+1.2 is beyond
-   it). The hypothesis is the lateral wave from the k₁ branch point, together
-   with non-uniform asymptotics near θ_c. The low-n case converges, which rules
-   out a normalisation error. The per-angle check is `t3b.py`, written but
-   **not run**. Expect the error to be small away from θ_c and to fall off
-   slowly near it. If even θ = π fails, suspect `a_down`'s phase factor.
-   GT5's near-to-far half then uses only angles away from θ_c.
+1. ~~Glass near-to-far stall~~: resolved 2026-10-14 (§3, `t3b`). There is no stall
+   and `a_down` is right: inside θ_c the error is pure O(1/ρ) and Richardson
+   reaches 1.7e-6 / 3.2e-6. The angle π+1.2 lay beyond θ_c, where the lateral
+   wave breaks Richardson's model. GT5's near-to-far half uses offsets within
+   ±0.6 rad of −z, at ρ = 40 and 80 µm.
 2. Prototype the banded transmitted GEMM, and time a 100 × 100 substrate map
    against the cover map. Prototype the transmitted plane wave, including TIR.
 3. ~~Owner calls~~: done, D11–D21 (2026-10-14). The D11 patch shipped as

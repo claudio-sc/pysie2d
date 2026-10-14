@@ -26,7 +26,7 @@ if __name__ == '__main__':
             s, res = solve(pol, eps_abs)
             bnds, k, eps, _, z_int = res._substrate()
             epsn = _normalised(eps); k2 = k*np.sqrt(epsn)
-            thetas = np.array([PI - 0.3, PI, PI + 0.7, PI + 1.2])
+            thetas = PI + np.array([-0.6, -0.3, 0.0, 0.3, 0.6])  # inside glass θ_c = 1.09 (t3b: lateral wave beyond)
             ad = a_down(thetas, bnds, k, eps, pol, z_int)
             g = s.geometry; nn = g.n_pts
             ests = []

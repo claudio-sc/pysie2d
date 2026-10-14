@@ -1,8 +1,8 @@
-"""Pending (spec §7.1): per-angle near-to-far error for glass, incl. far from θ_c.
+"""Spec §7.1: per-angle near-to-far error on glass, inside and beyond θ_c.
 
-Not run yet. Expectation: small away from the substrate critical angle, slow
-near it (lateral wave / non-uniform asymptotics). If θ = π also fails, suspect
-the phase factor e^{iα_bot z_bot} in a_down.
+Run 2026-10-14 (6 min, almost all at R = 3.2e5). Inside θ_c the error is pure
+O(1/ρ); beyond it the lateral wave from the k₁ branch point makes it fall
+irregularly, which is why Richardson in t3_far uses angles inside θ_c only.
 """
 
 import numpy as np
@@ -31,4 +31,4 @@ for pol in (2, 1):
             psi -= g.delt * ((Gx * g.dg[j] - Gz * g.df[j]) * res.ei[j] + G * res.ei[nn + j])
         fac = 0.25j * np.sqrt(2 / (PI * k2 * R)) * np.exp(1j * (k2 * R - PI / 4))
         err = np.abs(psi / fac - ad) / np.abs(ad)
-        print(f"  R={R:.0e} offsets {offs} -> rel err {np.array2string(err, precision=1)} (path nodes {p.q.size})")
+        print(f"  R={R:.0e} offsets {offs} -> rel err {" ".join(f"{e:.1e}" for e in err)} (path nodes {p.q.size})")
