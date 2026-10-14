@@ -204,6 +204,28 @@ def test_cross_section_quadrature_converges_in_the_number_of_angles():
     assert b > 0.0
 
 
+# A substrate optically thinner than the cover puts a √ kink in r(k sin θ) at the
+# critical angle, where plain Gauss–Legendre converges only algebraically: on
+# main, 500 nodes were off by 2.1e-4 to 1.3e-3 against 2000 for these cases.
+# Split at ±θ_c with the sine map, 500 and 2000 agree to 2.5e-14 (worst, ε = 1,
+# TE); the bar is 10× that and four decades under the unsplit error.
+RTOL_CRITICAL_ANGLE = 2.5e-13
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize(
+    "background",
+    [HalfSpace(1.0), HalfSpace(1.5), HalfSpace(1.0 + 1e-3j)],
+    ids=["eps1", "eps1.5", "eps1-weak-loss"],
+)
+def test_cross_section_converges_over_a_substrate_thinner_than_the_cover(
+    pol, background
+):
+    res = _dipole_solver(pol, background).scatter(633.0, angle=20.0)
+    a, b = res.cross_sections(500)["c_sca_up"], res.cross_sections(2000)["c_sca_up"]
+    assert a == pytest.approx(b, rel=RTOL_CRITICAL_ANGLE)
+
+
 def test_substrate_equal_to_the_cladding_has_no_nan_at_grazing():
     # eps_rel = 1: r ≡ 0, but α₁ = α₂ = 0 at θ = ±π/2 would give 0/0.
     res = _dipole_solver(2, HalfSpace(1.33**2)).scatter(633.0)

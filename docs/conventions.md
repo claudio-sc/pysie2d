@@ -661,7 +661,11 @@ image term shifts only `g`, not `dg`. `cross_sections()` returns
 `{'c_sca_up', 'c_abs'}` and `efficiencies()` `{'qsca_up', 'qabs'}`; the v0.8 keys
 are **absent**, not raising, because `c_ext` and the total `c_sca` are not defined
 when power also enters the substrate and the incident wave is reflected.
-`c_sca_up` omits both, so it is incomplete by construction. `c_abs =
+`c_sca_up` omits both, so it is incomplete by construction. Its angular
+integral is Gauss–Legendre over `[−π/2, π/2]`. When `0 < Re ε_rel < 1` it is
+split at the cover's critical angle `±asin √(Re ε_rel)`, where `r(k sin θ)` has a
+√ kink, with a sine map on each panel. Unsplit, 500 nodes were off by up to
+1.3e-3; split, they agree with 2000 to 2.5e-14 *(v1.0.1)*. `c_abs =
 −(1/k)·Im Σ delt·conj(φ)·χ` is the boundary flux with no ε factor (the exterior
 medium is the background) and is exact with a substrate. Over PEC a dipole's
 power balances, `P_up + P_abs = P_in` *(measured: 3.7e-14)*; over any dielectric

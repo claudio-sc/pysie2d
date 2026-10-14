@@ -414,8 +414,9 @@ class ScatterResult:
         Returns:
             dict with keys 'c_sca', 'c_ext', 'c_abs', in nm. With a background,
             instead ``{'c_sca_up', 'c_abs'}``: the power scattered **into the
-            cover**, by Gauss–Legendre over ``[−π/2, π/2]`` (``n_angles`` nodes),
-            and the absorption from the boundary flux. ``c_sca_up`` is incomplete
+            cover**, by Gauss–Legendre over ``[−π/2, π/2]`` (``n_angles`` nodes,
+            split at the critical angle when ``0 < Re ε_rel < 1``), and the
+            absorption from the boundary flux. ``c_sca_up`` is incomplete
             by construction — it omits the power sent into the substrate and the
             specularly reflected incident beam. The free-space keys are absent
             rather than raising.
