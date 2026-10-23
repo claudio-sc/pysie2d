@@ -2,7 +2,7 @@
 
 **Status: roadmap, 2026-10-23.** This is the planning document above the
 code-specs. It fixes the goal, the physics shape, the milestone split, the
-validation anchors and the owner decisions (§1, R1–R9). Each milestone gets its own
+validation anchors and the owner decisions (§1, R1–R10). Each milestone gets its own
 builder-ready code-spec later, in the form of
 [layered-spec.md](layered-spec.md) §8.
 
@@ -25,6 +25,7 @@ Owner decisions taken 2026-10-23:
 | R6 | **v1.3 is a MEEP milestone**: eigenmode S-parameters, plus one MEEP LDOS run that closes a v1.0 gap. |
 | R7 | **The 2.5D front end lives in the library**, as a thin layer on the v1.2 mode solver. |
 | R8 | **Out-of-plane loss in 2.5D is a documented limitation**, not estimated. An estimate would be new physics with no anchor. |
+| R10 | **The 2.5D method is variational EIM** (owner, 2026-10-23), with plain EIM as an option for regions whose stack guides a mode. See v1.4 for the reasons. |
 | R9 | **The S-parameter API shape** (layout over mode and direction, phase reference plane) **is settled in the v1.2 code-spec**, with the options laid out there. |
 
 ## 2. Why this is one reframing, not a new solver
@@ -156,9 +157,22 @@ One study closes three gaps from §6 at once: a non-circular **cluster**, a
 - `effective_index(stack, wavelength, pol, order)` from the v1.2 mode solver,
   and a helper that turns a chip layout (vertical stack per region) into the 2D
   problem: background `Stack` of n_eff values plus particles of n_eff.
-- In the library (R7). The method is plain EIM by default; a variational
-  refinement in the spirit of varFDTD is added only if the MEEP-3D error below
-  asks for it (§8).
+- In the library (R7). **The method is variational EIM (R10)**, the
+  approximation varFDTD is built on. One reference vertical profile Ψ_ref(z)
+  (the slab mode of a reference stack at a reference wavelength) is assumed
+  everywhere, and each region's ε₂D is the overlap of its real stack with
+  |Ψ_ref|², weighted by 1/ε in the TM-like case. The exact form is derived and
+  verified in the v1.4 spec. Reasons:
+  - **Plain EIM is undefined exactly where R1's scatterers sit.** A thin metal
+    antenna, a short pillar or any region with no core under it guides no slab
+    mode, so it has no local n_eff. The overlap is always defined.
+  - It is the same approximation as the stated comparison target.
+  - At complex λ only Ψ_ref needs continuing; the overlaps are plain integrals.
+
+  Plain EIM (a local slab mode per region, ε₂D = n_eff²) stays available as an
+  option for regions whose stack guides a mode. The reference stack and the
+  reference wavelength are explicit, required inputs, and each frozen comparison
+  records them.
 - **What it cannot do, stated in the docstrings and README:** out-of-plane
   radiation (R8: documented, not estimated). A 2.5D model loses power scattered into the substrate and cover
   in 3D, and for a scatterer beside a waveguide that loss is often the quantity
@@ -249,13 +263,15 @@ noted in §4 above. Neither is fixed by this roadmap.
 
 ## 8. Still open
 
-The owner decisions are R1–R9 (§1). One question is left, and it is decided by
-a measurement rather than a preference:
+The owner decisions are R1–R10 (§1). What is left is measured, not chosen:
 
-- **2.5D method.** Plain EIM is the default (R7). A variational refinement in
-  the spirit of varFDTD is added only if v1.4's MEEP-3D error on the canonical
-  case shows plain EIM is the dominant error, and that threshold is set in the
-  v1.4 spec.
+- **Negative ε₂D.** For strong local contrast the variational overlap can fall
+  below the cladding value or go negative. `Material.from_eps` can express that.
+  But the slab TE₀ case maps to `pol = 1`, where a lossless negative-ε region
+  supports surface-plasmon-like modes (compare v1.1's finding 2), and those may
+  be artefacts of the 2D model rather than physics. The v1.4 study checks this
+  against MEEP 3D before any such result is trusted, and the spec states what
+  happens when a region comes out negative.
 
 ## 9. Next step
 
