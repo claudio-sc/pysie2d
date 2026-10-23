@@ -2,7 +2,7 @@
 
 **Status: roadmap, 2026-10-23.** This is the planning document above the
 code-specs. It fixes the goal, the physics shape, the milestone split, the
-validation anchors and the open owner decisions. Each milestone gets its own
+validation anchors and the owner decisions (§1, R1–R9). Each milestone gets its own
 builder-ready code-spec later, in the form of
 [layered-spec.md](layered-spec.md) §8.
 
@@ -20,6 +20,12 @@ Owner decisions taken 2026-10-23:
 | R1 | **Scatterers stay outside the core.** No particle intersects or sits inside a layer of the stack. Etched gratings, holes in the core and photonic-crystal waveguides are out of scope. |
 | R2 | **S-parameters first.** QNMs with a slab background come later and are low priority: isolated-cluster QNMs (shipped) guide the design, and the slab-coupled response is read from the driven S-parameters. |
 | R3 | **v1.1 (transmitted fields) stays first.** Its generic τ = T/α₁ and its `P_down` by interface flux are prerequisites. The G14 → GT7 power equality is also the slab's best anchor. |
+| R4 | **Particles on both sides of the stack**, staged as v1.2 item 6. In the 2.5D top view the strip has two claddings, and side-coupled structures commonly sit on both. |
+| R5 | **General N-layer `Stack` in v1.2**, not a three-layer slab first. The gates run on the three-layer case first. |
+| R6 | **v1.3 is a MEEP milestone**: eigenmode S-parameters, plus one MEEP LDOS run that closes a v1.0 gap. |
+| R7 | **The 2.5D front end lives in the library**, as a thin layer on the v1.2 mode solver. |
+| R8 | **Out-of-plane loss in 2.5D is a documented limitation**, not estimated. An estimate would be new physics with no anchor. |
+| R9 | **The S-parameter API shape** (layout over mode and direction, phase reference plane) **is settled in the v1.2 code-spec**, with the options laid out there. |
 
 ## 2. Why this is one reframing, not a new solver
 
@@ -124,7 +130,10 @@ Branch `v1.2-slab-waveguide`. Additive.
    win there is threading (performance §3.1).
 5. **Power account.** `P_up` (v0.9, generalised to the stack's R), `P_down`
    (v1.1, the stack's τ), `P_abs`, plus the guided powers.
-6. **Particles on both sides of the stack** — *if* O1 below says so.
+6. **Particles on both sides of the stack** (R4). Coupling across the stack is
+   v1.1's transmitted G, generalised to the stack's τ; bottom-to-bottom needs
+   the stack's reflection from below (the reversed stack's R). Staged last, so
+   items 1–5 are gated on cover-only particles first.
 
 ### v1.3 — external validation of waveguide coupling (MEEP)
 
@@ -136,6 +145,9 @@ committed JSON with provenance, a numpy-only test in CI. It is a separate
 milestone, under the rule that a finished additive feature is not held behind a
 conda-first tool.
 
+It also carries **one MEEP LDOS run** (R6) on a non-circular particle, the
+v1.0 §4 milestone that never ran.
+
 One study closes three gaps from §6 at once: a non-circular **cluster**, a
 **layered background** with driven observables, and the **new mode channel**.
 
@@ -144,10 +156,11 @@ One study closes three gaps from §6 at once: a non-circular **cluster**, a
 - `effective_index(stack, wavelength, pol, order)` from the v1.2 mode solver,
   and a helper that turns a chip layout (vertical stack per region) into the 2D
   problem: background `Stack` of n_eff values plus particles of n_eff.
-- Plain EIM, or a variational refinement in the spirit of varFDTD. Which one
-  is O4.
+- In the library (R7). The method is plain EIM by default; a variational
+  refinement in the spirit of varFDTD is added only if the MEEP-3D error below
+  asks for it (§8).
 - **What it cannot do, stated in the docstrings and README:** out-of-plane
-  radiation. A 2.5D model loses power scattered into the substrate and cover
+  radiation (R8: documented, not estimated). A 2.5D model loses power scattered into the substrate and cover
   in 3D, and for a scatterer beside a waveguide that loss is often the quantity
   of interest. It also cannot see vertical-mode conversion.
 - **Validation.** The 2D solve is anchored by v1.2/v1.3. The **approximation**
@@ -205,7 +218,7 @@ the specs:
 |---|---|---|
 | Non-circular **clusters** | two-cylinder addition theorem (circles only) | v1.3 |
 | Driven observables **over a substrate** (`c_sca_up`, `c_abs`, near field, LDOS) | PEC mirror, a second quadrature, energy shortfall | partly v1.3 (driven, layered); v1.1 adds the equality |
-| **Near field, LDOS, Purcell** on a non-circular shape | analytic circle only; v1.0 §4 planned MEEP LDOS and never ran it | open; v1.3 could add one MEEP LDOS run cheaply |
+| **Near field, LDOS, Purcell** on a non-circular shape | analytic circle only; v1.0 §4 planned MEEP LDOS and never ran it | v1.3 (one MEEP LDOS run, R6) |
 | **Absorption** cross-check between two externals | dolfinx alone (MEEP has no frequency-independent Im ε) | open |
 | **Metals** (`from_eps`, silver/gold particles and substrates) | Mie on a silver circle; metal-substrate QNMs are consistency only (G9) | open |
 | QNMs and `dλ/dp` on a **non-circular** shape | circle only | open, low priority |
@@ -234,16 +247,15 @@ noted in §4 above. Neither is fixed by this roadmap.
 - **2.5D overclaiming.** The error of the EIM approximation is a property of
   the model, not of the code. The documentation must keep the two apart.
 
-## 8. Open owner decisions
+## 8. Still open
 
-| # | Question | Recommendation |
-|---|---|---|
-| O1 | Particles on **one side** of the stack only (today's cover-only rule), or **both**? | Both, staged as v1.2 item 6. In the 2.5D top view the strip has two claddings, and side-coupled structures commonly sit on both. Coupling across the stack is v1.1's transmitted G; bottom-to-bottom needs the stack's reflection from below. |
-| O2 | General N-layer `Stack` in v1.2, or three-layer slab first? | N-layer. The recursion costs no more than the Airy formula, and CLAUDE.md promises multilayers in v1.2. Gates on the three-layer case first. |
-| O3 | v1.3 MEEP eigenmode milestone: yes? Add one MEEP LDOS run to it? | Yes to both; the LDOS run closes a v1.0 gap for little extra work. |
-| O4 | 2.5D front end: plain EIM or a variational refinement? In the library or in `examples/`? | Plain EIM in the library (it is a thin wrapper on the v1.2 mode solver), the variational version only if the v1.4 MEEP-3D error asks for it. |
-| O5 | S-parameter API: a matrix over (mode, direction), and where the phase reference plane sits | Code-spec decision. Lay out the options there. |
-| O6 | Out-of-plane loss in 2.5D: documented limitation only, or an estimate? | Documented only. An estimate is new physics with no anchor. |
+The owner decisions are R1–R9 (§1). One question is left, and it is decided by
+a measurement rather than a preference:
+
+- **2.5D method.** Plain EIM is the default (R7). A variational refinement in
+  the spirit of varFDTD is added only if v1.4's MEEP-3D error on the canonical
+  case shows plain EIM is the dominant error, and that threshold is set in the
+  v1.4 spec.
 
 ## 9. Next step
 
