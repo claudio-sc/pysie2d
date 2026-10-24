@@ -303,3 +303,100 @@ def test_field_below_pec_is_zero_and_without_an_interface_is_free_space():
     plain = _g14(2, None).scatter(LAM, 20.0)
     same = _g14(2, HalfSpace(N_CLAD**2)).scatter(LAM, 20.0)
     assert np.array_equal(plain.eval_field(xb, zb), same.eval_field(xb, zb))
+
+
+# --- GT5: downward far field ----------------------------------------------------
+
+# The a_down formula at ε_rel = 1 against the free-space far field on the lower
+# half (grazing ends excluded, where the formula is 0/0): measured 5.1e-14 (TE),
+# 3.7e-14 (TM). Bar 1e-12, the spec's.
+RTOL_DOWN_FREE = 1e-12
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+def test_downward_amplitude_without_an_interface_is_the_free_space_far_field(pol):
+    from pysie2d.fields import _amplitude_below, _far_field_at
+
+    res = _g14(pol, HalfSpace(N_CLAD**2)).scatter(LAM, 20.0)
+    geo, (bnds, k, _, _, z_int) = res.geometry, res._substrate()
+    th = np.linspace(0.5 * PI + 1e-3, 1.5 * PI - 1e-3, 301)
+    ff = _far_field_at(th, geo.n_pts, k, geo.f, geo.g, geo.df, geo.dg, geo.delt, res.ei)
+    # The τ formula itself, bypassing the ε_rel == 1 short-circuit...
+    got = _amplitude_below(th, bnds, Transmission.half_space(pol, k, 1.0 + 0j, z_int))
+    assert np.max(np.abs(got - ff)) / np.max(np.abs(ff)) < RTOL_DOWN_FREE
+    # ...and the public method, which is the free-space amplitude exactly (D19).
+    amp, angles = res.far_field_down(301)
+    assert angles[0] == 0.5 * PI and angles[-1] == 1.5 * PI
+    ref = _far_field_at(
+        angles, geo.n_pts, k, geo.f, geo.g, geo.df, geo.dg, geo.delt, res.ei
+    )
+    assert np.array_equal(amp, ref)
+
+
+# Near-to-far: ψ/[(i/4)·√(2/(π k_bot ρ))·e^{i(k_bot ρ − π/4)}] → a_down with an
+# O(1/ρ) residual inside the critical angle (t3b: exactly 4× per 4× depth), so
+# the Richardson value 2·e(80 µm) − e(40 µm) removes it. Measured 1.7e-6 (TE)
+# and 3.2e-6 (TM) over glass at offsets 0, ±0.3, ±0.6 rad from −z; the raw
+# 80 µm value is 1e-3 off. Bar 3.5e-5 (spec, 11×). Never beyond θ_c = 1.09 rad,
+# where the lateral wave breaks the a + c/ρ model (t3b). The low-n case of the
+# spec is dropped under the §8.8 detour: each depth-80 µm path costs ~3.6 s in
+# leggauss of its 6500-node hump, and low-n measured 1.7e-6 / 1.9e-6.
+RTOL_NEAR_TO_FAR = 3.5e-5
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+def test_deep_near_field_below_converges_to_the_downward_far_field(pol):
+    from pysie2d.fields import _downward_amplitude
+
+    res = _g14(pol, HalfSpace(2.25)).scatter(LAM, 20.0)
+    k_bot = res.wnum_bg * np.sqrt(2.25 / N_CLAD**2)
+    th = PI + np.array([-0.6, -0.3, 0.0, 0.3, 0.6])
+    rho, tt = np.repeat([4e4, 8e4], 5), np.tile(th, 2)
+    psi = res.eval_field(rho * np.sin(tt), rho * np.cos(tt))
+    est = psi / (
+        0.25j * np.sqrt(2 / (PI * k_bot * rho)) * np.exp(1j * (k_bot * rho - PI / 4))
+    )
+    rich = 2 * est[5:] - est[:5]
+    a_down = _downward_amplitude(th, *res._substrate())
+    assert np.max(np.abs(rich - a_down) / np.abs(a_down)) < RTOL_NEAR_TO_FAR
+    amp, _ = res.far_field_down(11)
+    assert amp[0] == 0 and amp[-1] == 0  # grazing, ε ≠ 1: α_bot(±k_bot) = 0
+
+
+# --- GT8: guards ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "background,match",
+    [
+        (HalfSpace.pec(), "PEC"),
+        (HalfSpace(2.25 + 0.1j), "absorbing"),
+        (HalfSpace(-18.3 + 0.48j), "absorbing"),
+        (HalfSpace(-4.0), "Re eps_rel"),
+        (HalfSpace(-1.0), "Re eps_rel"),
+    ],
+    ids=["pec", "lossy", "silver", "metal-4", "metal-1"],
+)
+def test_far_field_down_raises_where_no_wave_reaches_infinity(background, match):
+    from pysie2d import Cluster, ClusterBIESolver, NoFarFieldError
+
+    solver = _g14(2, background)
+    res = solver.scatter(LAM, 20.0)
+    cl = ClusterBIESolver(
+        Cluster([solver.geometry]), [solver.material], pol=2, background=background
+    ).scatter(LAM, 20.0)
+    for r in (res, cl):
+        with pytest.raises(NoFarFieldError, match=match):
+            r.far_field_down()
+
+
+def test_far_field_down_without_a_background_is_refused():
+    from pysie2d import Cluster, ClusterBIESolver, NoFarFieldError
+
+    solver = _g14(2, None)
+    cl = ClusterBIESolver(Cluster([solver.geometry]), [solver.material], pol=2)
+    for r in (solver.scatter(LAM), cl.scatter(LAM)):
+        with pytest.raises(ValueError, match="full circle") as err:
+            r.far_field_down()
+        assert not isinstance(err.value, NoFarFieldError)
+    assert issubclass(NoFarFieldError, ValueError)

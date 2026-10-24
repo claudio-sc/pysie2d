@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 from .kernels import _real_if_real, hank0, hank1
-from .layered import fresnel_r
+from .layered import NoFarFieldError, Transmission, alpha, fresnel_r
 
 PI = np.pi
 
@@ -225,6 +225,119 @@ def _upward_cross_sections(
     amp = _upward_amplitude(theta, boundaries, wnum_bg, eps_rel, pol, z_int)
     c_sca_up = float(np.sum(wt * np.abs(amp) ** 2) / (8.0 * PI * np.real(wnum_bg)))
     return {"c_sca_up": c_sca_up, "c_abs": _absorbed_cross_section(boundaries, wnum_bg)}
+
+
+def _spectrum(
+    q: np.ndarray, a1: np.ndarray, boundaries: list[_Boundary], z_top: float
+) -> np.ndarray:
+    """Plane-wave spectrum ``A(q, α₁)`` of the boundary sources (spec v1.1 §2).
+
+    ``A = Σ_j delt·e^{−i q f_j + i α₁ (g_j − z_top)}·[i(q·dg_j + α₁·df_j)·φ_j − χ_j]``,
+    which is :func:`_far_field_at` at ``q = k sin θ``, ``α₁ = −k cos θ``. The
+    ``g − z_top`` shift keeps the exponent bounded for evanescent ``α₁ = +i|…|``,
+    which would overflow about the origin.
+
+    Args:
+        q: (M,) transverse wavenumbers.
+        a1: (M,) cover ``α₁(q)`` on the code's sheet.
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        z_top: Phase reference height (nm).
+
+    Returns:
+        complex (M,) spectrum.
+    """
+    out = np.zeros(np.shape(q), dtype=complex)
+    for f, g, df, dg, delt, ei in boundaries:
+        nn = f.size
+        ph = np.exp(-1j * np.outer(f, q) + 1j * np.outer(g - z_top, a1))
+        poly = 1j * (np.outer(dg, q) + np.outer(df, a1)) * ei[:nn, None] - ei[nn:, None]
+        out += delt * np.sum(ph * poly, axis=0)
+    return out
+
+
+def _amplitude_below(
+    angles: np.ndarray, boundaries: list[_Boundary], tr: Transmission
+) -> np.ndarray:
+    """``a_down(θ) = α_bot·τ·e^{iα_bot z_bot}·A(q_s, α₁(q_s))``, ``q_s = k_bot sin θ``.
+
+    Stationary phase of the transmitted representation; ``α₁(q_s)`` is on the
+    code's sheet, so it is evanescent beyond the critical angle when the
+    substrate is denser than the cover. Written against ``tr`` only (D3).
+    """
+    q = tr.k_bot * np.sin(angles)
+    a_bot = alpha(q, tr.k_bot)
+    spec = _spectrum(q, alpha(q, tr.k), boundaries, tr.z_top)
+    return a_bot * tr.tau(q) * np.exp(1j * a_bot * tr.z_bot) * spec
+
+
+def _downward_amplitude(
+    angles: np.ndarray,
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    eps_rel: complex,
+    pol: int,
+    z_int: float,
+) -> np.ndarray:
+    """Downward far-field amplitude ``a_down(θ)`` of particles over a half-space.
+
+    Defined by ``ψ ~ (i/4)·√(2/(π k_bot ρ))·e^{i(k_bot ρ − π/4)}·a_down(θ)``
+    about the origin: :func:`far_field`'s convention with ``k_bot``. θ is from
+    +z, downward for ``θ ∈ [π/2, 3π/2]``. At ``ε_rel = 1`` exactly this is the
+    free-space amplitude (D19): the formula's ``2α₂/(α₁+α₂)`` is 0/0 at grazing.
+
+    Args:
+        angles: (M,) downward angles (rad).
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        wnum_bg: Background wavenumber.
+        eps_rel: Substrate permittivity relative to the cover (not PEC).
+        pol: 2 = TE, 1 = TM.
+        z_int: Interface height (nm).
+
+    Returns:
+        complex (M,) amplitude.
+    """
+    if eps_rel == 1.0:
+        out = np.zeros(len(angles), dtype=complex)
+        for f, g, df, dg, delt, ei in boundaries:
+            out += _far_field_at(angles, f.size, wnum_bg, f, g, df, dg, delt, ei)
+        return out
+    tr = Transmission.half_space(pol, wnum_bg, eps_rel, z_int)
+    return _amplitude_below(angles, boundaries, tr)
+
+
+def _downward_far_field(
+    n_angles: int,
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    eps_rel: complex,
+    pol: int,
+    z_int: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """``a_down`` on a uniform grid over ``[π/2, 3π/2]`` inclusive."""
+    angles = np.linspace(0.5 * PI, 1.5 * PI, n_angles)
+    amp = _downward_amplitude(angles, boundaries, wnum_bg, eps_rel, pol, z_int)
+    return amp, angles
+
+
+def _check_far_field_below(eps_rel: complex | None) -> None:
+    """Raise :class:`NoFarFieldError` unless the substrate is a lossless dielectric.
+
+    A far field below exists only for ``Im ε = 0`` and ``Re ε > 0`` (D2): with
+    loss the field decays with depth, and ``Re ε ≤ 0`` or PEC carry nothing to
+    infinity.
+    """
+    if eps_rel is None:
+        raise NoFarFieldError("no far field below a PEC substrate: nothing enters it")
+    if eps_rel.imag != 0.0:
+        raise NoFarFieldError(
+            f"no far field below an absorbing substrate: Im eps_rel = {eps_rel.imag} "
+            "is not 0, so the transmitted field decays with depth"
+        )
+    if eps_rel.real <= 0.0:
+        raise NoFarFieldError(
+            f"no far field below a substrate with Re eps_rel = {eps_rel.real} <= 0: "
+            "no wave propagates in it"
+        )
 
 
 def _absorbed_cross_section(boundaries: list[_Boundary], wnum_bg: complex) -> float:

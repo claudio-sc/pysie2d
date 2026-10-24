@@ -15,7 +15,9 @@ import numpy as np
 from . import layered
 from .background import HalfSpace
 from .fields import (
+    _check_far_field_below,
     _cross_sections,
+    _downward_far_field,
     _far_field_at,
     _is_outside,
     _upward_cross_sections,
@@ -391,6 +393,38 @@ class ScatterResult:
             g.delt,
             self.ei,
         )
+
+    def far_field_down(self, n_angles: int = 3000) -> tuple[np.ndarray, np.ndarray]:
+        """Downward far-field amplitude ``a_down(θ)`` below the substrate.
+
+        ``ψ ~ (i/4)·√(2/(π k_bot ρ))·e^{i(k_bot ρ − π/4)}·a_down(θ)`` about the
+        origin, ``k_bot = k·√ε_rel`` the substrate wavenumber: :meth:`far_field`'s
+        convention in the substrate. ``a_down = 0`` at both grazing ends unless
+        ``ε_rel = 1``. At complex λ over a real ``ε > 0`` this is the analytic
+        continuation, as :meth:`far_field` is (D16).
+
+        Args:
+            n_angles: Number of observation angles.
+
+        Returns:
+            amplitude: complex (n_angles,) amplitude.
+            angles: float (n_angles,) angles from +z, uniform on ``[π/2, 3π/2]``
+                inclusive.
+
+        Raises:
+            ValueError: Without a background: :meth:`far_field` already covers
+                the full circle (D20).
+            NoFarFieldError: Over PEC, an absorbing substrate (``Im ε ≠ 0``) or
+                ``Re ε ≤ 0``, where no wave reaches infinity below (D2).
+        """
+        if self.background is None:
+            raise ValueError(
+                "far_field_down needs a background: without one far_field() "
+                "already covers the full circle"
+            )
+        args = self._substrate()
+        _check_far_field_below(args[2])
+        return _downward_far_field(n_angles, *args)
 
     def efficiencies(self, n_angles: int = 500) -> dict[str, float]:
         """Scattering, extinction, and absorption efficiencies.
