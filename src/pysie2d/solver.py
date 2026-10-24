@@ -15,6 +15,7 @@ import numpy as np
 from . import layered
 from .background import HalfSpace
 from .fields import (
+    _background_field,
     _check_far_field_below,
     _cross_sections,
     _downward_cross_section,
@@ -140,6 +141,9 @@ class ScatterResult:
             amplitude, ``cross_sections`` and ``efficiencies`` carry the
             ``*_up`` and ``*_down`` keys, and ``multipoles`` raises
             ``NotImplementedError``.
+        excitation: ``"plane_wave"``, ``"dipole"`` or ``"custom"`` (a
+            user ``incident_rhs``), which :meth:`incident_field` needs.
+        source: The dipole position ``(x_s, z_s)``, or ``None``.
     """
 
     def __init__(
@@ -150,6 +154,9 @@ class ScatterResult:
         wavelength: float,
         angle: float = 0.0,
         background: HalfSpace | None = None,
+        *,
+        excitation: str = "plane_wave",
+        source: tuple[float, float] | None = None,
     ) -> None:
         """Store the BIE solution and the problem it was solved for."""
         self.ei = ei
@@ -158,6 +165,8 @@ class ScatterResult:
         self.wavelength = wavelength
         self.angle = angle
         self.background = background
+        self.excitation = excitation
+        self.source = source
 
     def _upward(self, n_angles: int) -> dict[str, float]:
         """``σ_sca,up``, ``σ_sca,down`` and ``σ_abs`` over the substrate.
@@ -311,6 +320,51 @@ class ScatterResult:
                 image = -(m1 @ self.ei[:n] + m2 @ self.ei[n:])
                 field = field.copy()
                 field[np.flatnonzero(outside)] += image
+        return field
+
+    def _background_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """The unmasked background field; see :meth:`incident_field`."""
+        bg = self.background
+        return _background_field(
+            x,
+            z,
+            self.wnum_bg,
+            self.material.pol,
+            self.excitation,
+            self.angle,
+            self.source,
+            None if bg is None else bg.eps_rel(self.material.n_clad, self.wavelength),
+            None if bg is None else bg.z_int,
+        )
+
+    def incident_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Background field the particle was driven by, at arbitrary points (nm).
+
+        ``eval_field + incident_field`` is the total field at every point (D13).
+        Plane wave ``exp(ik(x sinθ − z cosθ))`` or dipole ``(i/4)·H₀(kρ)``; with
+        a background, plus the Fresnel-reflected wave above the interface, and
+        the transmitted wave below it (0 below PEC). 0 inside the particle,
+        classified as :meth:`eval_field` classifies it.
+
+        Args:
+            x: Observation x-coordinates (nm).
+            z: Observation z-coordinates (nm).
+
+        Returns:
+            complex (M,) field.
+
+        Raises:
+            ValueError: For a custom ``incident_rhs``; at a point exactly on the
+                interface (D17); at the dipole's own position.
+        """
+        x = np.asarray(x, dtype=float).ravel()
+        z = np.asarray(z, dtype=float).ravel()
+        field = self._background_field(x, z)
+        g = self.geometry
+        z_int = -np.inf if self.background is None else self.background.z_int
+        for j in np.flatnonzero(z > z_int):  # particles lie in the cover
+            if not _is_outside(x[j], z[j], g.f, g.g, g.df, g.dg):
+                field[j] = 0.0
         return field
 
     def multipoles(
@@ -755,8 +809,10 @@ class BIESolver:
         m = self.assemble(wavelength)
         wnum_bg = mat.wnum_bg(wavelength)
 
+        excitation = "plane_wave"
         if incident_rhs is not None:
             rhs = incident_rhs(g.n_pts, wnum_bg, g.f, g.g)
+            excitation = "custom"
         else:
             rhs = plane_wave_rhs(g.n_pts, angle, wnum_bg, g.f, g.g)
             refl = self._reflection(wavelength)
@@ -764,7 +820,9 @@ class BIESolver:
                 rhs[: g.n_pts] += refl.plane_wave(angle, g.f, g.g)
 
         ei = np.linalg.solve(m, rhs)
-        return ScatterResult(ei, g, mat, wavelength, angle, self.background)
+        return ScatterResult(
+            ei, g, mat, wavelength, angle, self.background, excitation=excitation
+        )
 
     def scatter_dipole(
         self,
@@ -801,4 +859,15 @@ class BIESolver:
                 ei[:nn] += refl.green(f, g, x_s, z_s)[0]
             return ei
 
-        return self.scatter(wavelength, incident_rhs=rhs)
+        res = self.scatter(wavelength, incident_rhs=rhs)
+        # Re-wrapped so incident_field knows the source (D13).
+        return ScatterResult(
+            res.ei,
+            geo,
+            self.material,
+            wavelength,
+            res.angle,
+            self.background,
+            excitation="dipole",
+            source=(x_s, z_s),
+        )

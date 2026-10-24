@@ -400,3 +400,120 @@ def test_far_field_down_without_a_background_is_refused():
             r.far_field_down()
         assert not isinstance(err.value, NoFarFieldError)
     assert issubclass(NoFarFieldError, ValueError)
+
+
+# --- GT9: incident_field --------------------------------------------------------
+
+XS, ZS = 60.0, 330.0
+# On the boundary nodes the unmasked background field is the φ half of the
+# solver's own right-hand side, built by the same formulas: measured ≤ 1.1e-15
+# (plane wave bit-identical; dipole on a differently sized path). Bar 1e-13, the
+# spec's round-off bound.
+RTOL_RHS = 1e-13
+# incident_field at z_int ± 1e-9 nm: measured worst 8.5e-11 relative (silver;
+# glass 3.0e-11), the O(δ·∂zψ) step of a continuous field. Bar 10×. A wrong
+# phase reference or transmission factor is an O(1) jump.
+RTOL_INCIDENT_CONTINUITY = 8.5e-10
+
+
+def _rewrapped(solver, lam):
+    """Plane-wave and dipole results at ``lam``, from real-λ solves.
+
+    The background field depends only on the excitation, never on ei, so the
+    complex-λ path is exercised without a complex solve.
+    """
+    from pysie2d.solver import ScatterResult
+
+    geo, mat, bg = solver.geometry, solver.material, solver.background
+    plane = ScatterResult(solver.scatter(LAM, 20.0).ei, geo, mat, lam, 20.0, bg)
+    dip = solver.scatter_dipole(LAM, XS, ZS)
+    assert dip.excitation == "dipole" and dip.source == (XS, ZS)
+    dip = ScatterResult(
+        dip.ei, geo, mat, lam, 0.0, bg, excitation="dipole", source=(XS, ZS)
+    )
+    return plane, dip
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("lam", [LAM, LAM + 31.6j], ids=["real", "complex"])
+@pytest.mark.parametrize("name", ["glass", "silver"])
+def test_background_field_on_the_boundary_is_the_solver_rhs(name, lam, pol):
+    from pysie2d.sources import line_dipole_rhs, plane_wave_rhs
+
+    solver = _g14(pol, HalfSpace(SUBSTRATES[name]))
+    geo, nn = solver.geometry, solver.geometry.n_pts
+    plane, dip = _rewrapped(solver, lam)
+    k = plane.wnum_bg
+    rhs_p = plane_wave_rhs(nn, 20.0, k, geo.f, geo.g)[:nn] + solver._reflection(
+        lam
+    ).plane_wave(20.0, geo.f, geo.g)
+    refl = solver._reflection(lam, np.append(geo.f, XS), np.append(geo.g, ZS))
+    rhs_d = (
+        line_dipole_rhs(nn, k, geo.f, geo.g, XS, ZS)[:nn]
+        + refl.green(geo.f, geo.g, XS, ZS)[0]
+    )
+    for res, rhs in ((plane, rhs_p), (dip, rhs_d)):
+        got = res._background_field(geo.f, geo.g)
+        assert np.max(np.abs(got - rhs)) / np.max(np.abs(rhs)) < RTOL_RHS
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("lam", [LAM, LAM + 31.6j], ids=["real", "complex"])
+@pytest.mark.parametrize("name", ["glass", "silver"])
+def test_incident_field_is_continuous_across_the_interface(name, lam, pol):
+    x = np.array([-300.0, 0.0, 60.0, 250.0])
+    up, down = np.full(4, 1e-9), np.full(4, -1e-9)
+    for res in _rewrapped(_g14(pol, HalfSpace(SUBSTRATES[name])), lam):
+        a, b = res.incident_field(x, up), res.incident_field(x, down)
+        assert np.max(np.abs(a - b)) / np.max(np.abs(a)) < RTOL_INCIDENT_CONTINUITY
+
+
+def test_incident_field_contract():
+    # D13: 0 inside the particle; the free-space formulas without a background;
+    # 0 below PEC; refusals for a custom RHS, the interface and the source.
+    from pysie2d import Cluster, ClusterBIESolver
+    from pysie2d.kernels import hank0
+
+    x, z = np.array([0.0, 200.0, -100.0]), np.array([115.0, 400.0, 600.0])
+    bare = _g14(2, None)
+    k = bare.material.wnum_bg(LAM)
+    plane = bare.scatter(LAM, 20.0).incident_field(x, z)
+    th = np.deg2rad(20.0)
+    assert plane[0] == 0.0  # the particle centre
+    assert np.array_equal(
+        plane[1:], np.exp(1j * k * (x * np.sin(th) - z * np.cos(th)))[1:]
+    )
+    dip = bare.scatter_dipole(LAM, XS, ZS).incident_field(x, z)
+    assert dip[0] == 0.0
+    assert np.array_equal(dip[1:], 0.25j * hank0(k * np.hypot(x - XS, z - ZS))[1:])
+
+    pec = _g14(2, HalfSpace.pec())
+    for res in (pec.scatter(LAM, 20.0), pec.scatter_dipole(LAM, XS, ZS)):
+        assert np.array_equal(
+            res.incident_field([0.0, 50.0], [-5.0, -50.0]), np.zeros(2)
+        )
+        with pytest.raises(ValueError, match="exactly at the interface"):
+            res.incident_field([0.0], [0.0])
+    with pytest.raises(ValueError, match="own position"):
+        pec.scatter_dipole(LAM, XS, ZS).incident_field([XS], [ZS])
+    custom = bare.scatter(
+        LAM, incident_rhs=lambda nn, k, f, g: np.ones(2 * nn, complex)
+    )
+    assert custom.excitation == "custom"
+    with pytest.raises(ValueError, match="custom"):
+        custom.incident_field([0.0], [400.0])
+
+    # The one-particle cluster records the same excitation and agrees exactly.
+    glass = _g14(1, HalfSpace(2.25))
+    cl = ClusterBIESolver(
+        Cluster([glass.geometry]), [glass.material], pol=1, background=glass.background
+    )
+    xa, za = np.array([0.0, 200.0, 0.0, 30.0]), np.array([115.0, 400.0, -40.0, -300.0])
+    for single, clus in (
+        (glass.scatter(LAM, 20.0), cl.scatter(LAM, 20.0)),
+        (glass.scatter_dipole(LAM, XS, ZS), cl.scatter_dipole(LAM, XS, ZS)),
+    ):
+        assert np.array_equal(
+            single.incident_field(xa, za), clus.incident_field(xa, za)
+        )
+    assert cl.scatter_dipole(LAM, XS, ZS).source == (XS, ZS)

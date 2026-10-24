@@ -27,6 +27,7 @@ import numpy as np
 from . import layered
 from .background import HalfSpace
 from .fields import (
+    _background_field,
     _check_far_field_below,
     _cross_sections,
     _downward_cross_section,
@@ -500,6 +501,7 @@ class ClusterBIESolver:
             0.0,
             "dipole",
             self.background,
+            source=(x_s, z_s),
         )
 
     def _check_gap(self, wavelength: float) -> None:
@@ -617,6 +619,8 @@ class ClusterScatterResult:
         angle: float,
         excitation: str,
         background: HalfSpace | None = None,
+        *,
+        source: tuple[float, float] | None = None,
     ) -> None:
         """Store a coupled solution and the problem that produced it.
 
@@ -629,6 +633,7 @@ class ClusterScatterResult:
             angle: Plane-wave incidence angle in degrees.
             excitation: ``"plane_wave"`` or ``"dipole"``.
             background: The substrate the cluster sits on, or ``None``.
+            source: The dipole position ``(x_s, z_s)``, or ``None``.
         """
         self.ei = ei
         self.cluster = cluster
@@ -638,6 +643,7 @@ class ClusterScatterResult:
         self.angle = angle
         self._excitation = excitation
         self.background = background
+        self.source = source
 
     def _substrate(self) -> tuple:
         """Arguments the half-space far-field helpers share."""
@@ -938,6 +944,51 @@ class ClusterScatterResult:
                     x[sel],
                     z[sel],
                 )
+        return field
+
+    def _background_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """The unmasked background field; see :meth:`incident_field`."""
+        bg = self.background
+        n_clad = self.materials[0].n_clad
+        return _background_field(
+            x,
+            z,
+            self.wnum_bg,
+            self.pol,
+            self._excitation,
+            self.angle,
+            self.source,
+            None if bg is None else bg.eps_rel(n_clad, self.wavelength),
+            None if bg is None else bg.z_int,
+        )
+
+    def incident_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Background field the cluster was driven by, at arbitrary points (nm).
+
+        ``eval_field + incident_field`` is the total field at every point (D13);
+        see :meth:`pysie2d.solver.ScatterResult.incident_field`. 0 inside every
+        particle, classified by ray casting as :meth:`eval_field` does.
+
+        Args:
+            x: Observation x-coordinates (nm).
+            z: Observation z-coordinates (nm).
+
+        Returns:
+            complex (M,) field.
+
+        Raises:
+            ValueError: At a point exactly on the interface (D17), or at the
+                dipole's own position.
+        """
+        x = np.asarray(x, dtype=float).ravel()
+        z = np.asarray(z, dtype=float).ravel()
+        field = self._background_field(x, z)
+        z_int = -np.inf if self.background is None else self.background.z_int
+        for j in np.flatnonzero(z > z_int):  # particles lie in the cover
+            if any(
+                _point_inside(x[j], z[j], gp.f, gp.g) for gp in self.cluster.geometries
+            ):
+                field[j] = 0.0
         return field
 
     def resolution(self) -> tuple[float, ...]:

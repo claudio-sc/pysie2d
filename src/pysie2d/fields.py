@@ -11,6 +11,8 @@ from .layered import (
     TAIL_PANEL_POINTS,
     TAIL_PERIODS_PER_PANEL,
     NoFarFieldError,
+    Reflection,
+    SommerfeldPath,
     Transmission,
     alpha,
     fresnel_r,
@@ -483,6 +485,109 @@ def _absorbed_cross_section(boundaries: list[_Boundary], wnum_bg: complex) -> fl
         nn = f.size
         flux += delt * np.sum(np.conj(ei[:nn]) * ei[nn:])
     return float(-np.imag(flux) / np.real(wnum_bg))
+
+
+def _background_field(
+    x: np.ndarray,
+    z: np.ndarray,
+    wnum_bg: complex,
+    pol: int,
+    excitation: str,
+    angle: float,
+    source: tuple[float, float] | None,
+    eps_rel: complex | None,
+    z_int: float | None,
+) -> np.ndarray:
+    """Background (unscattered) field at every point, with no particle mask.
+
+    The field the particles are driven by, so that ``eval_field`` plus this is
+    the total field (D13). Plane wave ``exp(ik(x sinθ − z cosθ))`` or dipole
+    ``(i/4)·H₀(kρ)``; with a substrate, plus its reflection above ``z_int`` and
+    replaced by the transmitted wave below it (0 below PEC). These are the very
+    terms the right-hand side of the solve is built from.
+
+    Args:
+        x: (M,) x coordinates (nm).
+        z: (M,) z coordinates (nm).
+        wnum_bg: Background wavenumber, complex allowed.
+        pol: 2 = TE, 1 = TM.
+        excitation: ``"plane_wave"``, ``"dipole"`` or ``"custom"``.
+        angle: Plane-wave incidence angle (degrees).
+        source: Dipole position, for ``"dipole"``.
+        eps_rel: Substrate permittivity relative to the cover, or ``None`` for
+            PEC; ignored without a substrate.
+        z_int: Interface height, or ``None`` for no substrate.
+
+    Returns:
+        complex (M,) field.
+
+    Raises:
+        ValueError: A ``"custom"`` excitation, whose field the result does not
+            know; a point exactly at the interface (D17); a point at the
+            dipole's own position, where ``H₀`` is singular.
+    """
+    if excitation == "custom":
+        raise ValueError(
+            "incident_field is undefined for a custom incident_rhs: the result "
+            "does not know the field it was driven by"
+        )
+    k = wnum_bg
+    dipole = excitation == "dipole"
+    if dipole:
+        assert source is not None
+        xs, zs = source
+        if np.any((x == xs) & (z == zs)):
+            raise ValueError(
+                f"incident_field at the dipole's own position ({xs}, {zs}): "
+                "the line-source field is singular there"
+            )
+    if z_int is not None and np.any(z == z_int):
+        raise ValueError(
+            f"observation point exactly at the interface z_int = {z_int}: "
+            "step off it (the field is continuous there)"
+        )
+
+    def free(xp: np.ndarray, zp: np.ndarray) -> np.ndarray:
+        if dipole:
+            return 0.25j * hank0(k * np.hypot(xp - xs, zp - zs))
+        theta = np.deg2rad(angle)
+        return np.exp(1j * k * (xp * np.sin(theta) - zp * np.cos(theta)))
+
+    if z_int is None:
+        return free(x, z)
+    out = np.zeros(x.size, dtype=complex)
+    above = z > z_int
+    xa, za = x[above], z[above]
+    xb, zb = x[~above], z[~above]
+    no_interface = eps_rel is not None and eps_rel == 1.0
+    if xa.size:
+        out[above] = free(xa, za)
+        if not no_interface:
+            if dipole:
+                # Z = z + z' − 2·z_int is never below h_obs + h_src; sizing at
+                # 2·min(h) would explode the tail for a point next to the
+                # interface (finding 3 is the converse trap).
+                path = None
+                if eps_rel is not None:
+                    z_min = float((za - z_int).min() + (zs - z_int))
+                    extent = max(float(np.ptp(np.append(xa, xs))), z_min)
+                    path = SommerfeldPath.for_wavenumber(k, eps_rel, pol, extent, z_min)
+                refl = Reflection(pol, k, eps_rel, z_int, path, 0.0)
+                out[above] += refl.green(xa, za, xs, zs)[0]
+            else:  # one real q: no path
+                refl = Reflection(pol, k, eps_rel, z_int, None, 0.0)
+                out[above] += refl.plane_wave(angle, xa, za)
+    if xb.size and eps_rel is not None:
+        if no_interface:
+            out[~above] = free(xb, zb)
+        elif dipole:
+            tr = Transmission.build(pol, k, eps_rel, z_int, [xs], [zs], xb, zb)
+            assert tr is not None
+            out[~above] = tr.green(xb, zb, xs, zs)[0]
+        else:
+            tr = Transmission.half_space(pol, k, eps_rel, z_int)
+            out[~above] = tr.plane_wave(angle, xb, zb)
+    return out
 
 
 # ---------------------------------------------------------------------------
