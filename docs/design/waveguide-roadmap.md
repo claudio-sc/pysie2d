@@ -1,7 +1,7 @@
 # Waveguide-coupled clusters — roadmap (v1.2 → v1.4)
 
-**Status: roadmap, 2026-10-23.** This is the planning document above the
-code-specs. It fixes the goal, the physics shape, the milestone split, the
+**Status: roadmap, 2026-10-23; owner decisions R1–R10 complete.** This is
+the planning document above the code-specs. It fixes the goal, the physics shape, the milestone split, the
 validation anchors and the owner decisions (§1, R1–R10). Each milestone gets its own
 builder-ready code-spec later, in the form of
 [layered-spec.md](layered-spec.md) §8.
@@ -25,8 +25,8 @@ Owner decisions taken 2026-10-23:
 | R6 | **v1.3 is a MEEP milestone**: eigenmode S-parameters, plus one MEEP LDOS run that closes a v1.0 gap. |
 | R7 | **The 2.5D front end lives in the library**, as a thin layer on the v1.2 mode solver. |
 | R8 | **Out-of-plane loss in 2.5D is a documented limitation**, not estimated. An estimate would be new physics with no anchor. |
-| R10 | **The 2.5D method is variational EIM** (owner, 2026-10-23), with plain EIM as an option for regions whose stack guides a mode. See v1.4 for the reasons. |
 | R9 | **The S-parameter API shape** (layout over mode and direction, phase reference plane) **is settled in the v1.2 code-spec**, with the options laid out there. |
+| R10 | **The 2.5D method is variational EIM** (owner, 2026-10-23), with plain EIM as an option for regions whose stack guides a mode. See v1.4 for the reasons. |
 
 ## 2. Why this is one reframing, not a new solver
 
@@ -102,7 +102,8 @@ v1.4 commit.
 
 ### v1.1 — transmitted fields (in draft; unchanged)
 
-As [transmitted-spec.md](transmitted-spec.md). Its §7.2 (banded GEMM,
+As `docs/design/transmitted-spec.md` on branch `v1.1-transmitted-fields`
+(not on this branch until v1.1 merges). Its §7.2 (banded GEMM,
 transmitted plane wave) and §7.4 (builder contract) are the resume point.
 Nothing here changes it, except that τ must stay generic enough for an
 N-layer stack (it already is, by D3).
