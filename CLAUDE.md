@@ -249,7 +249,7 @@ Built per the builder contract in §8 of
 low-index substrates, shipped as v1.0.1.
 
 **v1.2–v1.4 — waveguide-coupled clusters, on `v1.2-slab-waveguide`.** The
-roadmap is `docs/design/waveguide-roadmap.md` on that branch (owner decisions
+roadmap is [waveguide-roadmap.md](docs/design/waveguide-roadmap.md) (owner decisions
 R1–R10): v1.2 N-layer `Stack`, guided modes, mode source and S-parameters by
 residue; v1.3 MEEP validation of the waveguide coupling; v1.4 a variational-EIM
 2.5D front end. Next step: the v1.2 slab study plan.

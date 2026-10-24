@@ -33,3 +33,4 @@ The live list of what is shipped and what is next is the roadmap in
 | [layered-spec.md](layered-spec.md) | v0.9 code-spec for the half-space background, with its §8 builder contract. | **Historical. The authority on intent.** Implemented in v0.9. |
 | [studies/transmitted/README.md](studies/transmitted/README.md) | The v1.1 transmitted-field prototypes (t1–t5). | Historical. The source of the v1.1 gate numbers. |
 | [transmitted-spec.md](transmitted-spec.md) | v1.1 code-spec for the field below a half-space, with its §8 builder contract. | **Historical. The authority on intent.** Shipped as v1.1.0. |
+| [waveguide-roadmap.md](waveguide-roadmap.md) | The v1.2–v1.4 roadmap for waveguide-coupled clusters: goal, physics, milestones, anchors A1–A9, owner decisions R1–R10. | **Live.** Above the code-specs. §9 is the resume point. |

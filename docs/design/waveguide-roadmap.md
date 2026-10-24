@@ -1,6 +1,7 @@
 # Waveguide-coupled clusters — roadmap (v1.2 → v1.4)
 
-**Status: roadmap, 2026-10-23; owner decisions R1–R10 complete.** This is
+**Status: roadmap, 2026-10-23; owner decisions R1–R10 complete. v1.1 shipped
+2026-10-24 as v1.1.0, so v1.2 is unblocked.** This is
 the planning document above the code-specs. It fixes the goal, the physics shape, the milestone split, the
 validation anchors and the owner decisions (§1, R1–R10). Each milestone gets its own
 builder-ready code-spec later, in the form of
@@ -19,7 +20,7 @@ Owner decisions taken 2026-10-23:
 |---|---|
 | R1 | **Scatterers stay outside the core.** No particle intersects or sits inside a layer of the stack. Etched gratings, holes in the core and photonic-crystal waveguides are out of scope. |
 | R2 | **S-parameters first.** QNMs with a slab background come later and are low priority: isolated-cluster QNMs (shipped) guide the design, and the slab-coupled response is read from the driven S-parameters. |
-| R3 | **v1.1 (transmitted fields) stays first.** Its generic τ = T/α₁ and its `P_down` by interface flux are prerequisites. The G14 → GT7 power equality is also the slab's best anchor. |
+| R3 | **v1.1 (transmitted fields) stays first** (done: v1.1.0). Its generic τ = T/α₁ and its `P_down` by interface flux are prerequisites. The G14 → GT7 power equality is also the slab's best anchor. |
 | R4 | **Particles on both sides of the stack**, staged as v1.2 item 6. In the 2.5D top view the strip has two claddings, and side-coupled structures commonly sit on both. |
 | R5 | **General N-layer `Stack` in v1.2**, not a three-layer slab first. The gates run on the three-layer case first. |
 | R6 | **v1.3 is a MEEP milestone**: eigenmode S-parameters, plus one MEEP LDOS run that closes a v1.0 gap. |
@@ -45,7 +46,7 @@ Every piece above the background already exists:
 | clusters of different shapes, materials, `nn` | v0.8 |
 | metals (`Material.from_eps`) | v0.9 |
 | reflected Green function on a deformed Sommerfeld path, complex λ | v0.9 |
-| field below the stack, downward far field, `P_down` by flux, `incident_field` | v1.1, in draft |
+| field below the stack, downward far field, `P_down` by flux, `incident_field` | v1.1 |
 | factorise once, solve many | v0.3 |
 
 What is missing is the background itself, its guided modes, a guided-mode
@@ -100,13 +101,13 @@ v1.4 commit.
 
 ## 4. Milestones
 
-### v1.1 — transmitted fields (in draft; unchanged)
+### v1.1 — transmitted fields (shipped, v1.1.0)
 
-As `docs/design/transmitted-spec.md` on branch `v1.1-transmitted-fields`
-(not on this branch until v1.1 merges). Its §7.2 (banded GEMM,
-transmitted plane wave) and §7.4 (builder contract) are the resume point.
-Nothing here changes it, except that τ must stay generic enough for an
-N-layer stack (it already is, by D3).
+As [transmitted-spec.md](transmitted-spec.md), shipped 2026-10-24. Its
+`Transmission` takes a generic τ, the bottom-layer wavenumber and a feature
+list (D3), so the v1.2 `Stack` plugs in its own. The dipole power balance is an
+equality over every passive substrate except the one D12 excludes: TM over a
+lossless metal, where the missing term is v1.2's `P_guided`.
 
 ### v1.2 — slab-waveguide background and S-parameters
 
@@ -192,9 +193,8 @@ One study closes three gaps from §6 at once: a non-circular **cluster**, a
 - **Slab QNMs** (R2, low priority). Needs n_eff or β_m continued to complex λ
   by complex root-finding, the holomorphy argument of §5 re-asserted with poles
   on the path's side, and an external anchor (the v1.0 MEEP harminv driver over
-  a slab). [qnm-guide.md](../qnm-guide.md) §6 still says "homogeneous background
-  only"; that has been stale since v0.9 and is fixed whenever that guide is next
-  touched.
+  a slab). [qnm-guide.md](../qnm-guide.md) §6 states the current limit: one
+  half-space, single particles, non-dispersive ε.
 - **QNM-to-waveguide coupling rates.** The isolated-cluster QNM projected on a
   guided mode gives the coupled-mode-theory decay rate into the waveguide, which
   is the bridge R2 implies. It is new physics; its anchor would be the v1.2
@@ -223,7 +223,7 @@ wiring error breaks. A9 is the external one.
 
 ## 6. External validation still missing (state after v1.0.1)
 
-v1.0.1 is the latest release (tag and PyPI, 2026-10-14). What v1.0 anchored
+v1.1.0 is the latest release (tag and PyPI, 2026-10-24); v1.0.1 shipped 2026-10-14. What v1.0 anchored
 externally: cross-sections of one Gielis star and the circle (dolfinx and
 MEEP), and dielectric-substrate QNMs of a circle (MEEP, high-Q, glass). What
 has **no external anchor** yet, from [validation.md](../validation.md) §5 and
@@ -232,7 +232,7 @@ the specs:
 | gap | today's anchor | closed by |
 |---|---|---|
 | Non-circular **clusters** | two-cylinder addition theorem (circles only) | v1.3 |
-| Driven observables **over a substrate** (`c_sca_up`, `c_abs`, near field, LDOS) | PEC mirror, a second quadrature, energy shortfall | partly v1.3 (driven, layered); v1.1 adds the equality |
+| Driven observables **over a substrate** (`c_sca_up`, `c_sca_down`, `c_abs`, near field, LDOS) | PEC mirror, a second quadrature, the v1.1 power-balance equality | partly v1.3 (driven, layered) |
 | **Near field, LDOS, Purcell** on a non-circular shape | analytic circle only; v1.0 §4 planned MEEP LDOS and never ran it | v1.3 (one MEEP LDOS run, R6) |
 | **Absorption** cross-check between two externals | dolfinx alone (MEEP has no frequency-independent Im ε) | open |
 | **Metals** (`from_eps`, silver/gold particles and substrates) | Mie on a silver circle; metal-substrate QNMs are consistency only (G9) | open |
@@ -240,10 +240,8 @@ the specs:
 | Only **one** non-circular shape | — | v1.3 adds a second |
 | MEEP TE sheet-source systematic | attributed, bounded, not removed | accepted |
 
-Two documents are stale on this:
-[validation.md](../validation.md) §5 still says `Material` cannot express
-Re ε < 0, but `Material.from_eps` (v0.9) can; and the qnm-guide limitation
-noted in §4 above. Neither is fixed by this roadmap.
+The two stale documents noted here (validation.md §5 on `Re ε < 0`, and the
+qnm-guide limitation in §4) were fixed on 2026-10-24.
 
 ## 7. Risks
 
@@ -276,7 +274,14 @@ The owner decisions are R1–R10 (§1). What is left is measured, not chosen:
 
 ## 9. Next step
 
-The v1.1 builder contract (its §7) finishes first. After that, the v1.2 study
-plan: prototype `Stack` R(q) and the guided-pole path in
-`docs/design/studies/slab/`, measure A2–A5 floors, then write the v1.2 code-spec
-with a §8 builder contract and stop rule.
+v1.1 has shipped, so v1.2 starts, in this order:
+
+1. **v1.2 study plan** in `docs/design/studies/slab/`: the `Stack` R(q)
+   prototype with a stable recursion (and a test that fails on the naive
+   form), and the guided-pole path.
+2. **Pin the §3 formulas**: mode normalisation, the identity between residue
+   and overlap, and the A4 dipole closed form, each verified numerically.
+3. **Measure the floors** for A2–A5 and the §7 risks (near-cutoff, small gaps).
+4. **v1.2 code-spec** with the R9 S-parameter API and a §8 builder contract and
+   stop rule.
+5. **Build v1.2**: items 1–5 on cover-only particles, item 6 last.
