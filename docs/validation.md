@@ -34,6 +34,18 @@ package is checked against it directly, in the test suite, every run.
 | Multipole decomposition | analytic Mie coefficients | `tests/test_multipole.py` |
 | Eigenvalue sensitivity `dλ/dp` | closed-form derivatives | `tests/test_sensitivity.py` |
 | Scale covariance `λ(s·rad) = s·λ(rad)` | an exact structural identity | `tests/test_scale_covariance.py` |
+| Transmitted Green function below a half-space (GT1) | `(i/4)·H₀` at `ε_rel = 1`, real and complex k: 7.2e-14 | `tests/test_transmitted.py` |
+| Transmitted Green function (GT2) | a real-axis QUADPACK integral on the radiation-condition branch (`reference/sommerfeld.gt_ref`), glass, lossy, silver, low-n: 4.9e-11, the reference's own limit | `tests/test_transmitted.py` |
+| Transmitted Green function at complex k (GT3) | itself on a path 1.5× deeper: 8.8e-15 (consistency; GT1 is the complex-k anchor) | `tests/test_transmitted.py` |
+| Continuity across the interface (GT4) | `G_free + G_ind` above: 1.1e-13; the scattered field above, by Richardson in δ | `tests/test_transmitted.py` |
+| Downward far field (GT5) | the free-space far field at `ε_rel = 1`: 5.1e-14; the Richardson limit of the near field at 40/80 µm: 3.2e-6 | `tests/test_transmitted.py` |
+| Interface flux into the substrate (GT6) | the far-field integral over a lossless substrate: 2.6e-14 | `tests/test_halfspace_power.py` |
+| Dipole power balance with a substrate (GT7) | energy conservation `P_up + P_down + P_abs = P_in`, five substrates: 8.7e-14 | `tests/test_halfspace_power.py` |
+| Guards (GT8) | `NoFarFieldError` conditions, 0 below PEC, `c_sca_down = 0` exactly | `tests/test_transmitted.py`, `tests/test_halfspace_power.py` |
+| `incident_field` (GT9) | the solver's own right-hand side on the boundary: 1.1e-15; continuity across the interface | `tests/test_transmitted.py` |
+| Scale covariance below the interface (GT10) | an exact structural identity at s = 1.7: ≤ 3.7e-14 | `tests/test_scale_covariance.py` |
+| v0.9 outputs above the interface (GT11) | themselves, bit for bit, with substrate points added | `tests/test_transmitted.py` |
+| Banded transmitted GEMM (GT12) | the pointwise Green-function sum: 2.8e-16 | `tests/test_transmitted.py` |
 
 These are strong but they share one limitation: **they are all circular.** The
 superformula reduces to a circle at `m = 0`, and that is the only boundary for

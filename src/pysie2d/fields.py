@@ -440,7 +440,9 @@ def _downward_cross_section(
 
     Returns:
         The cross-section; exactly 0.0 for PEC and a lossless ``Re ε ≤ 0``,
-        which take no power (D21).
+        which take no power (D21). Over a lossless TM metal with
+        ``Re ε < −1`` the surface plasmon carries power along the interface
+        that this does not include (finding 2, conventions §16).
     """
     if eps_rel is None or (eps_rel.imag == 0.0 and eps_rel.real <= 0.0):
         return 0.0

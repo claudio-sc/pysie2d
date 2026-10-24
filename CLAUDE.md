@@ -242,10 +242,11 @@ check happens. It also carries the MEEP comparison for the v0.9 substrate.
 **v1.1, on `v1.1-transmitted-fields`: the field below the interface.** Near
 field, downward far field, power into the substrate by interface flux, and an
 `incident_field` helper, written against a generic τ = T/α₁ so a multilayer
-plugs in later. Spec **builder-ready** (2026-10-24):
-[transmitted-spec.md](docs/design/transmitted-spec.md) — its §8 is the builder
-contract. Its finding 1, a v0.9 `c_sca_up` defect over low-index substrates,
-shipped as v1.0.1.
+plugs in later. **Implemented on the branch, not released** (2026-10-24), per
+the builder contract in §8 of
+[transmitted-spec.md](docs/design/transmitted-spec.md); the invariants are in
+`docs/conventions.md` §16. Its finding 1, a v0.9 `c_sca_up` defect over
+low-index substrates, shipped as v1.0.1.
 
 **v1.2 — multilayer and slab-waveguide backgrounds** on the v0.9 machinery.
 

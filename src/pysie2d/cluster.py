@@ -766,8 +766,10 @@ class ClusterScatterResult:
         Returns:
             ``{"c_sca", "c_ext", "c_abs"}`` in nm. With a background, instead
             ``{"c_sca_up", "c_sca_down", "c_abs"}`` (see
-            :meth:`pysie2d.solver.ScatterResult.cross_sections`); the free-space
-            keys are absent rather than raising.
+            :meth:`pysie2d.solver.ScatterResult.cross_sections`, which states
+            the plasmon leak over a lossless TM metal); the free-space keys are
+            absent rather than raising, and ``c_sca_down`` is absent at
+            complex λ.
 
         Raises:
             ValueError: If this result did not come from plane-wave excitation.

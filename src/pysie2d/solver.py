@@ -578,7 +578,11 @@ class ScatterResult:
             the interface flux of the scattered spectrum (not a far-field
             integral, so lossy and metallic substrates are covered); exactly 0
             for PEC and a lossless ``Re ε ≤ 0``. It is defined at real λ only
-            and is absent at complex λ (D18).
+            and is absent at complex λ (D18). Over a lossless metal with
+            ``Re ε_rel < −1`` in TM, power also leaks into a surface plasmon
+            running along the interface to infinity; it is in none of the keys
+            (2.5 % of a dipole's power at ``ε_rel = −4``). Any loss absorbs it
+            into ``c_sca_down`` (conventions §16).
         """
         if self.background is not None:
             return self._upward(n_angles)
