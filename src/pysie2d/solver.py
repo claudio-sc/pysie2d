@@ -15,7 +15,11 @@ import numpy as np
 from . import layered
 from .background import HalfSpace
 from .fields import (
+    _background_field,
+    _check_far_field_below,
     _cross_sections,
+    _downward_cross_section,
+    _downward_far_field,
     _far_field_at,
     _is_outside,
     _upward_cross_sections,
@@ -135,7 +139,11 @@ class ScatterResult:
         background: The substrate the particle sits on, or ``None`` for the
             homogeneous cladding. With one, ``far_field`` is the upward
             amplitude, ``cross_sections`` and ``efficiencies`` carry the
-            ``*_up`` keys, and ``multipoles`` raises ``NotImplementedError``.
+            ``*_up`` and ``*_down`` keys, and ``multipoles`` raises
+            ``NotImplementedError``.
+        excitation: ``"plane_wave"``, ``"dipole"`` or ``"custom"`` (a
+            user ``incident_rhs``), which :meth:`incident_field` needs.
+        source: The dipole position ``(x_s, z_s)``, or ``None``.
     """
 
     def __init__(
@@ -146,6 +154,9 @@ class ScatterResult:
         wavelength: float,
         angle: float = 0.0,
         background: HalfSpace | None = None,
+        *,
+        excitation: str = "plane_wave",
+        source: tuple[float, float] | None = None,
     ) -> None:
         """Store the BIE solution and the problem it was solved for."""
         self.ei = ei
@@ -154,10 +165,20 @@ class ScatterResult:
         self.wavelength = wavelength
         self.angle = angle
         self.background = background
+        self.excitation = excitation
+        self.source = source
 
     def _upward(self, n_angles: int) -> dict[str, float]:
-        """``σ_sca,up`` and ``σ_abs`` over the substrate; see ``fields``."""
-        return _upward_cross_sections(n_angles, *self._substrate())
+        """``σ_sca,up``, ``σ_sca,down`` and ``σ_abs`` over the substrate.
+
+        ``σ_sca,down`` is absent at complex λ: the real-axis flux is undefined
+        when ``Im k < 0`` (D18).
+        """
+        args = self._substrate()
+        c = _upward_cross_sections(n_angles, *args)
+        if np.imag(self.wavelength) == 0.0:
+            c["c_sca_down"] = _downward_cross_section(*args)
+        return c
 
     def _substrate(self) -> tuple:
         """Arguments the half-space far-field helpers share."""
@@ -198,7 +219,8 @@ class ScatterResult:
             complex ndarray, same shape as x/z.
 
         Raises:
-            ValueError: With a background, a point at or below the interface.
+            ValueError: With a background, a point exactly at the interface
+                (D17: the field is continuous there, but step off it).
 
         With a background this is still the **scattered** field: the free-space
         representation plus the reflected-image term
@@ -206,10 +228,59 @@ class ScatterResult:
         Interior points are unchanged, because the interior representation uses
         the core Green function only. The total exterior field is scattered +
         incident + reflected incident; the last two are the caller's.
+
+        Below the interface it is the transmitted term alone,
+        ``−Σ delt·((∂x'G_t·dg − ∂z'G_t·df)·φ + G_t·χ)``, with no free-space
+        term; 0 over PEC (D14), and the free-space representation at
+        ``ε_rel = 1`` exactly (D19). Points above the interface are computed
+        exactly as without any substrate point, bit for bit.
         """
-        g = self.geometry
         x = np.asarray(x, dtype=float)
         z = np.asarray(z, dtype=float)
+        if self.background is not None:
+            z_int = self.background.z_int
+            zf = z.ravel()
+            if np.any(zf == z_int):
+                raise ValueError(
+                    f"observation point exactly at the interface z_int = {z_int}: "
+                    "step off it (the field is continuous there)"
+                )
+            below = zf < z_int
+            if below.any():
+                xf = x.ravel()
+                field = np.empty(zf.size, dtype=complex)
+                if not below.all():
+                    field[~below] = self._cover_field(xf[~below], zf[~below])
+                field[below] = self._substrate_field(xf[below], zf[below])
+                return field
+        return self._cover_field(x, z)
+
+    def _substrate_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Scattered field at points below the interface (1-D arrays)."""
+        g = self.geometry
+        assert self.background is not None
+        eps_rel = self.background.eps_rel(self.material.n_clad, self.wavelength)
+        if eps_rel is None:
+            return np.zeros(x.size, dtype=complex)
+        tr = layered.Transmission.build(
+            self.material.pol,
+            self.wnum_bg,
+            eps_rel,
+            self.background.z_int,
+            g.f,
+            g.g,
+            x,
+            z,
+        )
+        if tr is None:  # ε_rel = 1: no interface, the free-space representation
+            return self._cover_field(x, z)
+        m1, m2 = tr.blocks(layered.Points(x, z), g)
+        n = g.n_pts
+        return -(m1 @ self.ei[:n] + m2 @ self.ei[n:])
+
+    def _cover_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Scattered field at points above the interface (the v0.9 path)."""
+        g = self.geometry
         refl = None
         if self.background is not None:
             refl = layered.Reflection.build(
@@ -249,6 +320,51 @@ class ScatterResult:
                 image = -(m1 @ self.ei[:n] + m2 @ self.ei[n:])
                 field = field.copy()
                 field[np.flatnonzero(outside)] += image
+        return field
+
+    def _background_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """The unmasked background field; see :meth:`incident_field`."""
+        bg = self.background
+        return _background_field(
+            x,
+            z,
+            self.wnum_bg,
+            self.material.pol,
+            self.excitation,
+            self.angle,
+            self.source,
+            None if bg is None else bg.eps_rel(self.material.n_clad, self.wavelength),
+            None if bg is None else bg.z_int,
+        )
+
+    def incident_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Background field the particle was driven by, at arbitrary points (nm).
+
+        ``eval_field + incident_field`` is the total field at every point (D13).
+        Plane wave ``exp(ik(x sinθ − z cosθ))`` or dipole ``(i/4)·H₀(kρ)``; with
+        a background, plus the Fresnel-reflected wave above the interface, and
+        the transmitted wave below it (0 below PEC). 0 inside the particle,
+        classified as :meth:`eval_field` classifies it.
+
+        Args:
+            x: Observation x-coordinates (nm).
+            z: Observation z-coordinates (nm).
+
+        Returns:
+            complex (M,) field.
+
+        Raises:
+            ValueError: For a custom ``incident_rhs``; at a point exactly on the
+                interface (D17); at the dipole's own position.
+        """
+        x = np.asarray(x, dtype=float).ravel()
+        z = np.asarray(z, dtype=float).ravel()
+        field = self._background_field(x, z)
+        g = self.geometry
+        z_int = -np.inf if self.background is None else self.background.z_int
+        for j in np.flatnonzero(z > z_int):  # particles lie in the cover
+            if not _is_outside(x[j], z[j], g.f, g.g, g.df, g.dg):
+                field[j] = 0.0
         return field
 
     def multipoles(
@@ -342,6 +458,38 @@ class ScatterResult:
             self.ei,
         )
 
+    def far_field_down(self, n_angles: int = 3000) -> tuple[np.ndarray, np.ndarray]:
+        """Downward far-field amplitude ``a_down(θ)`` below the substrate.
+
+        ``ψ ~ (i/4)·√(2/(π k_bot ρ))·e^{i(k_bot ρ − π/4)}·a_down(θ)`` about the
+        origin, ``k_bot = k·√ε_rel`` the substrate wavenumber: :meth:`far_field`'s
+        convention in the substrate. ``a_down = 0`` at both grazing ends unless
+        ``ε_rel = 1``. At complex λ over a real ``ε > 0`` this is the analytic
+        continuation, as :meth:`far_field` is (D16).
+
+        Args:
+            n_angles: Number of observation angles.
+
+        Returns:
+            amplitude: complex (n_angles,) amplitude.
+            angles: float (n_angles,) angles from +z, uniform on ``[π/2, 3π/2]``
+                inclusive.
+
+        Raises:
+            ValueError: Without a background: :meth:`far_field` already covers
+                the full circle (D20).
+            NoFarFieldError: Over PEC, an absorbing substrate (``Im ε ≠ 0``) or
+                ``Re ε ≤ 0``, where no wave reaches infinity below (D2).
+        """
+        if self.background is None:
+            raise ValueError(
+                "far_field_down needs a background: without one far_field() "
+                "already covers the full circle"
+            )
+        args = self._substrate()
+        _check_far_field_below(args[2])
+        return _downward_far_field(n_angles, *args)
+
     def efficiencies(self, n_angles: int = 500) -> dict[str, float]:
         """Scattering, extinction, and absorption efficiencies.
 
@@ -358,15 +506,19 @@ class ScatterResult:
 
         Returns:
             dict with keys 'qsca', 'qext', 'qabs'. With a background, instead
-            ``{'qsca_up', 'qabs'}`` — the :meth:`cross_sections` values over
-            ``2·rad``. The free-space keys are absent rather than raising:
-            ``qext`` and the total ``qsca`` are not defined over a substrate,
+            ``{'qsca_up', 'qsca_down', 'qabs'}`` — the :meth:`cross_sections`
+            values over ``2·rad``, ``qsca_down`` absent at complex λ. The
+            free-space keys are absent rather than raising: ``qext`` and the
+            total ``qsca`` are not defined over a substrate,
             since power also goes into it and the incident wave is reflected.
         """
         if self.background is not None:
             c = self._upward(n_angles)
             norm = 2.0 * self.geometry.rad
-            return {"qsca_up": c["c_sca_up"] / norm, "qabs": c["c_abs"] / norm}
+            eff = {"qsca_up": c["c_sca_up"] / norm, "qabs": c["c_abs"] / norm}
+            if "c_sca_down" in c:
+                eff["qsca_down"] = c["c_sca_down"] / norm
+            return eff
         wnum_bg = self.wnum_bg
         norfac = 8.0 * PI * wnum_bg
         delthe = 2.0 * PI / (n_angles - 1.0)
@@ -413,13 +565,24 @@ class ScatterResult:
 
         Returns:
             dict with keys 'c_sca', 'c_ext', 'c_abs', in nm. With a background,
-            instead ``{'c_sca_up', 'c_abs'}``: the power scattered **into the
-            cover**, by Gauss–Legendre over ``[−π/2, π/2]`` (``n_angles`` nodes,
-            split at the critical angle when ``0 < Re ε_rel < 1``), and the
+            instead ``{'c_sca_up', 'c_sca_down', 'c_abs'}``: the power scattered
+            **into the cover**, by Gauss–Legendre over ``[−π/2, π/2]``
+            (``n_angles`` nodes, split at the critical angle when
+            ``0 < Re ε_rel < 1``), and the
             absorption from the boundary flux. ``c_sca_up`` is incomplete
             by construction — it omits the power sent into the substrate and the
             specularly reflected incident beam. The free-space keys are absent
             rather than raising.
+
+            ``c_sca_down`` is the scattered power **into the substrate**, from
+            the interface flux of the scattered spectrum (not a far-field
+            integral, so lossy and metallic substrates are covered); exactly 0
+            for PEC and a lossless ``Re ε ≤ 0``. It is defined at real λ only
+            and is absent at complex λ (D18). Over a lossless metal with
+            ``Re ε_rel < −1`` in TM, power also leaks into a surface plasmon
+            running along the interface to infinity; it is in none of the keys
+            (2.5 % of a dipole's power at ``ε_rel = −4``). Any loss absorbs it
+            into ``c_sca_down`` (conventions §16).
         """
         if self.background is not None:
             return self._upward(n_angles)
@@ -650,8 +813,10 @@ class BIESolver:
         m = self.assemble(wavelength)
         wnum_bg = mat.wnum_bg(wavelength)
 
+        excitation = "plane_wave"
         if incident_rhs is not None:
             rhs = incident_rhs(g.n_pts, wnum_bg, g.f, g.g)
+            excitation = "custom"
         else:
             rhs = plane_wave_rhs(g.n_pts, angle, wnum_bg, g.f, g.g)
             refl = self._reflection(wavelength)
@@ -659,7 +824,9 @@ class BIESolver:
                 rhs[: g.n_pts] += refl.plane_wave(angle, g.f, g.g)
 
         ei = np.linalg.solve(m, rhs)
-        return ScatterResult(ei, g, mat, wavelength, angle, self.background)
+        return ScatterResult(
+            ei, g, mat, wavelength, angle, self.background, excitation=excitation
+        )
 
     def scatter_dipole(
         self,
@@ -696,4 +863,15 @@ class BIESolver:
                 ei[:nn] += refl.green(f, g, x_s, z_s)[0]
             return ei
 
-        return self.scatter(wavelength, incident_rhs=rhs)
+        res = self.scatter(wavelength, incident_rhs=rhs)
+        # Re-wrapped so incident_field knows the source (D13).
+        return ScatterResult(
+            res.ei,
+            geo,
+            self.material,
+            wavelength,
+            res.angle,
+            self.background,
+            excitation="dipole",
+            source=(x_s, z_s),
+        )

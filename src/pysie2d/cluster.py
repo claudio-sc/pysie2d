@@ -27,7 +27,11 @@ import numpy as np
 from . import layered
 from .background import HalfSpace
 from .fields import (
+    _background_field,
+    _check_far_field_below,
     _cross_sections,
+    _downward_cross_section,
+    _downward_far_field,
     _far_field_at,
     _representation_at,
     _upward_cross_sections,
@@ -497,6 +501,7 @@ class ClusterBIESolver:
             0.0,
             "dipole",
             self.background,
+            source=(x_s, z_s),
         )
 
     def _check_gap(self, wavelength: float) -> None:
@@ -601,7 +606,7 @@ class ClusterScatterResult:
         angle: Plane-wave incidence angle in degrees (0.0 for a dipole solve).
         background: The substrate the cluster sits on, or ``None``. With one,
             ``far_field`` is the upward amplitude and ``cross_sections`` returns
-            ``{'c_sca_up', 'c_abs'}``.
+            ``{'c_sca_up', 'c_sca_down', 'c_abs'}``.
     """
 
     def __init__(
@@ -614,6 +619,8 @@ class ClusterScatterResult:
         angle: float,
         excitation: str,
         background: HalfSpace | None = None,
+        *,
+        source: tuple[float, float] | None = None,
     ) -> None:
         """Store a coupled solution and the problem that produced it.
 
@@ -626,6 +633,7 @@ class ClusterScatterResult:
             angle: Plane-wave incidence angle in degrees.
             excitation: ``"plane_wave"`` or ``"dipole"``.
             background: The substrate the cluster sits on, or ``None``.
+            source: The dipole position ``(x_s, z_s)``, or ``None``.
         """
         self.ei = ei
         self.cluster = cluster
@@ -635,6 +643,7 @@ class ClusterScatterResult:
         self.angle = angle
         self._excitation = excitation
         self.background = background
+        self.source = source
 
     def _substrate(self) -> tuple:
         """Arguments the half-space far-field helpers share."""
@@ -684,6 +693,38 @@ class ClusterScatterResult:
         angles = -PI + np.arange(n_angles) * 2.0 * PI / (n_angles - 1.0)
         return self._amp_at(angles), angles
 
+    def far_field_down(self, n_angles: int = 3000) -> tuple[np.ndarray, np.ndarray]:
+        """Downward far-field amplitude ``a_down(θ)`` below the substrate.
+
+        ``ψ ~ (i/4)·√(2/(π k_bot ρ))·e^{i(k_bot ρ − π/4)}·a_down(θ)`` about the
+        origin, ``k_bot = k·√ε_rel`` the substrate wavenumber: :meth:`far_field`'s
+        convention in the substrate. ``a_down = 0`` at both grazing ends unless
+        ``ε_rel = 1``. At complex λ over a real ``ε > 0`` this is the analytic
+        continuation, as :meth:`far_field` is (D16).
+
+        Args:
+            n_angles: Number of observation angles.
+
+        Returns:
+            amplitude: complex (n_angles,) amplitude.
+            angles: float (n_angles,) angles from +z, uniform on ``[π/2, 3π/2]``
+                inclusive.
+
+        Raises:
+            ValueError: Without a background: :meth:`far_field` already covers
+                the full circle (D20).
+            NoFarFieldError: Over PEC, an absorbing substrate (``Im ε ≠ 0``) or
+                ``Re ε ≤ 0``, where no wave reaches infinity below (D2).
+        """
+        if self.background is None:
+            raise ValueError(
+                "far_field_down needs a background: without one far_field() "
+                "already covers the full circle"
+            )
+        args = self._substrate()
+        _check_far_field_below(args[2])
+        return _downward_far_field(n_angles, *args)
+
     def _amp_at(self, angles: np.ndarray) -> np.ndarray:
         """Far-field amplitude at arbitrary angles.
 
@@ -724,9 +765,11 @@ class ClusterScatterResult:
 
         Returns:
             ``{"c_sca", "c_ext", "c_abs"}`` in nm. With a background, instead
-            ``{"c_sca_up", "c_abs"}`` (see
-            :meth:`pysie2d.solver.ScatterResult.cross_sections`); the free-space
-            keys are absent rather than raising.
+            ``{"c_sca_up", "c_sca_down", "c_abs"}`` (see
+            :meth:`pysie2d.solver.ScatterResult.cross_sections`, which states
+            the plasmon leak over a lossless TM metal); the free-space keys are
+            absent rather than raising, and ``c_sca_down`` is absent at
+            complex λ.
 
         Raises:
             ValueError: If this result did not come from plane-wave excitation.
@@ -738,7 +781,11 @@ class ClusterScatterResult:
                 f"{self._excitation} excitation"
             )
         if self.background is not None:
-            return _upward_cross_sections(n_angles, *self._substrate())
+            args = self._substrate()
+            c = _upward_cross_sections(n_angles, *args)
+            if np.imag(self.wavelength) == 0.0:  # D18: no real-axis flux otherwise
+                c["c_sca_down"] = _downward_cross_section(*args)
+            return c
         amp, _ = self.far_field(n_angles)
         # π − α lands on the far-field grid only by accident, so the forward
         # direction is evaluated exactly rather than picked off it.
@@ -773,16 +820,70 @@ class ClusterScatterResult:
             complex (M,) field at each point.
 
         Raises:
-            ValueError: With a background, a point at or below the interface.
+            ValueError: With a background, a point exactly at the interface
+                (D17: the field is continuous there, but step off it).
 
         With a background this is the **scattered** field: outside every
         particle the representation integral gains the reflected-image term of
         each boundary, ``−Σ delt·((∂x'G_ind·dg − ∂z'G_ind·df)·φ + G_ind·χ)``.
         Interior points are unchanged. The total exterior field is scattered +
         incident + reflected incident; the last two are the caller's.
+
+        Below the interface it is the transmitted term of every boundary,
+        ``−Σ delt·((∂x'G_t·dg − ∂z'G_t·df)·φ + G_t·χ)``, with no free-space
+        term; 0 over PEC (D14), and the free-space representation at
+        ``ε_rel = 1`` exactly (D19). Particles are in the cover, so no
+        substrate point needs classifying. Points above the interface are
+        computed exactly as without any substrate point, bit for bit.
         """
         x = np.asarray(x, dtype=float).ravel()
         z = np.asarray(z, dtype=float).ravel()
+        if self.background is not None:
+            z_int = self.background.z_int
+            if np.any(z == z_int):
+                raise ValueError(
+                    f"observation point exactly at the interface z_int = {z_int}: "
+                    "step off it (the field is continuous there)"
+                )
+            below = z < z_int
+            if below.any():
+                field = np.empty(z.size, dtype=complex)
+                if not below.all():
+                    field[~below] = self._cover_field(x[~below], z[~below])
+                field[below] = self._substrate_field(x[below], z[below])
+                return field
+        return self._cover_field(x, z)
+
+    def _substrate_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Scattered field at points below the interface."""
+        assert self.background is not None
+        geoms = self.cluster.geometries
+        eps_rel = self.background.eps_rel(self.materials[0].n_clad, self.wavelength)
+        if eps_rel is None:
+            return np.zeros(x.size, dtype=complex)
+        # One path for every particle: sized for the whole cluster's extent.
+        tr = layered.Transmission.build(
+            self.pol,
+            self.wnum_bg,
+            eps_rel,
+            self.background.z_int,
+            np.concatenate([gp.f for gp in geoms]),
+            np.concatenate([gp.g for gp in geoms]),
+            x,
+            z,
+        )
+        if tr is None:  # ε_rel = 1: no interface, the free-space representation
+            return self._cover_field(x, z)
+        pts = layered.Points(x, z)
+        field = np.zeros(x.size, dtype=complex)
+        for p, gp in enumerate(geoms):
+            m1, m2 = tr.blocks(pts, gp)
+            ei_p = self.ei_particle(p)
+            field -= m1 @ ei_p[: gp.n_pts] + m2 @ ei_p[gp.n_pts :]
+        return field
+
+    def _cover_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Field at points above the interface (the v0.9 path)."""
         k = _real_if_real(self.wnum_bg)
         refl = None
         if self.background is not None:
@@ -845,6 +946,51 @@ class ClusterScatterResult:
                     x[sel],
                     z[sel],
                 )
+        return field
+
+    def _background_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """The unmasked background field; see :meth:`incident_field`."""
+        bg = self.background
+        n_clad = self.materials[0].n_clad
+        return _background_field(
+            x,
+            z,
+            self.wnum_bg,
+            self.pol,
+            self._excitation,
+            self.angle,
+            self.source,
+            None if bg is None else bg.eps_rel(n_clad, self.wavelength),
+            None if bg is None else bg.z_int,
+        )
+
+    def incident_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Background field the cluster was driven by, at arbitrary points (nm).
+
+        ``eval_field + incident_field`` is the total field at every point (D13);
+        see :meth:`pysie2d.solver.ScatterResult.incident_field`. 0 inside every
+        particle, classified by ray casting as :meth:`eval_field` does.
+
+        Args:
+            x: Observation x-coordinates (nm).
+            z: Observation z-coordinates (nm).
+
+        Returns:
+            complex (M,) field.
+
+        Raises:
+            ValueError: At a point exactly on the interface (D17), or at the
+                dipole's own position.
+        """
+        x = np.asarray(x, dtype=float).ravel()
+        z = np.asarray(z, dtype=float).ravel()
+        field = self._background_field(x, z)
+        z_int = -np.inf if self.background is None else self.background.z_int
+        for j in np.flatnonzero(z > z_int):  # particles lie in the cover
+            if any(
+                _point_inside(x[j], z[j], gp.f, gp.g) for gp in self.cluster.geometries
+            ):
+                field[j] = 0.0
         return field
 
     def resolution(self) -> tuple[float, ...]:

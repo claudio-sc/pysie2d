@@ -5,9 +5,26 @@ import math
 import numpy as np
 
 from .kernels import _real_if_real, hank0, hank1
-from .layered import fresnel_r
+from .layered import (
+    TAIL_DECAY,
+    TAIL_EFOLDS_PER_PANEL,
+    TAIL_PANEL_POINTS,
+    TAIL_PERIODS_PER_PANEL,
+    NoFarFieldError,
+    Reflection,
+    SommerfeldPath,
+    Transmission,
+    alpha,
+    fresnel_r,
+)
 
 PI = np.pi
+
+# Flux breakpoints at |Re s| ± 10^m·|Im s|, m = 0…6, for every singularity s.
+# Grading only to 10³ widths is not enough near a weakly damped pole: silver +
+# 1e-4i TM was off by 1.0e-6 there and 1.6e-12 with six decades; nine decades
+# changed nothing (studies/transmitted t2c).
+FLUX_WIDTH_DECADES = 6
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +244,237 @@ def _upward_cross_sections(
     return {"c_sca_up": c_sca_up, "c_abs": _absorbed_cross_section(boundaries, wnum_bg)}
 
 
+def _spectrum(
+    q: np.ndarray, a1: np.ndarray, boundaries: list[_Boundary], z_top: float
+) -> np.ndarray:
+    """Plane-wave spectrum ``A(q, α₁)`` of the boundary sources (spec v1.1 §2).
+
+    ``A = Σ_j delt·e^{−i q f_j + i α₁ (g_j − z_top)}·[i(q·dg_j + α₁·df_j)·φ_j − χ_j]``,
+    which is :func:`_far_field_at` at ``q = k sin θ``, ``α₁ = −k cos θ``. The
+    ``g − z_top`` shift keeps the exponent bounded for evanescent ``α₁ = +i|…|``,
+    which would overflow about the origin.
+
+    Args:
+        q: (M,) transverse wavenumbers.
+        a1: (M,) cover ``α₁(q)`` on the code's sheet.
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        z_top: Phase reference height (nm).
+
+    Returns:
+        complex (M,) spectrum.
+    """
+    out = np.zeros(np.shape(q), dtype=complex)
+    for f, g, df, dg, delt, ei in boundaries:
+        nn = f.size
+        ph = np.exp(-1j * np.outer(f, q) + 1j * np.outer(g - z_top, a1))
+        poly = 1j * (np.outer(dg, q) + np.outer(df, a1)) * ei[:nn, None] - ei[nn:, None]
+        out += delt * np.sum(ph * poly, axis=0)
+    return out
+
+
+def _amplitude_below(
+    angles: np.ndarray, boundaries: list[_Boundary], tr: Transmission
+) -> np.ndarray:
+    """``a_down(θ) = α_bot·τ·e^{iα_bot z_bot}·A(q_s, α₁(q_s))``, ``q_s = k_bot sin θ``.
+
+    Stationary phase of the transmitted representation; ``α₁(q_s)`` is on the
+    code's sheet, so it is evanescent beyond the critical angle when the
+    substrate is denser than the cover. Written against ``tr`` only (D3).
+    """
+    q = tr.k_bot * np.sin(angles)
+    a_bot = alpha(q, tr.k_bot)
+    spec = _spectrum(q, alpha(q, tr.k), boundaries, tr.z_top)
+    return a_bot * tr.tau(q) * np.exp(1j * a_bot * tr.z_bot) * spec
+
+
+def _downward_amplitude(
+    angles: np.ndarray,
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    eps_rel: complex,
+    pol: int,
+    z_int: float,
+) -> np.ndarray:
+    """Downward far-field amplitude ``a_down(θ)`` of particles over a half-space.
+
+    Defined by ``ψ ~ (i/4)·√(2/(π k_bot ρ))·e^{i(k_bot ρ − π/4)}·a_down(θ)``
+    about the origin: :func:`far_field`'s convention with ``k_bot``. θ is from
+    +z, downward for ``θ ∈ [π/2, 3π/2]``. At ``ε_rel = 1`` exactly this is the
+    free-space amplitude (D19): the formula's ``2α₂/(α₁+α₂)`` is 0/0 at grazing.
+
+    Args:
+        angles: (M,) downward angles (rad).
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        wnum_bg: Background wavenumber.
+        eps_rel: Substrate permittivity relative to the cover (not PEC).
+        pol: 2 = TE, 1 = TM.
+        z_int: Interface height (nm).
+
+    Returns:
+        complex (M,) amplitude.
+    """
+    if eps_rel == 1.0:
+        out = np.zeros(len(angles), dtype=complex)
+        for f, g, df, dg, delt, ei in boundaries:
+            out += _far_field_at(angles, f.size, wnum_bg, f, g, df, dg, delt, ei)
+        return out
+    tr = Transmission.half_space(pol, wnum_bg, eps_rel, z_int)
+    return _amplitude_below(angles, boundaries, tr)
+
+
+def _downward_far_field(
+    n_angles: int,
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    eps_rel: complex,
+    pol: int,
+    z_int: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """``a_down`` on a uniform grid over ``[π/2, 3π/2]`` inclusive."""
+    angles = np.linspace(0.5 * PI, 1.5 * PI, n_angles)
+    amp = _downward_amplitude(angles, boundaries, wnum_bg, eps_rel, pol, z_int)
+    return amp, angles
+
+
+def _flux_rule(
+    wnum_bg: complex, eps_rel: complex, pol: int, D: float, z_min: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Real-axis nodes and weights for the interface flux, on ``(−q_max, q_max)``.
+
+    Breakpoints at ``|Re s|`` and ``|Re s| ± 10^m·|Im s|`` for every
+    singularity s of τ; panels capped at ``min(4·2π/D, 8/z_min)``; 24-point
+    Gauss–Legendre under the sine map ``q = c + h·sin(πu/2)``, which removes the
+    √ endpoint behaviour at the branch points. ``q_max = 1.5·max|Re s| +
+    38/z_min``, or ``Re k_bot`` for a lossless dielectric, where ``Re w ≡ 0``
+    beyond it. Mirrored to ``q < 0``: the integrand is not even in q. Real
+    ``k`` only.
+
+    Args:
+        wnum_bg: Background wavenumber (real).
+        eps_rel: Substrate permittivity relative to the cover (not PEC).
+        pol: 2 = TE, 1 = TM.
+        D: Horizontal extent of the sources (nm).
+        z_min: Twice the lowest source height above the interface (nm).
+
+    Returns:
+        ``(q, w)``, real nodes and weights.
+    """
+    tr = Transmission.half_space(pol, wnum_bg, eps_rel, 0.0)
+    bp = {0.0}
+    for _, s in tr.features:
+        bp.add(abs(s.real))
+        width = abs(s.imag)
+        if width > 0:
+            for m in range(FLUX_WIDTH_DECADES + 1):
+                bp.update(
+                    (abs(s.real) - 10.0**m * width, abs(s.real) + 10.0**m * width)
+                )
+    if tr.eps_bot.imag == 0.0 and tr.eps_bot.real > 0.0:
+        q_max = tr.k_bot.real
+    else:
+        q_max = 1.5 * max(abs(s.real) for _, s in tr.features) + TAIL_DECAY / z_min
+    w_max = min(TAIL_PERIODS_PER_PANEL * 2.0 * PI / D, TAIL_EFOLDS_PER_PANEL / z_min)
+    edges = sorted(b for b in bp if 0.0 <= b < q_max) + [q_max]
+    fine = [edges[0]]
+    for lo, hi in zip(edges[:-1], edges[1:], strict=True):
+        n = max(1, math.ceil((hi - lo) / w_max))
+        fine += list(np.linspace(lo, hi, n + 1)[1:])
+    x, wx = np.polynomial.legendre.leggauss(TAIL_PANEL_POINTS)
+    u, du = np.sin(0.5 * PI * x), 0.5 * PI * np.cos(0.5 * PI * x) * wx
+    lo, hi = np.array(fine[:-1]), np.array(fine[1:])
+    c, h = 0.5 * (lo + hi), 0.5 * (hi - lo)
+    q = (c[:, None] + h[:, None] * u).ravel()
+    w = (h[:, None] * du).ravel()
+    return np.concatenate([-q[::-1], q]), np.concatenate([w[::-1], w])
+
+
+def _downward_power(
+    q: np.ndarray,
+    w: np.ndarray,
+    A: np.ndarray,
+    wnum_bg: complex,
+    eps_rel: complex,
+    pol: int,
+) -> float:
+    """``P_down = (1/8π)·Σ w·Re w_bot·|τ·A|²``, the power through the interface.
+
+    ``w_bot = α_bot`` (TE) or ``α_bot/ε_bot`` (TM), in G14's units, where the
+    unbounded-cover dipole emits 1/4. ``A`` is any plane-wave spectrum, so a
+    dipole's own ``A_dip`` can be added by the caller.
+
+    Args:
+        q: Flux nodes (:func:`_flux_rule`).
+        w: Their weights.
+        A: Spectrum ``A(q, α₁(q))`` at the nodes.
+        wnum_bg: Background wavenumber (real).
+        eps_rel: Substrate permittivity relative to the cover (not PEC).
+        pol: 2 = TE, 1 = TM.
+
+    Returns:
+        The downward power.
+    """
+    tr = Transmission.half_space(pol, wnum_bg, eps_rel, 0.0)
+    a_bot = alpha(q, tr.k_bot)
+    w_bot = (a_bot if pol == 2 else a_bot / tr.eps_bot).real
+    return float(np.sum(w * w_bot * np.abs(tr.tau(q) * A) ** 2) / (8.0 * PI))
+
+
+def _downward_cross_section(
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    eps_rel: complex | None,
+    pol: int,
+    z_int: float,
+) -> float:
+    """``σ_sca,down = P_down/Re k`` (nm) from the interface flux (D4).
+
+    The scattered spectrum only, which parallels ``σ_sca,up``. Valid for every
+    passive substrate, lossy and metallic included; real ``k`` only.
+
+    Args:
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        wnum_bg: Background wavenumber (real).
+        eps_rel: Substrate permittivity relative to the cover, or ``None``.
+        pol: 2 = TE, 1 = TM.
+        z_int: Interface height (nm).
+
+    Returns:
+        The cross-section; exactly 0.0 for PEC and a lossless ``Re ε ≤ 0``,
+        which take no power (D21). Over a lossless TM metal with
+        ``Re ε < −1`` the surface plasmon carries power along the interface
+        that this does not include (finding 2, conventions §16).
+    """
+    if eps_rel is None or (eps_rel.imag == 0.0 and eps_rel.real <= 0.0):
+        return 0.0
+    h_min = min(float(g.min()) for _, g, *_ in boundaries) - z_int
+    z_min = 2.0 * h_min
+    f_all = np.concatenate([b[0] for b in boundaries])
+    q, w = _flux_rule(wnum_bg, eps_rel, pol, max(float(np.ptp(f_all)), z_min), z_min)
+    A = _spectrum(q, alpha(q, wnum_bg), boundaries, z_int)
+    return _downward_power(q, w, A, wnum_bg, eps_rel, pol) / float(np.real(wnum_bg))
+
+
+def _check_far_field_below(eps_rel: complex | None) -> None:
+    """Raise :class:`NoFarFieldError` unless the substrate is a lossless dielectric.
+
+    A far field below exists only for ``Im ε = 0`` and ``Re ε > 0`` (D2): with
+    loss the field decays with depth, and ``Re ε ≤ 0`` or PEC carry nothing to
+    infinity.
+    """
+    if eps_rel is None:
+        raise NoFarFieldError("no far field below a PEC substrate: nothing enters it")
+    if eps_rel.imag != 0.0:
+        raise NoFarFieldError(
+            f"no far field below an absorbing substrate: Im eps_rel = {eps_rel.imag} "
+            "is not 0, so the transmitted field decays with depth"
+        )
+    if eps_rel.real <= 0.0:
+        raise NoFarFieldError(
+            f"no far field below a substrate with Re eps_rel = {eps_rel.real} <= 0: "
+            "no wave propagates in it"
+        )
+
+
 def _absorbed_cross_section(boundaries: list[_Boundary], wnum_bg: complex) -> float:
     """``σ_abs = −(1/k)·Im Σ_j delt·conj(φ_j)·χ_j``, from the boundary flux.
 
@@ -239,6 +487,109 @@ def _absorbed_cross_section(boundaries: list[_Boundary], wnum_bg: complex) -> fl
         nn = f.size
         flux += delt * np.sum(np.conj(ei[:nn]) * ei[nn:])
     return float(-np.imag(flux) / np.real(wnum_bg))
+
+
+def _background_field(
+    x: np.ndarray,
+    z: np.ndarray,
+    wnum_bg: complex,
+    pol: int,
+    excitation: str,
+    angle: float,
+    source: tuple[float, float] | None,
+    eps_rel: complex | None,
+    z_int: float | None,
+) -> np.ndarray:
+    """Background (unscattered) field at every point, with no particle mask.
+
+    The field the particles are driven by, so that ``eval_field`` plus this is
+    the total field (D13). Plane wave ``exp(ik(x sinθ − z cosθ))`` or dipole
+    ``(i/4)·H₀(kρ)``; with a substrate, plus its reflection above ``z_int`` and
+    replaced by the transmitted wave below it (0 below PEC). These are the very
+    terms the right-hand side of the solve is built from.
+
+    Args:
+        x: (M,) x coordinates (nm).
+        z: (M,) z coordinates (nm).
+        wnum_bg: Background wavenumber, complex allowed.
+        pol: 2 = TE, 1 = TM.
+        excitation: ``"plane_wave"``, ``"dipole"`` or ``"custom"``.
+        angle: Plane-wave incidence angle (degrees).
+        source: Dipole position, for ``"dipole"``.
+        eps_rel: Substrate permittivity relative to the cover, or ``None`` for
+            PEC; ignored without a substrate.
+        z_int: Interface height, or ``None`` for no substrate.
+
+    Returns:
+        complex (M,) field.
+
+    Raises:
+        ValueError: A ``"custom"`` excitation, whose field the result does not
+            know; a point exactly at the interface (D17); a point at the
+            dipole's own position, where ``H₀`` is singular.
+    """
+    if excitation == "custom":
+        raise ValueError(
+            "incident_field is undefined for a custom incident_rhs: the result "
+            "does not know the field it was driven by"
+        )
+    k = wnum_bg
+    dipole = excitation == "dipole"
+    if dipole:
+        assert source is not None
+        xs, zs = source
+        if np.any((x == xs) & (z == zs)):
+            raise ValueError(
+                f"incident_field at the dipole's own position ({xs}, {zs}): "
+                "the line-source field is singular there"
+            )
+    if z_int is not None and np.any(z == z_int):
+        raise ValueError(
+            f"observation point exactly at the interface z_int = {z_int}: "
+            "step off it (the field is continuous there)"
+        )
+
+    def free(xp: np.ndarray, zp: np.ndarray) -> np.ndarray:
+        if dipole:
+            return 0.25j * hank0(k * np.hypot(xp - xs, zp - zs))
+        theta = np.deg2rad(angle)
+        return np.exp(1j * k * (xp * np.sin(theta) - zp * np.cos(theta)))
+
+    if z_int is None:
+        return free(x, z)
+    out = np.zeros(x.size, dtype=complex)
+    above = z > z_int
+    xa, za = x[above], z[above]
+    xb, zb = x[~above], z[~above]
+    no_interface = eps_rel is not None and eps_rel == 1.0
+    if xa.size:
+        out[above] = free(xa, za)
+        if not no_interface:
+            if dipole:
+                # Z = z + z' − 2·z_int is never below h_obs + h_src; sizing at
+                # 2·min(h) would explode the tail for a point next to the
+                # interface (finding 3 is the converse trap).
+                path = None
+                if eps_rel is not None:
+                    z_min = float((za - z_int).min() + (zs - z_int))
+                    extent = max(float(np.ptp(np.append(xa, xs))), z_min)
+                    path = SommerfeldPath.for_wavenumber(k, eps_rel, pol, extent, z_min)
+                refl = Reflection(pol, k, eps_rel, z_int, path, 0.0)
+                out[above] += refl.green(xa, za, xs, zs)[0]
+            else:  # one real q: no path
+                refl = Reflection(pol, k, eps_rel, z_int, None, 0.0)
+                out[above] += refl.plane_wave(angle, xa, za)
+    if xb.size and eps_rel is not None:
+        if no_interface:
+            out[~above] = free(xb, zb)
+        elif dipole:
+            tr = Transmission.build(pol, k, eps_rel, z_int, [xs], [zs], xb, zb)
+            assert tr is not None
+            out[~above] = tr.green(xb, zb, xs, zs)[0]
+        else:
+            tr = Transmission.half_space(pol, k, eps_rel, z_int)
+            out[~above] = tr.plane_wave(angle, xb, zb)
+    return out
 
 
 # ---------------------------------------------------------------------------

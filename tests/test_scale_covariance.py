@@ -59,7 +59,14 @@ import numpy as np
 import pytest
 
 from conftest import QNM_N_CORE, RAD
-from pysie2d import BIESolver, Geometry, Material, Parametrisation, QNMSolver
+from pysie2d import (
+    BIESolver,
+    Geometry,
+    HalfSpace,
+    Material,
+    Parametrisation,
+    QNMSolver,
+)
 
 # Taken from the shared fixture rather than restated: the mode counts asserted
 # below are properties of this contrast and this radius, and a local copy would
@@ -384,3 +391,48 @@ def test_frozen_parametrisation_preserves_exact_scale_covariance():
         m_small = BIESolver(small, mat).assemble(LAM)
         m_large = BIESolver(large, mat).assemble(s * LAM)
         assert np.array_equal(m_small, m_large)
+
+
+# ---------------------------------------------------------------------------
+# The transmitted field (v1.1, GT10).
+#
+# With rad, z0, z_int, every observation point and λ scaled by s, the field
+# below the interface and a_down are dimensionless and must not move, and
+# c_sca_down is a length and must scale by s. The flux rule and the
+# transmitted path are both built in units of k from point-set lengths, so
+# nothing absolute can enter. Measured at s = 1.7 (G14 particle 20 nm above the
+# interface, plane wave at 20°): field ≤ 1.7e-15, c_sca_down ≤ 8.8e-15 (silver
+# TM), a_down ≤ 3.7e-14 (low-n TM, relative to its maximum). Bars 10× those; a
+# missing power of s would be a 70 % error.
+# ---------------------------------------------------------------------------
+
+RTOL_TRANSMITTED = {"field": 1.7e-14, "c_sca_down": 9e-14, "a_down": 4e-13}
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize(
+    "eps_sub", [2.25, -18.3 + 0.48j, 1.0], ids=["glass", "silver", "low-n"]
+)
+def test_transmitted_field_is_scale_covariant(eps_sub, pol):
+    x = np.array([-300.0, 0.0, 80.0, 400.0])
+    z = np.array([-25.0, -60.0, -200.0, -600.0])
+    lossless = np.imag(eps_sub) == 0 and np.real(eps_sub) > 0
+    out = []
+    for s in (1.0, 1.7):
+        geo = Geometry.gielis(rad=100.0 * s, n_pts=256, m=0, x0=0.0, z0=95.0 * s)
+        mat = Material(n_core=2.0, n_clad=1.33, pol=pol, epsi=0.5)
+        res = BIESolver(geo, mat, HalfSpace(eps_sub, z_int=-20.0 * s)).scatter(
+            633.0 * s, 20.0
+        )
+        out.append(
+            (
+                res.eval_field(x * s, z * s),
+                res.cross_sections()["c_sca_down"] / s,
+                res.far_field_down(301)[0] if lossless else None,
+            )
+        )
+    (f1, c1, a1), (f2, c2, a2) = out
+    assert np.max(np.abs(f1 - f2)) / np.max(np.abs(f1)) < RTOL_TRANSMITTED["field"]
+    assert abs(c1 - c2) / c1 < RTOL_TRANSMITTED["c_sca_down"]
+    if lossless:
+        assert np.max(np.abs(a1 - a2)) / np.max(np.abs(a1)) < RTOL_TRANSMITTED["a_down"]
