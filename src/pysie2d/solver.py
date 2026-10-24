@@ -17,6 +17,7 @@ from .background import HalfSpace
 from .fields import (
     _check_far_field_below,
     _cross_sections,
+    _downward_cross_section,
     _downward_far_field,
     _far_field_at,
     _is_outside,
@@ -137,7 +138,8 @@ class ScatterResult:
         background: The substrate the particle sits on, or ``None`` for the
             homogeneous cladding. With one, ``far_field`` is the upward
             amplitude, ``cross_sections`` and ``efficiencies`` carry the
-            ``*_up`` keys, and ``multipoles`` raises ``NotImplementedError``.
+            ``*_up`` and ``*_down`` keys, and ``multipoles`` raises
+            ``NotImplementedError``.
     """
 
     def __init__(
@@ -158,8 +160,16 @@ class ScatterResult:
         self.background = background
 
     def _upward(self, n_angles: int) -> dict[str, float]:
-        """``σ_sca,up`` and ``σ_abs`` over the substrate; see ``fields``."""
-        return _upward_cross_sections(n_angles, *self._substrate())
+        """``σ_sca,up``, ``σ_sca,down`` and ``σ_abs`` over the substrate.
+
+        ``σ_sca,down`` is absent at complex λ: the real-axis flux is undefined
+        when ``Im k < 0`` (D18).
+        """
+        args = self._substrate()
+        c = _upward_cross_sections(n_angles, *args)
+        if np.imag(self.wavelength) == 0.0:
+            c["c_sca_down"] = _downward_cross_section(*args)
+        return c
 
     def _substrate(self) -> tuple:
         """Arguments the half-space far-field helpers share."""
@@ -442,15 +452,19 @@ class ScatterResult:
 
         Returns:
             dict with keys 'qsca', 'qext', 'qabs'. With a background, instead
-            ``{'qsca_up', 'qabs'}`` — the :meth:`cross_sections` values over
-            ``2·rad``. The free-space keys are absent rather than raising:
-            ``qext`` and the total ``qsca`` are not defined over a substrate,
+            ``{'qsca_up', 'qsca_down', 'qabs'}`` — the :meth:`cross_sections`
+            values over ``2·rad``, ``qsca_down`` absent at complex λ. The
+            free-space keys are absent rather than raising: ``qext`` and the
+            total ``qsca`` are not defined over a substrate,
             since power also goes into it and the incident wave is reflected.
         """
         if self.background is not None:
             c = self._upward(n_angles)
             norm = 2.0 * self.geometry.rad
-            return {"qsca_up": c["c_sca_up"] / norm, "qabs": c["c_abs"] / norm}
+            eff = {"qsca_up": c["c_sca_up"] / norm, "qabs": c["c_abs"] / norm}
+            if "c_sca_down" in c:
+                eff["qsca_down"] = c["c_sca_down"] / norm
+            return eff
         wnum_bg = self.wnum_bg
         norfac = 8.0 * PI * wnum_bg
         delthe = 2.0 * PI / (n_angles - 1.0)
@@ -497,13 +511,20 @@ class ScatterResult:
 
         Returns:
             dict with keys 'c_sca', 'c_ext', 'c_abs', in nm. With a background,
-            instead ``{'c_sca_up', 'c_abs'}``: the power scattered **into the
-            cover**, by Gauss–Legendre over ``[−π/2, π/2]`` (``n_angles`` nodes,
-            split at the critical angle when ``0 < Re ε_rel < 1``), and the
+            instead ``{'c_sca_up', 'c_sca_down', 'c_abs'}``: the power scattered
+            **into the cover**, by Gauss–Legendre over ``[−π/2, π/2]``
+            (``n_angles`` nodes, split at the critical angle when
+            ``0 < Re ε_rel < 1``), and the
             absorption from the boundary flux. ``c_sca_up`` is incomplete
             by construction — it omits the power sent into the substrate and the
             specularly reflected incident beam. The free-space keys are absent
             rather than raising.
+
+            ``c_sca_down`` is the scattered power **into the substrate**, from
+            the interface flux of the scattered spectrum (not a far-field
+            integral, so lossy and metallic substrates are covered); exactly 0
+            for PEC and a lossless ``Re ε ≤ 0``. It is defined at real λ only
+            and is absent at complex λ (D18).
         """
         if self.background is not None:
             return self._upward(n_angles)

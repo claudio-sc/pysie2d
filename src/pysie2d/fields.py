@@ -5,9 +5,24 @@ import math
 import numpy as np
 
 from .kernels import _real_if_real, hank0, hank1
-from .layered import NoFarFieldError, Transmission, alpha, fresnel_r
+from .layered import (
+    TAIL_DECAY,
+    TAIL_EFOLDS_PER_PANEL,
+    TAIL_PANEL_POINTS,
+    TAIL_PERIODS_PER_PANEL,
+    NoFarFieldError,
+    Transmission,
+    alpha,
+    fresnel_r,
+)
 
 PI = np.pi
+
+# Flux breakpoints at |Re s| ± 10^m·|Im s|, m = 0…6, for every singularity s.
+# Grading only to 10³ widths is not enough near a weakly damped pole: silver +
+# 1e-4i TM was off by 1.0e-6 there and 1.6e-12 with six decades; nine decades
+# changed nothing (studies/transmitted t2c).
+FLUX_WIDTH_DECADES = 6
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +332,122 @@ def _downward_far_field(
     angles = np.linspace(0.5 * PI, 1.5 * PI, n_angles)
     amp = _downward_amplitude(angles, boundaries, wnum_bg, eps_rel, pol, z_int)
     return amp, angles
+
+
+def _flux_rule(
+    wnum_bg: complex, eps_rel: complex, pol: int, D: float, z_min: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Real-axis nodes and weights for the interface flux, on ``(−q_max, q_max)``.
+
+    Breakpoints at ``|Re s|`` and ``|Re s| ± 10^m·|Im s|`` for every
+    singularity s of τ; panels capped at ``min(4·2π/D, 8/z_min)``; 24-point
+    Gauss–Legendre under the sine map ``q = c + h·sin(πu/2)``, which removes the
+    √ endpoint behaviour at the branch points. ``q_max = 1.5·max|Re s| +
+    38/z_min``, or ``Re k_bot`` for a lossless dielectric, where ``Re w ≡ 0``
+    beyond it. Mirrored to ``q < 0``: the integrand is not even in q. Real
+    ``k`` only.
+
+    Args:
+        wnum_bg: Background wavenumber (real).
+        eps_rel: Substrate permittivity relative to the cover (not PEC).
+        pol: 2 = TE, 1 = TM.
+        D: Horizontal extent of the sources (nm).
+        z_min: Twice the lowest source height above the interface (nm).
+
+    Returns:
+        ``(q, w)``, real nodes and weights.
+    """
+    tr = Transmission.half_space(pol, wnum_bg, eps_rel, 0.0)
+    bp = {0.0}
+    for _, s in tr.features:
+        bp.add(abs(s.real))
+        width = abs(s.imag)
+        if width > 0:
+            for m in range(FLUX_WIDTH_DECADES + 1):
+                bp.update(
+                    (abs(s.real) - 10.0**m * width, abs(s.real) + 10.0**m * width)
+                )
+    if tr.eps_bot.imag == 0.0 and tr.eps_bot.real > 0.0:
+        q_max = tr.k_bot.real
+    else:
+        q_max = 1.5 * max(abs(s.real) for _, s in tr.features) + TAIL_DECAY / z_min
+    w_max = min(TAIL_PERIODS_PER_PANEL * 2.0 * PI / D, TAIL_EFOLDS_PER_PANEL / z_min)
+    edges = sorted(b for b in bp if 0.0 <= b < q_max) + [q_max]
+    fine = [edges[0]]
+    for lo, hi in zip(edges[:-1], edges[1:], strict=True):
+        n = max(1, math.ceil((hi - lo) / w_max))
+        fine += list(np.linspace(lo, hi, n + 1)[1:])
+    x, wx = np.polynomial.legendre.leggauss(TAIL_PANEL_POINTS)
+    u, du = np.sin(0.5 * PI * x), 0.5 * PI * np.cos(0.5 * PI * x) * wx
+    lo, hi = np.array(fine[:-1]), np.array(fine[1:])
+    c, h = 0.5 * (lo + hi), 0.5 * (hi - lo)
+    q = (c[:, None] + h[:, None] * u).ravel()
+    w = (h[:, None] * du).ravel()
+    return np.concatenate([-q[::-1], q]), np.concatenate([w[::-1], w])
+
+
+def _downward_power(
+    q: np.ndarray,
+    w: np.ndarray,
+    A: np.ndarray,
+    wnum_bg: complex,
+    eps_rel: complex,
+    pol: int,
+) -> float:
+    """``P_down = (1/8π)·Σ w·Re w_bot·|τ·A|²``, the power through the interface.
+
+    ``w_bot = α_bot`` (TE) or ``α_bot/ε_bot`` (TM), in G14's units, where the
+    unbounded-cover dipole emits 1/4. ``A`` is any plane-wave spectrum, so a
+    dipole's own ``A_dip`` can be added by the caller.
+
+    Args:
+        q: Flux nodes (:func:`_flux_rule`).
+        w: Their weights.
+        A: Spectrum ``A(q, α₁(q))`` at the nodes.
+        wnum_bg: Background wavenumber (real).
+        eps_rel: Substrate permittivity relative to the cover (not PEC).
+        pol: 2 = TE, 1 = TM.
+
+    Returns:
+        The downward power.
+    """
+    tr = Transmission.half_space(pol, wnum_bg, eps_rel, 0.0)
+    a_bot = alpha(q, tr.k_bot)
+    w_bot = (a_bot if pol == 2 else a_bot / tr.eps_bot).real
+    return float(np.sum(w * w_bot * np.abs(tr.tau(q) * A) ** 2) / (8.0 * PI))
+
+
+def _downward_cross_section(
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    eps_rel: complex | None,
+    pol: int,
+    z_int: float,
+) -> float:
+    """``σ_sca,down = P_down/Re k`` (nm) from the interface flux (D4).
+
+    The scattered spectrum only, which parallels ``σ_sca,up``. Valid for every
+    passive substrate, lossy and metallic included; real ``k`` only.
+
+    Args:
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        wnum_bg: Background wavenumber (real).
+        eps_rel: Substrate permittivity relative to the cover, or ``None``.
+        pol: 2 = TE, 1 = TM.
+        z_int: Interface height (nm).
+
+    Returns:
+        The cross-section; exactly 0.0 for PEC and a lossless ``Re ε ≤ 0``,
+        which take no power (D21).
+    """
+    if eps_rel is None or (eps_rel.imag == 0.0 and eps_rel.real <= 0.0):
+        return 0.0
+    h_min = min(float(g.min()) for _, g, *_ in boundaries) - z_int
+    z_min = 2.0 * h_min
+    f_all = np.concatenate([b[0] for b in boundaries])
+    q, w = _flux_rule(wnum_bg, eps_rel, pol, max(float(np.ptp(f_all)), z_min), z_min)
+    A = _spectrum(q, alpha(q, wnum_bg), boundaries, z_int)
+    return _downward_power(q, w, A, wnum_bg, eps_rel, pol) / float(np.real(wnum_bg))
 
 
 def _check_far_field_below(eps_rel: complex | None) -> None:

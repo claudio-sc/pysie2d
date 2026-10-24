@@ -29,6 +29,7 @@ from .background import HalfSpace
 from .fields import (
     _check_far_field_below,
     _cross_sections,
+    _downward_cross_section,
     _downward_far_field,
     _far_field_at,
     _representation_at,
@@ -603,7 +604,7 @@ class ClusterScatterResult:
         angle: Plane-wave incidence angle in degrees (0.0 for a dipole solve).
         background: The substrate the cluster sits on, or ``None``. With one,
             ``far_field`` is the upward amplitude and ``cross_sections`` returns
-            ``{'c_sca_up', 'c_abs'}``.
+            ``{'c_sca_up', 'c_sca_down', 'c_abs'}``.
     """
 
     def __init__(
@@ -758,7 +759,7 @@ class ClusterScatterResult:
 
         Returns:
             ``{"c_sca", "c_ext", "c_abs"}`` in nm. With a background, instead
-            ``{"c_sca_up", "c_abs"}`` (see
+            ``{"c_sca_up", "c_sca_down", "c_abs"}`` (see
             :meth:`pysie2d.solver.ScatterResult.cross_sections`); the free-space
             keys are absent rather than raising.
 
@@ -772,7 +773,11 @@ class ClusterScatterResult:
                 f"{self._excitation} excitation"
             )
         if self.background is not None:
-            return _upward_cross_sections(n_angles, *self._substrate())
+            args = self._substrate()
+            c = _upward_cross_sections(n_angles, *args)
+            if np.imag(self.wavelength) == 0.0:  # D18: no real-axis flux otherwise
+                c["c_sca_down"] = _downward_cross_section(*args)
+            return c
         amp, _ = self.far_field(n_angles)
         # π − α lands on the far-field grid only by accident, so the forward
         # direction is evaluated exactly rather than picked off it.

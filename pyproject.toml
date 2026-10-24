@@ -53,6 +53,9 @@ convention = "google"
 # Same, and T, D, X, Z are the hump length, extent and separations of the
 # holomorphy note's path construction.
 "src/pysie2d/layered.py" = ["N803", "N806"]
+# Same: D is the source extent and A(q, α₁) the plane-wave spectrum of the
+# transmitted-field formulas (transmitted-spec §2).
+"src/pysie2d/fields.py" = ["N803", "N806"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

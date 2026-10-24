@@ -3,9 +3,11 @@
 Over a PEC plane nothing enters the substrate, so the upward far field must equal
 the four-cylinder mirror reference's on the upper half circle, and a dipole's
 power must balance exactly. Over a dielectric or a metal power also leaves
-downward, so the same balance must come up short — a test that could not fail if
-the upward bookkeeping were wrong.
+downward, and with the interface flux P_down (v1.1, GT7) the balance becomes an
+equality again: P_up + P_down + P_abs = P_in.
 """
+
+import math
 
 import numpy as np
 import pytest
@@ -19,8 +21,15 @@ from pysie2d import (
     relative_ldos,
 )
 from pysie2d.cluster import ClusterScatterResult
-from pysie2d.fields import _absorbed_cross_section, _upward_amplitude
-from pysie2d.layered import fresnel_r
+from pysie2d.fields import (
+    _absorbed_cross_section,
+    _downward_amplitude,
+    _downward_power,
+    _flux_rule,
+    _spectrum,
+    _upward_amplitude,
+)
+from pysie2d.layered import Transmission, alpha, fresnel_r
 from pysie2d.reference import mie
 from test_halfspace import CASES, RAD, pec_pair
 from test_halfspace_cluster import build, solve_pair
@@ -115,21 +124,34 @@ def test_flux_absorption_equals_v08_difference_on_the_readme_star(pol):
 # 3.7e-14 relative (lossy particle, TE and TM, n_angles 64/200/500 all at or
 # below 2e-14); bar 10× the worst. The spec's stop line is 1e-10.
 RTOL_BALANCE = 4e-13
-# Over glass and silver the substrate takes power: measured shortfall ≥ 3.3e-3
-# of P_in (silver, TE, where the field barely penetrates) up to 0.48. 1e-3 is
-# below the smallest measured value and nine decades above the PEC residual, so
-# the inequality cannot hold by round-off alone.
-MIN_SHORTFALL = 1e-3
+
+
+def _upward_rule(eps_rel, n_angles):
+    """Gauss–Legendre on [−π/2, π/2], split at ±θ_c when 0 < Re ε_rel < 1.
+
+    The v1.0.1 rule of ``_upward_cross_sections`` (finding 1): unsplit, the
+    dipole P_up over a substrate thinner than the cover is off by 3e-5 of P_in.
+    """
+    if eps_rel is None or not 0.0 < eps_rel.real < 1.0:
+        x, w = np.polynomial.legendre.leggauss(n_angles)
+        return 0.5 * PI * x, 0.5 * PI * w
+    theta_c = float(np.arcsin(np.sqrt(eps_rel.real)))
+    edges = [-0.5 * PI, -theta_c, theta_c, 0.5 * PI]
+    th, wt = [], []
+    for lo, hi in zip(edges[:-1], edges[1:], strict=True):
+        x, w = np.polynomial.legendre.leggauss(math.ceil(n_angles * (hi - lo) / PI))
+        c, h = 0.5 * (hi + lo), 0.5 * (hi - lo)
+        th.append(c + h * np.sin(0.5 * PI * x))
+        wt.append(h * 0.5 * PI * np.cos(0.5 * PI * x) * w)
+    return np.concatenate(th), np.concatenate(wt)
 
 
 def _powers(solver, wavelength, xs, zs, n_angles=500):
     res = solver.scatter_dipole(wavelength, xs, zs)
     k, pol, bg = res.wnum_bg, solver.material.pol, solver.background
-    r_of = lambda th: fresnel_r(  # noqa: E731
-        k * np.sin(th), k, bg.eps_rel(solver.material.n_clad, wavelength), pol
-    )
-    x, w = np.polynomial.legendre.leggauss(n_angles)
-    th = 0.5 * PI * x
+    eps_rel = bg.eps_rel(solver.material.n_clad, wavelength)
+    r_of = lambda th: fresnel_r(k * np.sin(th), k, eps_rel, pol)  # noqa: E731
+    th, w = _upward_rule(eps_rel, n_angles)
     a_up = _upward_amplitude(th, *res._substrate())
     # The dipole's own field upward, plus its direct reflection off the interface.
     z_img = 2 * bg.z_int - zs
@@ -137,7 +159,7 @@ def _powers(solver, wavelength, xs, zs, n_angles=500):
         -1j * k * (xs * np.sin(th) + z_img * np.cos(th))
     )
     g, nn = solver.geometry, solver.geometry.n_pts
-    p_up = np.sum(0.5 * PI * w * np.abs(s + a_up) ** 2) / (8 * PI)
+    p_up = np.sum(w * np.abs(s + a_up) ** 2) / (8 * PI)
     p_abs = -np.imag(g.delt * np.sum(np.conj(res.ei[:nn]) * res.ei[nn:]))
     p_in = relative_ldos(solver, wavelength, xs, zs) / 4
     return p_up, p_abs, p_in
@@ -159,15 +181,89 @@ def test_dipole_power_balances_exactly_over_pec(pol):
     assert abs(p_up + p_abs - p_in) / p_in < RTOL_BALANCE
 
 
+def _p_down(solver, wavelength, xs, zs):
+    """Dipole P_down by interface flux: the scattered spectrum plus A_dip."""
+    res = solver.scatter_dipole(wavelength, xs, zs)
+    bnds, k, eps_rel, pol, z_int = res._substrate()
+    g = solver.geometry
+    h_min = min(g.g.min(), zs) - z_int  # the lowest source of either kind
+    extent = max(np.ptp(np.r_[g.f, xs]), 2 * h_min)
+    q, w = _flux_rule(k, eps_rel, pol, extent, 2 * h_min)
+    a1 = alpha(q, k)
+    # (i/4)·H₀ has unit far-field amplitude, so A_dip is the bare plane wave.
+    spec = _spectrum(q, a1, bnds, z_int) + np.exp(-1j * q * xs + 1j * a1 * (zs - z_int))
+    return _downward_power(q, w, spec, k, eps_rel, pol)
+
+
+# GT7: with the flux P_down the balance closes over every passive substrate.
+# Measured worst 8.7e-14 of P_in (silver TM; glass 1.1e-14, low-n 6.8e-15,
+# lossy 1.2e-14, ε = −1 2.0e-14). Bar 1e-12, the spec's. P_down is 0.12–0.48 of
+# P_in except silver TE (3.3e-3) and the lossless metal (0), so a missing or
+# mis-normalised P_down fails by decades. TM over a lossless ε_rel < −1 is
+# excluded (D12): the surface plasmon carries 2.5 % of P_in along the interface
+# to infinity, in none of the three terms (finding 2).
+RTOL_BALANCE_SUBSTRATE = 1e-12
+
+
 @pytest.mark.parametrize("pol", [2, 1])
 @pytest.mark.parametrize(
-    "background", [HalfSpace(2.25), HalfSpace(-18.3 + 0.48j)], ids=["glass", "silver"]
+    "background",
+    [
+        HalfSpace(2.25),
+        HalfSpace(1.0),
+        HalfSpace(2.25 + 0.1j),
+        HalfSpace(-18.3 + 0.48j),
+        HalfSpace(-1.0),
+    ],
+    ids=["glass", "low-n", "lossy", "silver", "metal-1"],
 )
-def test_dipole_power_falls_short_of_the_input_over_a_lossy_or_open_substrate(
-    pol, background
-):
-    p_up, p_abs, p_in = _powers(_dipole_solver(pol, background), 633.0, 60.0, 330.0)
-    assert (p_in - p_up - p_abs) / p_in > MIN_SHORTFALL
+def test_dipole_power_balances_with_the_flux_into_the_substrate(pol, background):
+    solver = _dipole_solver(pol, background)
+    p_up, p_abs, p_in = _powers(solver, 633.0, 60.0, 330.0)
+    p_down = _p_down(solver, 633.0, 60.0, 330.0)
+    assert abs(p_up + p_down + p_abs - p_in) / p_in < RTOL_BALANCE_SUBSTRATE
+
+
+# GT6: over a lossless dielectric the flux equals the far-field integral
+# (1/8π)·w_far·∫|a_down|² dθ, w_far = 1 (TE), 1/ε (TM), split at the substrate
+# critical angles with the sine map, 400 nodes per panel. Two quadratures of
+# different form (q on the real axis, θ on the lower half circle). Measured
+# 2.6e-14 (glass and low-n, TE/TM). Bar 3e-13, the spec's.
+RTOL_FLUX_FAR = 3e-13
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("eps_sub", [2.25, 1.0], ids=["glass", "low-n"])
+def test_flux_into_a_lossless_substrate_equals_the_far_field_integral(pol, eps_sub):
+    xs, zs = 60.0, 330.0
+    solver = _dipole_solver(pol, HalfSpace(eps_sub))
+    res = solver.scatter_dipole(633.0, xs, zs)
+    bnds, k, eps_rel, _, z_int = res._substrate()
+    tr = Transmission.half_space(pol, k, eps_rel, z_int)
+    k_bot = tr.k_bot
+    edges = [0.5 * PI, 1.5 * PI]
+    if k_bot.real > k:  # α₁(k_bot sin θ) turns evanescent past θ_c
+        theta_c = np.arcsin(k / k_bot.real)
+        edges += [PI - theta_c, PI + theta_c]
+    x, wx = np.polynomial.legendre.leggauss(400)
+    total = 0.0
+    for lo, hi in zip(sorted(edges)[:-1], sorted(edges)[1:], strict=True):
+        c, h = 0.5 * (lo + hi), 0.5 * (hi - lo)
+        th = c + h * np.sin(0.5 * PI * x)
+        wt = h * 0.5 * PI * np.cos(0.5 * PI * x) * wx
+        q = k_bot * np.sin(th)
+        a_bot = alpha(q, k_bot)
+        a_dip = (
+            a_bot
+            * tr.tau(q)
+            * np.exp(1j * a_bot * z_int)
+            * np.exp(-1j * q * xs + 1j * alpha(q, k) * (zs - z_int))
+        )
+        amp = _downward_amplitude(th, bnds, k, eps_rel, pol, z_int) + a_dip
+        total += np.sum(wt * np.abs(amp) ** 2)
+    p_far = (1.0 if pol == 2 else 1.0 / eps_rel.real) * total / (8 * PI)
+    p_flux = _p_down(solver, 633.0, xs, zs)
+    assert abs(p_flux - p_far) / p_flux < RTOL_FLUX_FAR
 
 
 # --- result keys and the cluster ----------------------------------------------------
@@ -176,11 +272,12 @@ def test_dipole_power_falls_short_of_the_input_over_a_lossy_or_open_substrate(
 def test_result_keys_change_with_a_background():
     solver = _dipole_solver(2, HalfSpace(2.25))
     res = solver.scatter(633.0, angle=20.0)
-    assert set(res.cross_sections()) == {"c_sca_up", "c_abs"}
+    assert set(res.cross_sections()) == {"c_sca_up", "c_sca_down", "c_abs"}
     eff = res.efficiencies()
-    assert set(eff) == {"qsca_up", "qabs"}
+    assert set(eff) == {"qsca_up", "qsca_down", "qabs"}
     c = res.cross_sections()
     assert eff["qsca_up"] == pytest.approx(c["c_sca_up"] / (2 * 100.0), rel=1e-15)
+    assert eff["qsca_down"] == pytest.approx(c["c_sca_down"] / (2 * 100.0), rel=1e-15)
     assert eff["qabs"] == pytest.approx(c["c_abs"] / (2 * 100.0), rel=1e-15)
     # And the cluster result reports the same pair, equal for a one-particle cluster.
     from pysie2d import ClusterBIESolver
@@ -191,8 +288,11 @@ def test_result_keys_change_with_a_background():
         pol=2,
         background=solver.background,
     ).scatter(633.0, angle=20.0)
-    assert set(cl.cross_sections()) == {"c_sca_up", "c_abs"}
+    assert set(cl.cross_sections()) == {"c_sca_up", "c_sca_down", "c_abs"}
     assert cl.cross_sections()["c_sca_up"] == pytest.approx(c["c_sca_up"], rel=1e-12)
+    assert cl.cross_sections()["c_sca_down"] == pytest.approx(
+        c["c_sca_down"], rel=1e-12
+    )
 
 
 def test_cross_section_quadrature_converges_in_the_number_of_angles():
@@ -231,3 +331,29 @@ def test_substrate_equal_to_the_cladding_has_no_nan_at_grazing():
     res = _dipole_solver(2, HalfSpace(1.33**2)).scatter(633.0)
     amp, _ = res.far_field(101)
     assert np.all(np.isfinite(amp))
+
+
+def test_downward_cross_section_is_absent_at_complex_wavelength():
+    # D18: the real-axis flux is undefined when Im k < 0, so the key is absent
+    # rather than raising, as v0.9 does for the free-space keys.
+    from pysie2d.solver import ScatterResult
+
+    solver = _dipole_solver(2, HalfSpace(2.25))
+    res = solver.scatter(633.0, angle=20.0)
+    cplx = ScatterResult(
+        res.ei, solver.geometry, solver.material, 633.0 + 31.6j, 20.0, solver.background
+    )
+    assert set(cplx.cross_sections()) == {"c_sca_up", "c_abs"}
+    assert set(cplx.efficiencies()) == {"qsca_up", "qabs"}
+
+
+@pytest.mark.parametrize(
+    "background", [HalfSpace.pec(), HalfSpace(-4.0)], ids=["pec", "metal-4"]
+)
+def test_downward_cross_section_is_exactly_zero_where_nothing_enters(background):
+    # D21 / GT8: PEC and a lossless Re ε ≤ 0 take no power, with no integral,
+    # so the plasmon leak of a lossless TM metal (finding 2) does not show up as
+    # a spurious c_sca_down either.
+    for pol in (2, 1):
+        res = _dipole_solver(pol, background).scatter(633.0, angle=20.0)
+        assert res.cross_sections()["c_sca_down"] == 0.0
