@@ -197,3 +197,109 @@ def test_build_returns_none_without_an_interface_and_refuses_misplaced_points():
         Transmission.build(2, K_REAL, 2.0 + 0j, 0.0, f, g, fo, -go)
     with pytest.raises(ValueError, match="strictly above"):
         Transmission.build(2, K_REAL, 2.0 + 0j, 0.0, f, -g, fo, go)
+
+
+# --- eval_field below the interface (commit 2) ----------------------------------
+
+
+def _g14(pol, background):
+    geo = Geometry.gielis(rad=100.0, n_pts=256, m=0, x0=0.0, z0=115.0)
+    mat = Material(n_core=2.0, n_clad=N_CLAD, pol=pol, epsi=0.5)
+    return BIESolver(geo, mat, background)
+
+
+# Scattered field at z_int ± δ: ψ(+δ) − ψ(−δ) = a·δ + b·δ² + …, so the Richardson
+# combination 2·J(δ/2) − J(δ) of that difference is O(δ²) if ψ is continuous and
+# O(1) if any sign or phase reference in the wiring is wrong. Measured at
+# δ = 0.4 nm, relative to max|ψ|: glass 1.9e-6, silver 7.9e-5 (TE/TM, real and
+# complex λ), falling exactly 4× per halving of δ. Bar 10× the worst.
+RTOL_EVAL_CONTINUITY = 8e-4
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("lam", [LAM, LAM + 31.6j], ids=["real", "complex"])
+@pytest.mark.parametrize("name", ["glass", "silver"])
+def test_scattered_field_below_continues_the_scattered_field_above(name, lam, pol):
+    from pysie2d.solver import ScatterResult
+
+    solver = _g14(pol, HalfSpace(SUBSTRATES[name]))
+    real = solver.scatter(LAM, 20.0)
+    # Any boundary data is a valid density; re-wrapping at complex λ exercises
+    # the complex-k path (D18) without a complex solve.
+    res = ScatterResult(
+        real.ei, solver.geometry, solver.material, lam, 20.0, solver.background
+    )
+    x = np.array([-150.0, 0.0, 80.0, 300.0])
+
+    def jump(d):
+        return res.eval_field(x, np.full(4, d)) - res.eval_field(x, np.full(4, -d))
+
+    scale = np.max(np.abs(res.eval_field(x, np.full(4, 1.0))))
+    resid = np.max(np.abs(2 * jump(0.2) - jump(0.4))) / scale
+    assert resid < RTOL_EVAL_CONTINUITY
+
+
+@pytest.mark.parametrize(
+    "background",
+    [HalfSpace(2.25), HalfSpace(-18.3 + 0.48j), HalfSpace.pec(), HalfSpace(1.33**2)],
+    ids=["glass", "silver", "pec", "eps1"],
+)
+def test_cover_points_are_bit_identical_with_or_without_substrate_points(background):
+    # GT11: the cover path is the v0.9 one; adding points below must not move
+    # its path, centre or GEMM, so the cover values are equal bit for bit. One
+    # cover point is inside the particle. The one-particle cluster must give the
+    # same substrate field as the single-particle result, also bit for bit.
+    from pysie2d import Cluster, ClusterBIESolver
+
+    solver = _g14(1, background)
+    res = solver.scatter(LAM, 20.0)
+    cl = ClusterBIESolver(
+        Cluster([solver.geometry]), [solver.material], pol=1, background=background
+    ).scatter(LAM, 20.0)
+    xa, za = (
+        np.array([-300.0, 0.0, 50.0, 400.0, 0.0]),
+        np.array([300, 40, 500, 90, 115.0]),
+    )
+    xb, zb = np.array([0.0, 100.0, -200.0]), np.array([-5.0, -50.0, -300.0])
+    for r in (res, cl):
+        mixed = r.eval_field(np.r_[xa, xb], np.r_[za, zb])
+        assert np.array_equal(mixed[:5], r.eval_field(xa, za))
+    assert np.array_equal(
+        res.eval_field(xb, zb), cl.eval_field(np.r_[xa, xb], np.r_[za, zb])[5:]
+    )
+    with pytest.raises(ValueError, match="exactly at the interface"):
+        cl.eval_field(np.array([0.0]), np.array([0.0]))  # D17, as the single result
+
+
+def test_eval_field_without_a_background_is_the_bare_representation():
+    # GT11, background=None: no split by z at all, so z < 0 is an ordinary point.
+    from pysie2d.fields import eval_field
+
+    res = _g14(2, None).scatter(LAM, 20.0)
+    geo, mat = res.geometry, res.material
+    x, z = np.array([0.0, 200.0, 0.0]), np.array([-50.0, 300.0, 115.0])
+    ref = eval_field(
+        res.ei,
+        geo.n_pts,
+        geo.f,
+        geo.df,
+        geo.g,
+        geo.dg,
+        geo.delt,
+        res.wnum_bg,
+        x,
+        z,
+        ri=mat.nc,
+    )
+    assert np.array_equal(res.eval_field(x, z), ref)
+
+
+def test_field_below_pec_is_zero_and_without_an_interface_is_free_space():
+    xb, zb = np.array([0.0, 100.0]), np.array([-5.0, -300.0])
+    assert np.array_equal(
+        _g14(2, HalfSpace.pec()).scatter(LAM, 20.0).eval_field(xb, zb), np.zeros(2)
+    )
+    # ε_sub = n_clad²: ε_rel == 1 exactly, the free-space representation (D19).
+    plain = _g14(2, None).scatter(LAM, 20.0)
+    same = _g14(2, HalfSpace(N_CLAD**2)).scatter(LAM, 20.0)
+    assert np.array_equal(plain.eval_field(xb, zb), same.eval_field(xb, zb))

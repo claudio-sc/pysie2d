@@ -773,16 +773,70 @@ class ClusterScatterResult:
             complex (M,) field at each point.
 
         Raises:
-            ValueError: With a background, a point at or below the interface.
+            ValueError: With a background, a point exactly at the interface
+                (D17: the field is continuous there, but step off it).
 
         With a background this is the **scattered** field: outside every
         particle the representation integral gains the reflected-image term of
         each boundary, ``−Σ delt·((∂x'G_ind·dg − ∂z'G_ind·df)·φ + G_ind·χ)``.
         Interior points are unchanged. The total exterior field is scattered +
         incident + reflected incident; the last two are the caller's.
+
+        Below the interface it is the transmitted term of every boundary,
+        ``−Σ delt·((∂x'G_t·dg − ∂z'G_t·df)·φ + G_t·χ)``, with no free-space
+        term; 0 over PEC (D14), and the free-space representation at
+        ``ε_rel = 1`` exactly (D19). Particles are in the cover, so no
+        substrate point needs classifying. Points above the interface are
+        computed exactly as without any substrate point, bit for bit.
         """
         x = np.asarray(x, dtype=float).ravel()
         z = np.asarray(z, dtype=float).ravel()
+        if self.background is not None:
+            z_int = self.background.z_int
+            if np.any(z == z_int):
+                raise ValueError(
+                    f"observation point exactly at the interface z_int = {z_int}: "
+                    "step off it (the field is continuous there)"
+                )
+            below = z < z_int
+            if below.any():
+                field = np.empty(z.size, dtype=complex)
+                if not below.all():
+                    field[~below] = self._cover_field(x[~below], z[~below])
+                field[below] = self._substrate_field(x[below], z[below])
+                return field
+        return self._cover_field(x, z)
+
+    def _substrate_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Scattered field at points below the interface."""
+        assert self.background is not None
+        geoms = self.cluster.geometries
+        eps_rel = self.background.eps_rel(self.materials[0].n_clad, self.wavelength)
+        if eps_rel is None:
+            return np.zeros(x.size, dtype=complex)
+        # One path for every particle: sized for the whole cluster's extent.
+        tr = layered.Transmission.build(
+            self.pol,
+            self.wnum_bg,
+            eps_rel,
+            self.background.z_int,
+            np.concatenate([gp.f for gp in geoms]),
+            np.concatenate([gp.g for gp in geoms]),
+            x,
+            z,
+        )
+        if tr is None:  # ε_rel = 1: no interface, the free-space representation
+            return self._cover_field(x, z)
+        pts = layered.Points(x, z)
+        field = np.zeros(x.size, dtype=complex)
+        for p, gp in enumerate(geoms):
+            m1, m2 = tr.blocks(pts, gp)
+            ei_p = self.ei_particle(p)
+            field -= m1 @ ei_p[: gp.n_pts] + m2 @ ei_p[gp.n_pts :]
+        return field
+
+    def _cover_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Field at points above the interface (the v0.9 path)."""
         k = _real_if_real(self.wnum_bg)
         refl = None
         if self.background is not None:

@@ -198,7 +198,8 @@ class ScatterResult:
             complex ndarray, same shape as x/z.
 
         Raises:
-            ValueError: With a background, a point at or below the interface.
+            ValueError: With a background, a point exactly at the interface
+                (D17: the field is continuous there, but step off it).
 
         With a background this is still the **scattered** field: the free-space
         representation plus the reflected-image term
@@ -206,10 +207,59 @@ class ScatterResult:
         Interior points are unchanged, because the interior representation uses
         the core Green function only. The total exterior field is scattered +
         incident + reflected incident; the last two are the caller's.
+
+        Below the interface it is the transmitted term alone,
+        ``−Σ delt·((∂x'G_t·dg − ∂z'G_t·df)·φ + G_t·χ)``, with no free-space
+        term; 0 over PEC (D14), and the free-space representation at
+        ``ε_rel = 1`` exactly (D19). Points above the interface are computed
+        exactly as without any substrate point, bit for bit.
         """
-        g = self.geometry
         x = np.asarray(x, dtype=float)
         z = np.asarray(z, dtype=float)
+        if self.background is not None:
+            z_int = self.background.z_int
+            zf = z.ravel()
+            if np.any(zf == z_int):
+                raise ValueError(
+                    f"observation point exactly at the interface z_int = {z_int}: "
+                    "step off it (the field is continuous there)"
+                )
+            below = zf < z_int
+            if below.any():
+                xf = x.ravel()
+                field = np.empty(zf.size, dtype=complex)
+                if not below.all():
+                    field[~below] = self._cover_field(xf[~below], zf[~below])
+                field[below] = self._substrate_field(xf[below], zf[below])
+                return field
+        return self._cover_field(x, z)
+
+    def _substrate_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Scattered field at points below the interface (1-D arrays)."""
+        g = self.geometry
+        assert self.background is not None
+        eps_rel = self.background.eps_rel(self.material.n_clad, self.wavelength)
+        if eps_rel is None:
+            return np.zeros(x.size, dtype=complex)
+        tr = layered.Transmission.build(
+            self.material.pol,
+            self.wnum_bg,
+            eps_rel,
+            self.background.z_int,
+            g.f,
+            g.g,
+            x,
+            z,
+        )
+        if tr is None:  # ε_rel = 1: no interface, the free-space representation
+            return self._cover_field(x, z)
+        m1, m2 = tr.blocks(layered.Points(x, z), g)
+        n = g.n_pts
+        return -(m1 @ self.ei[:n] + m2 @ self.ei[n:])
+
+    def _cover_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
+        """Scattered field at points above the interface (the v0.9 path)."""
+        g = self.geometry
         refl = None
         if self.background is not None:
             refl = layered.Reflection.build(
