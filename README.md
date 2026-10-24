@@ -360,7 +360,7 @@ usable 2.7 s and 625 MiB ([performance](https://github.com/claudio-sc/pysie2d/bl
 
 `background=HalfSpace(eps_sub, z_int)` on `BIESolver`, `ClusterBIESolver` and
 `QNMSolver` puts a half-space below the horizontal plane `z = z_int`, with the
-particle (and every source and observation point) above it. The feature is
+particle and every source above it; fields are evaluated on both sides. The feature is
 additive: without the argument nothing changes, bit for bit.
 
 ```python
@@ -372,7 +372,7 @@ silver = HalfSpace(-18.3 + 0.48j, z_int=0.0)        # absolute complex ε; Re ε
 solver = BIESolver(geom, mat, background=silver)
 
 res = solver.scatter(wavelength=633.0, angle=20.0)  # |angle| < 90°, from the cover
-print(res.cross_sections())                         # {'c_sca_up', 'c_abs'}, nm
+print(res.cross_sections())                         # {'c_sca_up', 'c_sca_down', 'c_abs'}, nm
 print(relative_ldos(solver, 633.0, 60.0, 330.0))    # LDOS above the interface
 ```
 
@@ -391,16 +391,25 @@ rule returns the *incoming* wave there ([conventions](https://github.com/claudio
 
 What changes on the results:
 
-- `far_field()` is the **upward** amplitude on `[−π/2, π/2]`; there is no
-  transmitted far field.
-- `cross_sections()` returns `{'c_sca_up', 'c_abs'}` and `efficiencies()`
-  `{'qsca_up', 'qabs'}` — the free-space keys are absent, not raising, because
-  `c_ext` and the total `c_sca` are undefined when power also enters the
-  substrate. `c_sca_up` omits that power, so it is incomplete by construction;
-  `c_abs` comes from the boundary flux and is exact.
-- `eval_field` returns the scattered field; the incident and reflected-incident
-  waves are the caller's. `relative_ldos` is still normalised to the unbounded
-  cover, so it equals the substrate-only enhancement with no particle.
+- `far_field()` is the **upward** amplitude on `[−π/2, π/2]`;
+  `far_field_down()` is the transmitted one on `[π/2, 3π/2]`, normalised with
+  the substrate wavenumber. It exists only below a lossless dielectric and
+  raises `NoFarFieldError` (a `ValueError`) over PEC, a lossy substrate or
+  `Re ε ≤ 0`.
+- `cross_sections()` returns `{'c_sca_up', 'c_sca_down', 'c_abs'}` and
+  `efficiencies()` `{'qsca_up', 'qsca_down', 'qabs'}` — the free-space keys are
+  absent, not raising, because `c_ext` and the total `c_sca` are undefined when
+  the incident wave is reflected. `c_sca_down` is the scattered power into the
+  substrate from the interface flux, so it covers lossy and metallic substrates
+  too (absent at complex λ); with it a dipole's power balances,
+  `P_up + P_down + P_abs = P_in`, to 1e-13. The one leak is a lossless TM metal
+  with `Re ε < −n_clad²`, whose surface plasmon carries power along the
+  interface. `c_abs` comes from the boundary flux and is exact.
+- `eval_field` returns the scattered field, above the interface and below it
+  (the transmitted part; 0 below PEC); `incident_field` returns the background
+  field — incident plus reflected above, transmitted below — so that their sum
+  is the total field everywhere. `relative_ldos` is still normalised to the
+  unbounded cover, so it equals the substrate-only enhancement with no particle.
 - `multipoles()` and `QNMResult.sensitivity` raise `NotImplementedError`;
   `QNMResult.refine` works.
 

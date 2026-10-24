@@ -15,6 +15,8 @@ Public API:
     InterfaceGapWarning, SommerfeldPrecisionWarning: the half-space guards — a
         boundary too coarse for its distance to the interface, and a reflected
         block expected to lose digits.
+    NoFarFieldError: a ``ValueError`` raised by ``far_field_down`` when the
+        substrate carries no wave to infinity (PEC, absorbing, ``Re ε ≤ 0``).
     BIESolver: solver façade; call ``scatter``/``scatter_dipole`` to obtain a
         ``ScatterResult``.
     ScatterResult: carries the solution and exposes far/near-field analysis.
@@ -82,7 +84,7 @@ from .kernels import (
     assemble_matrix,
     assemble_matrix_reference,
 )
-from .layered import InterfaceGapWarning, SommerfeldPrecisionWarning
+from .layered import InterfaceGapWarning, NoFarFieldError, SommerfeldPrecisionWarning
 from .material import Material
 from .multipole import Multipoles
 from .multipole import decompose as multipole_decompose
@@ -103,7 +105,7 @@ from .solver import (
 )
 from .sources import line_dipole_rhs, plane_wave_rhs
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 __all__ = [
     "BIESolver",
@@ -119,6 +121,7 @@ __all__ = [
     "InterfaceGapWarning",
     "Material",
     "Multipoles",
+    "NoFarFieldError",
     "Parametrisation",
     "QNMResult",
     "QNMSolver",

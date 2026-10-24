@@ -293,9 +293,12 @@ degenerate  : [ True  True]
 
 The release ships with these, and they are design boundaries rather than bugs:
 
-- **Homogeneous background only.** Slab or image backgrounds break the holomorphy
-  argument the contour method rests on, which is precisely why they are out of
-  scope.
+- **Homogeneous background or a single half-space.** Since v0.9, `QNMSolver`
+  takes `background=HalfSpace(...)` for a single particle, on a deformed
+  Sommerfeld path that keeps M(λ) holomorphic over the search box
+  ([sommerfeld-holomorphy.md](design/sommerfeld-holomorphy.md)). The ε of the
+  substrate must not depend on λ, and clusters are not supported. Multilayer and
+  slab backgrounds are not supported for QNMs.
 - **Mode fields are not normalised.** `res.vectors` are raw `φ`/`χ` columns in
   the driven solver's layout, scaled to unit columns. A proper QNM norm is a
   separate piece of physics and is not implemented.

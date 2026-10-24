@@ -598,7 +598,7 @@ rejected by the formulation and not merely by an implementation limit.
 `HalfSpace(eps_sub, z_int)` puts a substrate **below** the horizontal plane
 `z = z_int` and the cladding above it; every particle, source and observation
 point lies strictly above (`z > z_int`), and `layered.Reflection.build` raises on
-anything at or below. The reflected Green function, with `X = x − x'` and
+anything at or below. (v1.1 adds observation points below; §16.) The reflected Green function, with `X = x − x'` and
 `Z = z + z' − 2·z_int > 0`, is
 
     G_ind = (i/4π) ∫_Γ R(q)/α₁ · exp(i q X + i α₁ Z) dq,     α_j = √(k_j² − q²)
@@ -658,7 +658,8 @@ interface is a one-line ratio the user can take.
 amplitude `a_up(θ) = A(θ) + r(k sin θ)·A(π − θ; g → g − 2·z_int)` on
 `[−π/2, π/2]`, about the origin; `r` is the real-axis Fresnel coefficient and the
 image term shifts only `g`, not `dg`. `cross_sections()` returns
-`{'c_sca_up', 'c_abs'}` and `efficiencies()` `{'qsca_up', 'qabs'}`; the v0.8 keys
+`{'c_sca_up', 'c_abs'}` and `efficiencies()` `{'qsca_up', 'qabs'}` (v1.1 adds
+`c_sca_down`/`qsca_down`, §16); the v0.8 keys
 are **absent**, not raising, because `c_ext` and the total `c_sca` are not defined
 when power also enters the substrate and the incident wave is reflected.
 `c_sca_up` omits both, so it is incomplete by construction. Its angular
@@ -669,7 +670,7 @@ split at the cover's critical angle `±asin √(Re ε_rel)`, where `r(k sin θ)`
 −(1/k)·Im Σ delt·conj(φ)·χ` is the boundary flux with no ε factor (the exterior
 medium is the background) and is exact with a substrate. Over PEC a dipole's
 power balances, `P_up + P_abs = P_in` *(measured: 3.7e-14)*; over any dielectric
-or metal it comes up short.
+or metal it comes up short by `P_down` (§16).
 
 **This is a 2-D, line-source model.** Absolute LDOS near an interface is not a
 3-D number; `Q`, detunings and ratios carry over.
@@ -693,6 +694,105 @@ the TE `n = 0` mode of a rad = 100 nm, `n = 3` circle, isolated at
 1 µm.)* And over a lossy or dielectric substrate there is no independent anchor
 for QNMs in this repository: the checks are consistency (the poles do not move
 when the hump depth is scaled by 1.5) until the MEEP comparison of v1.0.
+
+## 16. The transmitted field below a half-space (v1.1)
+
+Sources and particles stay in the cover; v1.1 adds observation **below**
+`z = z_int`. The spec is `docs/design/transmitted-spec.md`; the prototypes and
+measurements are in `docs/design/studies/transmitted/`.
+
+**The generic coefficient is τ = T/α₁, not T.** T carries a factor α₁ for any
+stack (`t₁₂ = 2α₁/(α₁+α₂)`), so `T/α₁` evaluated literally is 0/0 at `q = ±k₁`
+while τ is finite there. Half-space: TE `τ = 2/(α₁+α₂)`, TM `τ = 2/(α₁+α₂/ε)`,
+the admittance form of `fresnel_r`, so `T = 1 + R` and the singularities are
+R's (`+k₁`, `+k₂`, the on-sheet TM plasmon). `layered.Transmission` carries τ,
+the bottom-layer wavenumber `k_bot = k₁·√ε_bot` (principal root after the
+signed-zero normalisation of §15) and the singularity list; every transmitted
+routine is written against those and never against `eps_rel`, so a multilayer
+only supplies its own.
+
+    G_t = (i/4π) ∫_Γ τ(q)·exp(i q X + i α₁ h' + i α_bot |h|) dq
+
+on the same path Γ as §15, folded onto `q ≥ 0`, with source derivatives
+`∂x' → −iq`, `∂z' → +iα₁`. **Two phase references:** `h' = z' − z_top` (source
+height, cover side) and `|h| = z_bot − z` (observation depth, bottom layer); a
+half-space has `z_top = z_bot = z_int`. The path is sized for
+`z_min = min h' + min |h|`, the actual smallest decay length *(finding 3: sized
+larger, it truncates the TM tail; 5e-12–3e-11 at the interface)*.
+
+**Below the interface the scattered field is the transmitted term alone,**
+`ψ = −Σ delt·((∂x'G_t·dg − ∂z'G_t·df)·φ + G_t·χ)`, with no free-space term, in
+the M1/M2 block convention of §15, for both polarisations. It is exactly 0
+below PEC; at `ε_rel = 1` exactly the free-space representation is used
+(`a_down` likewise), because the formula's `2α₂/(α₁+α₂)` is 0/0 at grazing. A
+point exactly at `z = z_int` raises: the field is continuous there *(measured:
+`G_free + G_ind` against `G_t` at `z_int ± 1e-12`, ≤ 1.1e-13)*, but the user steps
+off the interface explicitly. Complex λ is accepted throughout.
+
+**Downward far field.** `far_field_down()` returns `a_down(θ)` on
+`[π/2, 3π/2]`, θ from +z, defined by
+
+    ψ ~ (i/4)·√(2/(π k_bot ρ))·e^{i(k_bot ρ − π/4)}·a_down(θ)
+
+about the origin — `far_field`'s convention with **`k_bot`**. Stationary phase
+gives `a_down = α_bot·τ·e^{iα_bot z_bot}·A(q_s, α₁(q_s))`, `q_s = k_bot sin θ`,
+with `A` the plane-wave spectrum of the boundary (`fields._spectrum`, the
+`_far_field_at` integrand at general `(q, α₁)`, referred to `z_top` so evanescent
+α₁ cannot overflow). `a_down = 0` at both grazing ends for `ε ≠ 1`. In power,
+`dP/dθ = w_far·|a_down|²/(8π)` with **`w_far = 1` (TE) and `1/ε_bot` (TM)**: TM
+flux carries the `1/ε` of `(1/ε)·∂zψ`. The far field exists only for
+`Im ε_rel = 0` **and** `Re ε_rel > 0`; PEC, an absorbing substrate and
+`Re ε ≤ 0` raise `NoFarFieldError` (a `ValueError`) naming the condition, and
+`far_field_down` without a background raises a plain `ValueError`
+(`far_field()` already covers the full circle). At complex λ over a real
+`ε > 0` it is the analytic continuation, as `far_field` is.
+
+**Power into the substrate is an interface flux, for every passive
+substrate,** lossy and metallic included — not a far-field integral:
+
+    P_down = (1/8π) ∫ Re w(q)·|τ(q)|²·|A(q, α₁(q))|² dq,   w = α_bot (TE), α_bot/ε_bot (TM)
+
+on the real axis, in G14's units (the unbounded-cover dipole emits 1/4).
+`c_sca_down = P_down/Re k₁` uses the **scattered spectrum only**, paralleling
+`c_sca_up`; a dipole's balance adds its own `A_dip = e^{−iq x_s + iα₁(z_s − z_top)}`
+(`(i/4)·H₀` has unit far-field amplitude). The rule (`fields._flux_rule`):
+breakpoints at `|Re s|` and `|Re s| ± 10^m·|Im s|`, `m = 0…6`, for every
+singularity — grading to 10³ widths left 1.0e-6 on silver + 1e-4i TM —, panels
+capped at `min(4·2π/D, 8/z_min)`, 24-point Gauss–Legendre under the sine map,
+mirrored to `q < 0` (the integrand is not even), and stopped at `Re k_bot` for
+a lossless dielectric, where `Re w ≡ 0` beyond it. With it the dipole balance
+closes, `P_up + P_down + P_abs = P_in` *(measured ≤ 8.7e-14 over glass, low-n,
+lossy, silver and ε = −1)*, and over a lossless dielectric the flux equals the
+far-field integral to 2.6e-14. PEC and a lossless `Re ε ≤ 0` return
+`c_sca_down = 0.0` exactly, with no integral. The flux is defined at real λ
+only: at complex λ `c_sca_down` and `qsca_down` are **absent**, because the
+vertical cuts cross the real axis when `Im k < 0`.
+
+**The plasmon channel.** Over a lossless metal with `Re ε_rel < −1` the TM
+surface plasmon is a real pole on the sheet and carries power along the
+interface to infinity. That power is in none of `P_up`, `P_down` or `P_abs`: at
+`ε_rel = −4` the balance is short by 2.5 %, and `c_sca_down = 0` does not
+include it. Any loss absorbs the plasmon and the flux captures it (silver closes
+to 1e-13). The guided-mode channel `P_guided` belongs to multilayers (v1.2).
+
+**`incident_field` is the background field, so that `eval_field +
+incident_field` is the total field at every point.** Plane wave
+`exp(ik(x sinθ − z cosθ))` or dipole `(i/4)·H₀(kρ)`; above the interface plus
+its Fresnel reflection, below it the transmitted wave
+`α₁·τ(q)·e^{iqx − iα₁ z_top − iα_bot(z − z_bot)}` (`q = k sin θ`,
+`α₁ = k cos θ`; under total internal reflection `α_bot = +i|…|` and it decays)
+or `G_t`; 0 below PEC; 0 inside particles, classified exactly as that result's
+`eval_field` classifies them (`_is_outside` single, ray casting cluster). On the
+boundary nodes it is the φ half of the solver's right-hand side *(measured
+≤ 1.1e-15)*. It raises at `z = z_int`, at the dipole's own position, and for a
+custom `incident_rhs`, whose field the result does not know: results therefore
+record `excitation` (`"plane_wave"`, `"dipole"`, `"custom"`) and the dipole
+`source`.
+
+**Scale covariance (§9) holds below the interface too:** the transmitted path
+and the flux rule are built in units of `k` from point-set lengths, so the
+field below and `a_down` are invariant and `c_sca_down` scales by `s`
+*(measured at s = 1.7: ≤ 1.7e-15, 3.7e-14, 8.8e-15)*.
 
 ## Formulation and validation references
 

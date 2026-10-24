@@ -175,10 +175,12 @@ def test_particle_crossing_the_interface_is_refused_at_construction():
         BIESolver(geo, Material(n_core=2.0), background=HalfSpace.pec())
 
 
-def test_eval_field_below_the_interface_is_refused():
+def test_eval_field_exactly_at_the_interface_is_refused():
+    # v1.1 evaluates below the interface; a point exactly on it still raises
+    # (D17): the field is continuous there, but the user steps off explicitly.
     res = pec_pair(2, 633.0)["res"]
-    with pytest.raises(ValueError, match="strictly above the interface"):
-        res.eval_field(np.array([0.0]), np.array([-10.0]))
+    with pytest.raises(ValueError, match="exactly at the interface"):
+        res.eval_field(np.array([0.0, 0.0]), np.array([50.0, 0.0]))
 
 
 def test_interior_field_is_unchanged_by_the_substrate_term():
