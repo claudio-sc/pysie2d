@@ -23,6 +23,7 @@ ClusterScatterResult.cross_sections(self, n_angles: int = 500) -> dict[str, floa
 ClusterScatterResult.ei_particle(self, p: int) -> numpy.ndarray
 ClusterScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
 ClusterScatterResult.far_field(self, n_angles: int = 3000) -> tuple[numpy.ndarray, numpy.ndarray]
+ClusterScatterResult.far_field_down(self, n_angles: int = 3000) -> tuple[numpy.ndarray, numpy.ndarray]
 ClusterScatterResult.resolution(self) -> tuple[float, ...]
 ClusterScatterResult.wnum_bg -> property
 DEGENERATE_COND: float = 1000000000000.0
@@ -54,6 +55,8 @@ Multipoles.c_minus -> property
 Multipoles.c_plus -> property
 Multipoles.orders -> property
 Multipoles.reconstruct(self, r: float, theta: numpy.ndarray) -> numpy.ndarray
+class NoFarFieldError
+NoFarFieldError.__init__(self, /, *args, **kwargs)
 class Parametrisation
 Parametrisation.__init__(self, a0: float, coef: numpy.ndarray, theta_fine: numpy.ndarray, t_fine: numpy.ndarray, nn_from_band: int | None, contrast_realised: float, alpha_eff: float, n_fine: int, n_terms: int) -> None
 Parametrisation.gielis(*, rad: float, a: float, b: float, m: int, n1: float, n2: float, n3: float, r_band: tuple[float, float] = (15.0, 15.0), n_core: float, wavelength_ref: float = 1550.0, alpha: float = 0.5) -> 'Parametrisation'
@@ -76,6 +79,7 @@ ScatterResult.cross_sections(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.efficiencies(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
 ScatterResult.far_field(self, n_angles: int = 3000) -> tuple[numpy.ndarray, numpy.ndarray]
+ScatterResult.far_field_down(self, n_angles: int = 3000) -> tuple[numpy.ndarray, numpy.ndarray]
 ScatterResult.multipoles(self, mmax: int = 8, *, r0: float | None = None, ntheta: int | None = None) -> pysie2d.multipole.Multipoles
 ScatterResult.size_parameter -> property
 ScatterResult.wnum_bg -> property
