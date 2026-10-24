@@ -2,7 +2,7 @@
 
 Throwaway prototypes behind [transmitted-spec.md](../../transmitted-spec.md) §3.
 They are not package code and not lint-checked (`docs/design/studies` is
-excluded from ruff). Each one runs in seconds, except `t3_far.py` (~15 s) and `t3b.py` (~6 min).
+excluded from ruff). Each one runs in seconds, except `t3_far.py` (~15 s), `t4_gemm.py` (~15 s) and `t3b.py` (~6 min).
 
 Run them from this directory, so the scripts can import `tproto`:
 
@@ -17,3 +17,5 @@ Run them from this directory, so the scripts can import `tproto`:
 | `t2c.py` | Decade grading of the flux breakpoints (10³ vs 10⁶ widths) |
 | `t3_far.py` | a_down vs the free-space far field at ε = 1; near-to-far consistency |
 | `t3b.py` | Per-angle near-to-far error on glass, inside and beyond θ_c (spec §3, §7.1) |
+| `t4_gemm.py` | Banded transmitted GEMM vs the pointwise sum; 100 × 100 substrate map vs cover map timing (spec §7.2) |
+| `t5_planewave.py` | Transmitted plane wave: interface conditions, lossless energy, TIR decay (spec §7.2) |
