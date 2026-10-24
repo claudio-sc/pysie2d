@@ -2,6 +2,40 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-10-24)
+
+### Documentation
+
+- Mark finding 1 shipped in v1.0.1
+  ([`3cdc61a`](https://github.com/claudio-sc/pysie2d/commit/3cdc61adb2b7b57d6fd2c7c0fbd4d983a4d28e75))
+
+- Resolve the glass near-to-far stall
+  ([`2264225`](https://github.com/claudio-sc/pysie2d/commit/2264225cc76152752d62e1fb1f99ea1b4841ac16))
+
+- Transmitted fields
+  ([`89ca183`](https://github.com/claudio-sc/pysie2d/commit/89ca1835f67e6285364a5bf9176b2dd79c94fb9b))
+
+- V1.1 builder contract, GEMM and plane-wave prototypes
+  ([`ef961ad`](https://github.com/claudio-sc/pysie2d/commit/ef961adc85eb525934d45a7ff6cc95899e84c1b5))
+
+### Features
+
+- Downward far field
+  ([`94e0a11`](https://github.com/claudio-sc/pysie2d/commit/94e0a11a17b9d4a99d1e58c4b7b9e30ca8a7d5f8))
+
+- Incident_field on scatter results
+  ([`52804d2`](https://github.com/claudio-sc/pysie2d/commit/52804d280e625ac21537cda28a105de1c5ccd0d0))
+
+- Near field below the interface
+  ([`7a2c47a`](https://github.com/claudio-sc/pysie2d/commit/7a2c47a35c86d02dc0f531a37704b6e93a1a1f42))
+
+- Power into the substrate
+  ([`17a8d12`](https://github.com/claudio-sc/pysie2d/commit/17a8d129850e21d26f6979e3584f91b0447e5496))
+
+- Transmitted Green function for a half-space
+  ([`dbe42ad`](https://github.com/claudio-sc/pysie2d/commit/dbe42ad8b3fb42b9c98616901f3fb0932cd4e70d))
+
+
 ## v1.0.1 (2026-10-14)
 
 ### Bug Fixes
