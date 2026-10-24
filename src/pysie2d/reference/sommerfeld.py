@@ -117,6 +117,52 @@ def g_ref(
     return total
 
 
+def gt_ref(
+    X: float,
+    hs: float,
+    hb: float,
+    k1: float,
+    eps_rel: complex,
+    pol: int,
+    which: int = 0,
+) -> complex:
+    """Transmitted Green function (or a source derivative) by real-axis quadrature.
+
+    ``G_t = (i/4π) ∫ τ(q)·exp(i q X + i α₁ h' + i α₂ |h|) dq`` with
+    ``τ = 2/(α₁+α₂)`` (TE) or ``2/(α₁+α₂/ε)`` (TM), folded onto ``q ≥ 0`` and
+    integrated directly in ``q``: τ is finite at ``q = k₁``, so no substitution
+    is needed. Branch by the radiation condition, breakpoints at ``k₁``,
+    ``Re k₂`` and the plasmon's ``POLE_WIDTHS``, as :func:`g_ref`.
+
+    Args:
+        X: Horizontal separation ``x − x'`` (nm).
+        hs: Source height above the interface (nm), positive.
+        hb: Observation depth below it (nm), non-negative.
+        k1: **Real** cover wavenumber (rad/nm).
+        eps_rel: Substrate permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+        which: 0 for ``G_t``, 1 for ``∂G_t/∂x'``, 2 for ``∂G_t/∂z'``.
+
+    Returns:
+        The requested quantity.
+    """
+    eps_rel = complex(eps_rel)
+    k2 = k1 * np.sqrt(complex(eps_rel.real, eps_rel.imag + 0.0))
+
+    def integrand(q: float) -> complex:
+        a1, a2 = _alpha_radiating(k1, q), _alpha_radiating(k2, q)
+        tau = 2 / (a1 + a2) if pol == 2 else 2 / (a1 + a2 / eps_rel)
+        fac = (np.cos(q * X), q * np.sin(q * X), 1j * a1 * np.cos(q * X))[which]
+        return 1j / (2 * PI) * tau * fac * np.exp(1j * (a1 * hs + a2 * hb))
+
+    q_max = max(k1, abs(k2)) * 1.5 + TAIL_DECAY / (hs + hb)
+    pts = sorted(p for p in [k1, *_breakpoints(k1, k2, eps_rel, pol)] if 0 < p < q_max)
+    kw = {"epsabs": 1e-17, "epsrel": 1e-13, "limit": 4000, "points": pts}
+    re = quad(lambda q: integrand(q).real, 0, q_max, **kw)[0]
+    im = quad(lambda q: integrand(q).imag, 0, q_max, **kw)[0]
+    return re + 1j * im
+
+
 def legacy_pec_green(X: float, Z: float, k: complex) -> complex:
     """The legacy real-axis integral with ``R ≡ 1``, kept to pin its failure.
 

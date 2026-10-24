@@ -26,7 +26,7 @@ the one measured in ``docs/design/studies/halfspace/``.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -86,6 +86,10 @@ class SommerfeldPrecisionWarning(UserWarning):
 
 class InterfaceGapWarning(UserWarning):
     """The boundary is too coarse for its distance to the interface."""
+
+
+class NoFarFieldError(ValueError):
+    """The substrate has no downward far field (absorbing, ``Re ε ≤ 0`` or PEC)."""
 
 
 def alpha(q: np.ndarray | complex, k: complex) -> np.ndarray | complex:
@@ -788,3 +792,317 @@ class Reflection:
         q, a1 = self.k * np.sin(theta), self.k * np.cos(theta)
         r = fresnel_r(np.asarray(q), self.k, self.eps_rel, self.pol)
         return r * np.exp(1j * (q * f + a1 * (g - 2.0 * self.z_int)))
+
+
+# --- Transmitted field below the interface (v1.1) -----------------------------
+
+
+def _tau_half_space(q: np.ndarray, k: complex, eps: complex, pol: int) -> np.ndarray:
+    """``τ = T/α₁`` of a half-space: TE ``2/(α₁+α₂)``, TM ``2/(α₁+α₂/ε)``.
+
+    T carries a factor α₁ for any stack (``t₁₂ = 2α₁/(α₁+α₂)``), so τ is finite
+    at ``q = ±k₁``, where ``T/α₁`` evaluated literally is 0/0. The denominator
+    is :func:`fresnel_r`'s, so ``T = 1 + R`` and the singularities are R's.
+    """
+    a1, a2 = alpha(q, k), alpha(q, k * np.sqrt(eps))
+    return 2.0 / (a1 + a2) if pol == 2 else 2.0 / (a1 + a2 / eps)
+
+
+def _check_below(z: np.ndarray, z_int: float, what: str) -> None:
+    if np.any(z >= z_int):
+        raise ValueError(
+            f"{what} must lie strictly below the interface z_int = {z_int}; "
+            f"highest z = {np.max(z)}"
+        )
+
+
+@dataclass(frozen=True, eq=False)
+class Transmission:
+    """The transmitted-field machinery for one call context (spec v1.1 §1).
+
+    Written against a generic coefficient ``τ = T/α₁`` and the bottom layer's
+    wavenumber, never against ``eps_rel`` directly, so that a multilayer only
+    supplies its own ``tau``, ``k_bot`` and ``features`` (D3). A half-space has
+    ``z_top = z_bot = z_int``.
+
+    Attributes:
+        pol: 2 = TE, 1 = TM.
+        k: Cover wavenumber k₁, complex allowed.
+        k_bot: Bottom-layer wavenumber ``k₁·√ε_bot``, principal root after the
+            signed-zero normalisation.
+        eps_bot: Bottom-layer permittivity relative to the cover.
+        z_top: Top interface: the phase reference on the cover side.
+        z_bot: Bottom interface: the phase reference in the bottom layer.
+        tau: ``q → T(q)/α₁(q)`` on the code's sheet.
+        features: Singularities ``(label, q)``, for the flux breakpoints.
+        path: The Sommerfeld path, ``None`` until built for a point set.
+        x_c: Horizontal centre of everything the path serves.
+    """
+
+    pol: int
+    k: complex
+    k_bot: complex
+    eps_bot: complex
+    z_top: float
+    z_bot: float
+    tau: Callable[[np.ndarray], np.ndarray]
+    features: tuple[tuple[str, complex], ...]
+    path: SommerfeldPath | None
+    x_c: float
+
+    @classmethod
+    def half_space(
+        cls, pol: int, k: complex, eps_rel: complex, z_int: float
+    ) -> Transmission:
+        """Transmission of a (non-PEC) half-space, with no path yet.
+
+        Args:
+            pol: 2 = TE, 1 = TM.
+            k: Background wavenumber.
+            eps_rel: Substrate permittivity relative to the cover.
+            z_int: Interface height (nm).
+
+        Returns:
+            The transmission, ``path = None`` and ``x_c = 0``.
+        """
+        eps = _normalised(eps_rel)
+        return cls(
+            pol=pol,
+            k=k,
+            k_bot=k * np.sqrt(eps),
+            eps_bot=eps,
+            z_top=z_int,
+            z_bot=z_int,
+            tau=lambda q: _tau_half_space(q, k, eps, pol),
+            features=tuple(_singularities(k, eps, pol)),
+            path=None,
+            x_c=0.0,
+        )
+
+    @classmethod
+    def build(
+        cls,
+        pol: int,
+        k: complex,
+        eps_rel: complex | None,
+        z_int: float,
+        f_src: np.ndarray,
+        g_src: np.ndarray,
+        f_obs: np.ndarray,
+        g_obs: np.ndarray,
+    ) -> Transmission | None:
+        """Half-space transmission with a path sized for sources and observers.
+
+        The integrand decays like ``exp(−q(h' + |h|))``, so the path's ``z_min``
+        is the smallest source height plus the smallest observation depth
+        (finding 3: a path sized for anything larger truncates the TM tail).
+
+        Args:
+            pol: 2 = TE, 1 = TM.
+            k: Background wavenumber.
+            eps_rel: Substrate permittivity relative to the cover, or ``None``.
+            z_int: Interface height (nm).
+            f_src: x of every source (boundary nodes, dipole), above.
+            g_src: Their z.
+            f_obs: x of every observation point, below.
+            g_obs: Their z.
+
+        Returns:
+            The transmission, or ``None`` for PEC (no field below, D14) and
+            for ``eps_rel == 1`` exactly (no interface: the caller uses the
+            free-space representation, D19).
+
+        Raises:
+            ValueError: A source at or below, or an observation point at or
+                above, the interface.
+        """
+        if eps_rel is None or eps_rel == 1.0:
+            return None
+        f_src, g_src = np.asarray(f_src, float), np.asarray(g_src, float)
+        f_obs, g_obs = np.asarray(f_obs, float), np.asarray(g_obs, float)
+        _check_in_cover(g_src, z_int, "every node and source")
+        _check_below(g_obs, z_int, "every substrate observation point")
+        z_min = float((g_src - z_int).min() + (z_int - g_obs).min())
+        fx = np.concatenate([f_src, f_obs])
+        # D never below z_min, as in Reflection.build: the length must come from
+        # the geometry so the path stays scale covariant.
+        path = SommerfeldPath.for_wavenumber(
+            k, eps_rel, pol, max(float(np.ptp(fx)), z_min), z_min
+        )
+        tr = cls.half_space(pol, k, eps_rel, z_int)
+        return cls(
+            tr.pol,
+            tr.k,
+            tr.k_bot,
+            tr.eps_bot,
+            tr.z_top,
+            tr.z_bot,
+            tr.tau,
+            tr.features,
+            path,
+            0.5 * float(fx.max() + fx.min()),
+        )
+
+    def blocks(self, tgt: Points, src: Geometry) -> tuple[np.ndarray, np.ndarray]:
+        """:func:`transmitted_blocks` with this context."""
+        assert self.path is not None
+        return transmitted_blocks(self.path, self, tgt, src, self.x_c)
+
+    def green(
+        self,
+        x: np.ndarray | float,
+        z: np.ndarray | float,
+        xs: np.ndarray | float,
+        zs: np.ndarray | float,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """:func:`transmitted_green` with this context."""
+        assert self.path is not None
+        return transmitted_green(self.path, self, x, z, xs, zs)
+
+    def plane_wave(self, angle: float, f: np.ndarray, g: np.ndarray) -> np.ndarray:
+        """Transmitted plane wave at ``(f, g)`` below, for a wave from the cover.
+
+        The incident wave ``exp(i k (f sin θ − g cos θ))`` becomes
+        ``α₁·τ(q)·exp(i q f − i α₁ z_top − i α_bot (g − z_bot))`` with
+        ``q = k sin θ``, ``α₁ = k cos θ``. Under total internal reflection
+        ``α_bot = +i|…|`` on the sheet, so the wave decays with depth. Only the
+        one real ``q`` is needed, so no path.
+
+        Args:
+            angle: Incidence angle θ (degrees), from the normal, |θ| < 90°.
+            f: x coordinates (nm).
+            g: z coordinates (nm), below the interface.
+
+        Returns:
+            The transmitted wave, shape of ``f``.
+
+        Raises:
+            ValueError: ``|angle| ≥ 90°``.
+        """
+        if abs(angle) >= 90.0:
+            raise ValueError(
+                f"incidence angle {angle} deg must satisfy |angle| < 90 deg "
+                "over a half-space"
+            )
+        theta = np.deg2rad(angle)
+        q, a1 = self.k * np.sin(theta), self.k * np.cos(theta)
+        a_bot = alpha(np.asarray(q), self.k_bot)
+        t = a1 * self.tau(np.asarray(q))
+        return t * np.exp(1j * (q * f - a1 * self.z_top - a_bot * (g - self.z_bot)))
+
+
+def transmitted_green(
+    path: SommerfeldPath,
+    tr: Transmission,
+    x: np.ndarray | float,
+    z: np.ndarray | float,
+    xs: np.ndarray | float,
+    zs: np.ndarray | float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Transmitted Green function at ``(x, z)`` below from a source ``(xs, zs)`` above.
+
+    ``G_t = (i/4π) ∫_Γ τ(q)·exp(i q X + i α₁ h' + i α_bot |h|) dq``, with
+    ``h' = z' − z_top`` and ``|h| = z_bot − z``, folded onto ``q ≥ 0`` as
+    :func:`reflected_green` is. Source derivatives: ``∂x' → −iq`` and
+    ``∂z' → +iα₁`` (holomorphy §6).
+
+    Args:
+        path: The Sommerfeld path, sized for ``h' + |h|`` of these points.
+        tr: The transmission context (τ, wavenumbers, phase references).
+        x: Observation x; broadcast against the source's.
+        z: Observation z, at or below ``z_bot``.
+        xs: Source x.
+        zs: Source z, strictly above ``z_top``.
+
+    Returns:
+        ``(G_t, dG_t/dx', dG_t/dz')``, broadcast shape.
+
+    Raises:
+        ValueError: A source at or below ``z_top``, or an observation point
+            above ``z_bot``.
+    """
+    x, z, xs, zs = np.broadcast_arrays(
+        *(np.asarray(v, dtype=float) for v in (x, z, xs, zs))
+    )
+    _check_in_cover(zs, tr.z_top, "source points")
+    if np.any(z > tr.z_bot):
+        raise ValueError(
+            f"observation points must lie at or below z_bot = {tr.z_bot}; "
+            f"highest z = {np.max(z)}"
+        )
+    a1 = alpha(path.q, tr.k)
+    a_bot = alpha(path.q, tr.k_bot)
+    base = path.w * tr.tau(path.q)
+    pre = 1j / (2.0 * PI)  # (i/4π)·2: the integral is folded onto q ≥ 0
+    shape = x.shape
+    Xf = (x - xs).ravel()
+    hs, hb = (zs - tr.z_top).ravel(), (tr.z_bot - z).ravel()
+    out = np.empty((3, Xf.size), dtype=complex)
+    chunk = max(1, 4_000_000 // path.q.size)
+    for lo in range(0, Xf.size, chunk):
+        sl = slice(lo, lo + chunk)
+        b = base * np.exp(1j * (np.outer(hs[sl], a1) + np.outer(hb[sl], a_bot)))
+        qx = np.outer(Xf[sl], path.q)
+        c = np.cos(qx)
+        out[0, sl] = pre * np.sum(b * c, axis=1)
+        out[1, sl] = pre * np.sum(b * path.q * np.sin(qx), axis=1)
+        out[2, sl] = pre * np.sum(b * 1j * a1 * c, axis=1)
+    return out[0].reshape(shape), out[1].reshape(shape), out[2].reshape(shape)
+
+
+def transmitted_blocks(
+    path: SommerfeldPath,
+    tr: Transmission,
+    tgt: Points,
+    src: Geometry,
+    x_c: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Transmitted M1/M2 blocks from a boundary above to points below.
+
+    The convention is :func:`reflected_blocks`': ``M1 = h·(∂x'G_t·dg −
+    ∂z'G_t·df)`` and ``M2 = h·G_t``, so the substrate field is
+    ``−(m1 @ φ + m2 @ χ)``. Computed as the banded separable GEMM
+    ``A·diag(w·τ)·Bᵀ`` with ``A = e^{iq(x−x_c) + iα_bot|h|}`` and
+    ``B = e^{−iq(x'−x_c) + iα₁h'}``; measured equal to the pointwise
+    :func:`transmitted_green` sum to 2.5e-16 (t4_gemm), the banding dropping
+    nothing.
+
+    Args:
+        path: The Sommerfeld path, sized for these points.
+        tr: The transmission context.
+        tgt: Observation points, at or below ``z_bot``.
+        src: Source boundary, above ``z_top``.
+        x_c: Horizontal centre of the point set (overflow guard, study trap 3).
+
+    Returns:
+        ``(m1_t, m2_t)``, each ``(tgt.n_pts, src.n_pts)``.
+    """
+    hb, hs = tr.z_bot - tgt.g, src.g - tr.z_top  # observation depth, source height
+    hb_min, hs_min = hb.min(), hs.min()
+    xt, xs = tgt.f - x_c, src.f - x_c
+    m1 = np.zeros((tgt.n_pts, src.n_pts), dtype=complex)
+    m2 = np.zeros_like(m1)
+    for a0, i0, i1 in path.bands:
+        if a0 == 0.0:
+            rows, cols = np.arange(tgt.n_pts), np.arange(src.n_pts)
+        else:
+            # |A·B| ~ exp(−q·(|h_i| + h'_j)): a pair is reached by this band only
+            # if |h_i| + h'_j < 38/q for some q ≥ a0.
+            lim = TAIL_DECAY / a0
+            rows = np.flatnonzero(hb < lim - hs_min)
+            cols = np.flatnonzero(hs < lim - hb_min)
+            if rows.size == 0 or cols.size == 0:
+                continue
+        # The folded half path and its mirror: A·diag(c)·Bᵀ needs the full path.
+        q = np.concatenate([path.q[i0:i1], -path.q[i0:i1]])
+        w = np.concatenate([path.w[i0:i1], path.w[i0:i1]])
+        a1, a_bot = alpha(q, tr.k), alpha(q, tr.k_bot)
+        coef = (1j / (4.0 * PI)) * w * tr.tau(q)
+        e_t = np.exp(1j * (np.outer(xt[rows], q) + np.outer(hb[rows], a_bot)))
+        e_s = np.exp(1j * (-np.outer(xs[cols], q) + np.outer(hs[cols], a1)))
+        poly = -1j * (np.outer(src.dg[cols], q) + np.outer(src.df[cols], a1))
+        left = e_t * coef
+        ix = np.ix_(rows, cols)
+        m2[ix] += left @ e_s.T
+        m1[ix] += left @ (e_s * poly).T
+    return src.delt * m1, src.delt * m2
