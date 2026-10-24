@@ -1,9 +1,9 @@
-# v1.1 transmitted fields — code-spec (DRAFT)
+# v1.1 transmitted fields — code-spec
 
-Status: **builder-ready, 2026-10-24.** The owner decisions are taken (§D), the
-formulas are derived and verified numerically (§2, §3), and §8 is the builder
-contract: signatures, behaviour table, gate tolerances, order of work and stop
-rule.
+Status: **implemented, shipped as v1.1.0 (2026-10-24).** The owner decisions
+are §D, the verified formulas §2–§3, and the builder contract §8. Measured gate
+values are in [docs/validation.md](../validation.md). One quote here was low:
+GT2's worst is 4.9e-11 (glass TM, reproduced by `t1_green`), not 2.9e-11.
 Prototypes: [studies/transmitted/](studies/transmitted/README.md).
 
 Branch: `v1.1-transmitted-fields`. Multilayers move to v1.2.

@@ -27,3 +27,9 @@ The live list of what is shipped and what is next is the roadmap in
 | [beyn-port-spec.md](beyn-port-spec.md) | The implementation spec for that port, draft 2. | Historical. The authority on *intent*; phase and suite counts are frozen mid-port. |
 | [beyn-port-strategy.md](beyn-port-strategy.md) | The earlier high-level strategy for the same port. | Superseded by the spec. Provenance only. |
 | [qnm-methods.pdf](qnm-methods.pdf) | Background on QNM extraction methods. | Reference. |
+| [absorption-scope.md](absorption-scope.md) | Scope of the absorption check for lossy dielectrics and metals. | Historical. Done in v0.9 (`Material.from_eps`). |
+| [sommerfeld-holomorphy.md](sommerfeld-holomorphy.md) | Why the deformed Sommerfeld path gives a holomorphic M(λ): branch points, poles, clearance. | **Live.** The theory behind v0.9, v1.1 and the v1.2 guided poles (§5). |
+| [studies/halfspace/README.md](studies/halfspace/README.md) | The half-space Sommerfeld quadrature study behind v0.9. | Historical. The source of v0.9's path constants. |
+| [layered-spec.md](layered-spec.md) | v0.9 code-spec for the half-space background, with its §8 builder contract. | **Historical. The authority on intent.** Implemented in v0.9. |
+| [studies/transmitted/README.md](studies/transmitted/README.md) | The v1.1 transmitted-field prototypes (t1–t5). | Historical. The source of the v1.1 gate numbers. |
+| [transmitted-spec.md](transmitted-spec.md) | v1.1 code-spec for the field below a half-space, with its §8 builder contract. | **Historical. The authority on intent.** Shipped as v1.1.0. |

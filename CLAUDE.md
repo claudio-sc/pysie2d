@@ -239,16 +239,20 @@ promises a stable surface *and* answers that have been checked against
 something that is neither circular nor ours, and this milestone is where that
 check happens. It also carries the MEEP comparison for the v0.9 substrate.
 
-**v1.1, on `v1.1-transmitted-fields`: the field below the interface.** Near
+**v1.1 — the field below the interface.** Shipped as v1.1.0 (2026-10-24). Near
 field, downward far field, power into the substrate by interface flux, and an
 `incident_field` helper, written against a generic τ = T/α₁ so a multilayer
-plugs in later. **Implemented on the branch, not released** (2026-10-24), per
-the builder contract in §8 of
+plugs in later. The dipole power balance over a substrate is now an equality.
+Built per the builder contract in §8 of
 [transmitted-spec.md](docs/design/transmitted-spec.md); the invariants are in
 `docs/conventions.md` §16. Its finding 1, a v0.9 `c_sca_up` defect over
 low-index substrates, shipped as v1.0.1.
 
-**v1.2 — multilayer and slab-waveguide backgrounds** on the v0.9 machinery.
+**v1.2–v1.4 — waveguide-coupled clusters, on `v1.2-slab-waveguide`.** The
+roadmap is `docs/design/waveguide-roadmap.md` on that branch (owner decisions
+R1–R10): v1.2 N-layer `Stack`, guided modes, mode source and S-parameters by
+residue; v1.3 MEEP validation of the waveguide coupling; v1.4 a variational-EIM
+2.5D front end. Next step: the v1.2 slab study plan.
 
 ## How to work here
 

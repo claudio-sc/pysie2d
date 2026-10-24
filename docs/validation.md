@@ -180,10 +180,11 @@ evidence.
   frequency-independent `Im ε`, so the lossy cases are dolfinx alone, against
   the closed-form lossy Mie series. The two externals do not cross-check each
   other there.
-- **Metals are out of scope entirely.** `Material` cannot express `Re ε < 0`:
-  `epsr = (n_core/n_clad)²` is non-negative by construction. Nothing with a
-  negative real permittivity has been run or checked. What it would take is
-  scoped in
+- **Metals have no external anchor.** `Material.from_eps` (v0.9) expresses
+  `Re ε < 0`, and a silver cylinder is checked against the analytic Mie series
+  (`test_metal_absorption_matches_mie` in `tests/test_efficiencies.py`). Metal
+  substrates are checked by closed forms and energy conservation only. Neither
+  MEEP nor dolfinx has been run on a metal. The scope was
   [docs/design/absorption-scope.md](design/absorption-scope.md).
 - **MEEP's systematics are attributed, not eliminated.** At its production
   resolution 50: transform truncation is negligible (≤ 7e-06); the flux
