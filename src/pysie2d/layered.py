@@ -29,7 +29,7 @@ import functools
 import math
 import warnings
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -1837,3 +1837,118 @@ class StackReflection:
         q, a1 = self.k * np.sin(theta), self.k * np.cos(theta)
         r = self.r(np.asarray(q))
         return r * np.exp(1j * (q * f + a1 * (g - 2.0 * self.z_top)))
+
+
+# Gauss–Legendre points per layer for the mode norm N = ∫ p u² dz (S8: the
+# residue identity holds to 4e-14 with 200, 16 modes per polarisation).
+NORM_GL_POINTS = 200
+
+
+@dataclass(frozen=True, eq=False)
+class GuidedMode:
+    """A guided mode of a lossless stack at one real wavelength.
+
+    ``u(z)`` solves ``∇·(p∇u) + k²w u = 0`` with ``p = 1, w = ε`` (TE) or
+    ``p = 1/ε, w = 1`` (TM), all relative to the cover, normalised so that
+    ``u(z_top) = 1``. The norm is the **bilinear** ``N = ∫ p u² dz``, which is
+    the weight of the 1-D Green function's pole, so ``Res_β R = γ₁/(βN)``
+    (S8; the TM weight 1/ε is load-bearing, 74 % off without it). The
+    power-normalised mode is ``ũ = u/√(βN)`` (slab-spec §1.3).
+
+    Attributes:
+        order: 0 for the highest β.
+        pol: 2 = TE, 1 = TM.
+        beta: Propagation constant (rad/nm); background-independent.
+        n_eff: ``β/(2π/λ_vac)``.
+        norm: ``N`` (nm), with ``u(z_top) = 1``.
+        gamma: Cover decay constant ``γ₁ = √(β² − k₁²)`` (rad/nm).
+        wavelength: **Vacuum** wavelength (nm).
+    """
+
+    order: int
+    pol: int
+    beta: float
+    n_eff: float
+    norm: float
+    gamma: float
+    wavelength: float
+    _z_top: float = field(repr=False)
+    _tops: tuple[tuple[complex, complex, complex, complex, float], ...] = field(
+        repr=False
+    )
+    _bottom: tuple[float, float] = field(repr=False)
+
+    def profile(self, z: np.ndarray | float) -> np.ndarray:
+        """``u(z)`` at any real height, cover, layers and bottom; ``u(z_top) = 1``.
+
+        Args:
+            z: Heights (nm), any shape.
+
+        Returns:
+            Real array with the shape of ``z``.
+        """
+        h = np.asarray(z, dtype=float) - self._z_top
+        out = np.empty(h.shape, dtype=complex)
+        up = h >= 0.0
+        out[up] = np.exp(-self.gamma * h[up])
+        top = 0.0
+        for u0, v0, a, w, d in self._tops:
+            m = (h < top) & (h >= top - d)
+            s = top - h[m]
+            out[m] = np.cos(a * s) * u0 - w * np.sinc(a * s / PI) * s * v0
+            top -= d
+        u_b, g_b = self._bottom
+        m = h < top
+        out[m] = u_b * np.exp(g_b * (h[m] - top))
+        return out.real
+
+
+def _guided_mode(
+    order: int,
+    pol: int,
+    beta: float,
+    k: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    z_top: float,
+    wavelength: float,
+) -> GuidedMode:
+    """Profile and bilinear norm by the ``(u, v = p·u′)`` transfer from ``z_top`` (S8).
+
+    Built from the transfer matrix, *not* from R, so the residue identity
+    ``Res_β R = γ₁/(βN)`` compares two independent computations (GW7).
+    """
+    g1 = float(np.sqrt(beta * beta - k * k))
+    k_bot = k * np.sqrt(eps_bot.real)
+    g_b = float(np.sqrt(beta * beta - k_bot * k_bot))
+    p_b = 1.0 if pol == 2 else 1.0 / eps_bot.real
+    u0, v0 = 1.0 + 0j, -g1 + 0j  # cover: u = e^{−γ₁h}, p = 1
+    norm = 1.0 / (2.0 * g1)
+    x, wq = np.polynomial.legendre.leggauss(NORM_GL_POINTS)
+    tops = []
+    for e, dj in zip(eps_layers, d, strict=True):
+        a = np.sqrt(complex(k * k * e.real - beta * beta))
+        w = 1.0 if pol == 2 else e.real  # 1/p
+        tops.append((u0, v0, a, w, dj))
+        s = 0.5 * dj * (x + 1.0)
+        us = np.cos(a * s) * u0 - w * np.sinc(a * s / PI) * s * v0
+        norm += 0.5 * dj * float(np.sum(wq * (us * us).real)) / w
+        sinc = np.sinc(a * dj / PI) * dj
+        u0, v0 = (
+            np.cos(a * dj) * u0 - w * sinc * v0,
+            (a * a / w) * sinc * u0 + np.cos(a * dj) * v0,
+        )
+    norm += p_b * float((u0 * u0).real) / (2.0 * g_b)
+    return GuidedMode(
+        order=order,
+        pol=pol,
+        beta=float(beta),
+        n_eff=float(beta * wavelength / (2.0 * PI)),
+        norm=norm,
+        gamma=g1,
+        wavelength=float(wavelength),
+        _z_top=float(z_top),
+        _tops=tuple(tops),
+        _bottom=(float(u0.real), g_b),
+    )

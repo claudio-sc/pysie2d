@@ -450,3 +450,43 @@ def g_ref_stack_gamma(
         a1 = 1j * np.sqrt(b * b - k1 * k1)
         out += 1j * PI * pre * res / a1 * fac(b, a1) * np.exp(1j * a1 * Z)
     return out
+
+
+def slab3_roots(
+    k: float, eps_c: float, eps_f: float, eps_s: float, d: float, pol: int
+) -> list[float]:
+    """Guided β of a three-layer slab by the textbook closed form (Marcuse, Kogelnik).
+
+    ``κd = mπ + atan(p_c/κ) + atan(p_s/κ)`` with ``κ = √(k_f² − β²)`` and
+    ``p = γ`` (TE) or ``γ·ε_f/ε`` (TM): independent of any transfer matrix.
+
+    Args:
+        k: Vacuum-referred wavenumber the permittivities multiply (rad/nm).
+        eps_c: Cover permittivity (same reference as the others).
+        eps_f: Film permittivity.
+        eps_s: Substrate permittivity.
+        d: Film thickness (nm).
+        pol: 2 = TE, 1 = TM.
+
+    Returns:
+        β of every guided mode, descending.
+    """
+    from scipy.optimize import brentq
+
+    kc, kf, ks = (k * np.sqrt(e) for e in (eps_c, eps_f, eps_s))
+    lo, hi = max(kc, ks), kf
+    roots: list[float] = []
+    m = 0
+    while True:
+
+        def g(b, m=m):
+            kap = np.sqrt(kf**2 - b**2)
+            gc, gs = np.sqrt(b**2 - kc**2), np.sqrt(b**2 - ks**2)
+            pc, ps = (gc, gs) if pol == 2 else (gc * eps_f / eps_c, gs * eps_f / eps_s)
+            return kap * d - m * PI - np.arctan(pc / kap) - np.arctan(ps / kap)
+
+        a, b = lo * (1 + 1e-15), hi * (1 - 1e-15)
+        if g(a) <= 0:
+            return roots
+        roots.append(brentq(g, a, b, xtol=1e-16 * hi, rtol=8.9e-16, maxiter=200))
+        m += 1

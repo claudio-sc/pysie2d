@@ -16,6 +16,11 @@ Public API:
         layer, top to bottom, over a bottom half-space). Particles stay in the
         cover; the reflected Green function uses a stable recursion on the same
         deformed path, with the guided poles as features.
+        ``Stack.guided_modes(λ, pol, n_clad)`` returns its guided modes.
+    GuidedMode: one guided mode of a lossless stack — β, n_eff, the bilinear
+        norm N and the profile u(z) with u(z_top) = 1.
+    NearDegenerateModesError: a ``ValueError`` raised when two guided modes
+        are closer than the mode finder separates (slab-spec R15).
     InterfaceGapWarning, SommerfeldPrecisionWarning: the half-space guards — a
         boundary too coarse for its distance to the interface, and a reflected
         block expected to lose digits.
@@ -71,7 +76,7 @@ take a background wavenumber
 ``wnum_bg = 2π·n_clad/λ_vac`` instead. See ``docs/conventions.md`` §2.
 """
 
-from .background import HalfSpace, Stack
+from .background import HalfSpace, NearDegenerateModesError, Stack
 from .cluster import (
     Cluster,
     ClusterBIESolver,
@@ -88,7 +93,12 @@ from .kernels import (
     assemble_matrix,
     assemble_matrix_reference,
 )
-from .layered import InterfaceGapWarning, NoFarFieldError, SommerfeldPrecisionWarning
+from .layered import (
+    GuidedMode,
+    InterfaceGapWarning,
+    NoFarFieldError,
+    SommerfeldPrecisionWarning,
+)
 from .material import Material
 from .multipole import Multipoles
 from .multipole import decompose as multipole_decompose
@@ -121,10 +131,12 @@ __all__ = [
     "ClusterScatterResult",
     "DEGENERATE_COND",
     "Geometry",
+    "GuidedMode",
     "HalfSpace",
     "InterfaceGapWarning",
     "Material",
     "Multipoles",
+    "NearDegenerateModesError",
     "NoFarFieldError",
     "Parametrisation",
     "QNMResult",

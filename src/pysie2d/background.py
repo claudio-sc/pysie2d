@@ -13,6 +13,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from . import layered
+from .layered import GuidedMode
+
 # |n_clad² + ε_sub| below this fraction of |ε_sub| is a lossless plasmon
 # resonance: R_∞ = (ε₂ − ε₁)/(ε₂ + ε₁) and the pole q_sp are infinite (t13).
 PLASMON_RESONANCE_RTOL = 1e-12
@@ -209,6 +212,32 @@ class Stack:
             z_top,
         )
 
+    def guided_modes(
+        self, wavelength: float, pol: int, n_clad: float
+    ) -> tuple[GuidedMode, ...]:
+        """Guided modes of the stack under a cover of index ``n_clad`` (T1).
+
+        The real roots of the scaled dispersion function, bracketed on a
+        uniform γ-grid and checked against the argument principle (slab-spec
+        §2.3); profiles and bilinear norms by the transfer matrix (§2.3, S8).
+
+        Args:
+            wavelength: Real **vacuum** wavelength (nm).
+            pol: 2 = TE (slab TE in cross-section), 1 = TM.
+            n_clad: Absolute cover index; the stack does not know it (T1).
+
+        Returns:
+            The modes, ordered by descending β (``order`` 0 first); empty when
+            the stack guides nothing, or when nothing is left of it after T6.
+
+        Raises:
+            ValueError: A complex wavelength or a lossy stack (T2).
+            NearDegenerateModesError: Two modes closer than the finest grid
+                separates (R15); the message names the cell and the lower
+                bound on their beat length.
+        """
+        return _guided_modes(self, wavelength, pol, n_clad)
+
 
 def _check_layer(eps: _Eps) -> None:
     """T3 for a constant: passive and ``Re ε > 0``; callables wait for a λ."""
@@ -264,3 +293,36 @@ def _effective(
 def _top(background: HalfSpace | Stack) -> float:
     """The declared top interface: particles and sources must lie above it."""
     return background.z_top if isinstance(background, Stack) else background.z_int
+
+
+def _guided_modes(
+    stack: Stack, wavelength: float, pol: int, n_clad: float
+) -> tuple[GuidedMode, ...]:
+    """:meth:`Stack.guided_modes`; module-level so the method stays short."""
+    if np.imag(wavelength) != 0.0:
+        raise ValueError(
+            f"guided modes need a real wavelength, got {wavelength}: a mode at "
+            "complex λ is not an output channel at x → ±∞ (slab-spec T2)"
+        )
+    lay, d, e_bot, z_top = stack.eps_rel(n_clad, wavelength)
+    if any(e.imag != 0.0 for e in lay) or e_bot.imag != 0.0:
+        raise ValueError(
+            "guided modes need a lossless stack: a lossy mode decays along x and "
+            "is not an output channel at x → ±∞ (slab-spec T2)"
+        )
+    if not lay:
+        return ()  # T6: a half-space guides nothing
+    k = 2.0 * np.pi * n_clad / float(np.real(wavelength))
+    poles, _, cell = layered._stack_poles(complex(k), lay, d, e_bot, pol)
+    if cell is not None:
+        lo, hi = cell
+        raise NearDegenerateModesError(
+            f"guided modes in β ∈ [{lo:.12g}, {hi:.12g}] rad/nm are closer than the "
+            f"finest bracketing grid separates: the argument principle counts more "
+            f"zeros there than were found. Their beat length exceeds "
+            f"π/Δβ_cell = {np.pi / (hi - lo):.4g} nm (slab-spec R15)"
+        )
+    return tuple(
+        layered._guided_mode(m, pol, b.real, k, lay, d, e_bot, z_top, wavelength)
+        for m, b in enumerate(poles)
+    )

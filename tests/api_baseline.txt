@@ -35,6 +35,9 @@ Geometry.gielis(rad: float, n_pts: int = 100, *, m: int = 4, n1: float = 2.0, n2
 Geometry.is_circle -> property
 Geometry.n_pts -> property
 Geometry.theta -> property
+class GuidedMode
+GuidedMode.__init__(self, order: 'int', pol: 'int', beta: 'float', n_eff: 'float', norm: 'float', gamma: 'float', wavelength: 'float', _z_top: 'float', _tops: 'tuple[tuple[complex, complex, complex, complex, float], ...]', _bottom: 'tuple[float, float]') -> None
+GuidedMode.profile(self, z: 'np.ndarray | float') -> 'np.ndarray'
 class HalfSpace
 HalfSpace.__init__(self, eps_sub: 'complex | Callable[[float], complex] | None', z_int: 'float' = 0.0) -> None
 HalfSpace.eps_rel(self, n_clad: 'float', wavelength: 'float | None' = None) -> 'complex | None'
@@ -56,6 +59,8 @@ Multipoles.c_minus -> property
 Multipoles.c_plus -> property
 Multipoles.orders -> property
 Multipoles.reconstruct(self, r: float, theta: numpy.ndarray) -> numpy.ndarray
+class NearDegenerateModesError
+NearDegenerateModesError.__init__(self, /, *args, **kwargs)
 class NoFarFieldError
 NoFarFieldError.__init__(self, /, *args, **kwargs)
 class Parametrisation
@@ -90,6 +95,7 @@ SommerfeldPrecisionWarning.__init__(self, /, *args, **kwargs)
 class Stack
 Stack.__init__(self, layers: 'tuple[tuple[_Eps, float], ...]', eps_bot: '_Eps', z_top: 'float' = 0.0) -> None
 Stack.eps_rel(self, n_clad: 'float', wavelength: 'float | complex | None' = None) -> 'tuple[tuple[complex, ...], tuple[float, ...], complex, float]'
+Stack.guided_modes(self, wavelength: 'float', pol: 'int', n_clad: 'float') -> 'tuple[GuidedMode, ...]'
 Stack.z_bot -> property
 assemble_cross_block(wnum_bg: complex, nn_p: int, f_p: numpy.ndarray, g_p: numpy.ndarray, df_p: numpy.ndarray, dg_p: numpy.ndarray, f_q: numpy.ndarray, g_q: numpy.ndarray) -> tuple[numpy.ndarray, numpy.ndarray]
 assemble_matrix(pol: int, nn: int, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, wnum_bg: complex, ri: complex, kd: complex) -> numpy.ndarray

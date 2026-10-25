@@ -12,9 +12,14 @@ import numpy as np
 import pytest
 
 from pysie2d import BIESolver, Geometry, HalfSpace, Material, QNMSolver, layered
-from pysie2d.background import Stack
+from pysie2d.background import NearDegenerateModesError, Stack
 from pysie2d.layered import SommerfeldPath, _singularities
-from pysie2d.reference.sommerfeld import g_ref_stack, g_ref_stack_gamma, stack_r_ref
+from pysie2d.reference.sommerfeld import (
+    g_ref_stack,
+    g_ref_stack_gamma,
+    slab3_roots,
+    stack_r_ref,
+)
 
 PI = np.pi
 N_CLAD = 1.444
@@ -294,3 +299,97 @@ def test_qnm_solver_refuses_a_stack():
 def test_stack_refuses_invalid_layers(layers, eps_bot):
     with pytest.raises(ValueError):
         Stack(layers, eps_bot)
+
+
+# --- GW6: guided modes against the closed form; the count check ------------------
+
+SLABS3 = {
+    "SOI": (1550, 1.444, N_SI, 220, 1.444),
+    "air|Si|SiO2": (1550, 1.0, N_SI, 220, 1.444),
+    "SiN@800": (800, 1.444, N_SIN, 400, 1.444),
+    "Si2000": (1550, 1.444, N_SI, 2000, 1.444),
+    "air|SiN300|SiO2": (1550, 1.0, N_SIN, 300, 1.444),
+}
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("case", SLABS3, ids=str)
+def test_guided_modes_match_the_three_layer_closed_form(case, pol):
+    # κd = mπ + atan(p_c/κ) + atan(p_s/κ) shares nothing with the transfer
+    # matrix; one to nine modes, two near cutoff, both polarisations.
+    lam, n_clad, n_film, d, n_sub = SLABS3[case]
+    modes = Stack(((n_film**2, d),), n_sub**2).guided_modes(lam, pol, n_clad)
+    k = 2 * PI * n_clad / lam
+    ref = slab3_roots(k, 1.0, (n_film / n_clad) ** 2, (n_sub / n_clad) ** 2, d, pol)
+    assert len(modes) == len(ref)
+    for m, beta in zip(modes, ref, strict=True):
+        assert abs(m.beta - beta) / beta < 5e-15  # measured 2.8e-16
+        assert m.n_eff == pytest.approx(beta * lam / (2 * PI), rel=5e-15)
+    assert [m.order for m in modes] == list(range(len(modes)))
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+def test_three_counts_agree_on_the_coupled_double_core(pol):
+    # No closed form: a q-grid finder, the γ-grid finder and the argument
+    # principle must all see the same two supermodes.
+    k, lay, d, eb = _rel(*STACKS["double"])
+    roots, count = layered.guided_poles(k, lay, d, eb, pol)
+    k_out, k_max = layered._window(k, lay, eb)
+    q = np.linspace(k_out, k_max, 4001)[1:-1]
+    v = layered.stack_dispersion(q + 0j, k, lay, d, eb, pol).real
+    assert np.count_nonzero(v[:-1] * v[1:] < 0) == roots.size == count == 2
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+def test_a_mode_1e8_past_cutoff_is_found(pol):
+    # S4: a q-grid one cell inside the window misses t ≤ 1e-4; the γ-grid from
+    # γ = 0 must not miss t = 1e-8.
+    # The count may undercount here (S4: wind_γ = 1 of 2 at t = 1e-8, the box's
+    # left edge leaving the code's sheet); only a shortfall of the bracketing
+    # against it is an error, so no error may be raised.
+    k, lay, d, eb, beta = _near_cutoff(1.444, N_SI, 1.444, 1, pol, 1e-8)
+    roots, count = layered.guided_poles(k, lay, d, eb, pol)
+    assert count <= roots.size == 2
+    assert min(abs(roots - beta)) / beta < 5e-15
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+def test_near_degenerate_supermodes_raise_by_name(pol):
+    # Si / 3 µm SiO₂ / Si: Δβ/β ≲ 1e-8, below even the ×100 grid (S4 b), so
+    # the pair vanishes from every bracketing while the count still sees it.
+    stack = Stack(((N_SI**2, 220.0), (N_CLAD**2, 3000.0), (N_SI**2, 220.0)), N_CLAD**2)
+    with pytest.raises(NearDegenerateModesError, match="beat length"):
+        stack.guided_modes(1550.0, pol, N_CLAD)
+
+
+def test_guided_modes_refuse_complex_wavelength_and_loss():
+    with pytest.raises(ValueError, match="real wavelength"):
+        Stack(((N_SI**2, 220.0),), N_CLAD**2).guided_modes(1550.0 + 1j, 2, N_CLAD)
+    with pytest.raises(ValueError, match="lossless"):
+        Stack((((N_SI + 1e-3j) ** 2, 220.0),), N_CLAD**2).guided_modes(
+            1550.0, 2, N_CLAD
+        )
+
+
+# --- GW7: the residue identity pins the normalisation ----------------------------
+
+GW7_STACKS = {**STACKS, "air|SiN300|SiO2": (1550, 1.0, [(N_SIN, 300)], 1.444)}
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("case", GW7_STACKS, ids=str)
+def test_residue_of_r_is_gamma_over_beta_n(case, pol):
+    # Res_β R = γ₁u(z_top)²/(βN): left a Cauchy circle on the recursion, right
+    # the transfer-matrix profile and a Gauss–Legendre norm, no R involved. The
+    # 1/ε TM weight in N is load-bearing (S8: 74 % off without it).
+    lam, n_clad, layers, n_bot = GW7_STACKS[case]
+    stack = Stack(tuple((n**2, t) for n, t in layers), n_bot**2)
+    k, lay, d, eb = _rel(*GW7_STACKS[case])
+    k_out = layered._window(k, lay, eb)[0]
+    for m in stack.guided_modes(lam, pol, n_clad):
+        r = min(0.3 * (m.beta - k_out), 1e-3 * m.beta)
+        t = 2 * PI * np.arange(64) / 64
+        z = m.beta + r * np.exp(1j * t)
+        res = np.mean(layered.stack_r(z, k, lay, d, eb, pol) * r * np.exp(1j * t))
+        assert m.profile(0.0) == 1.0
+        assert abs(res - m.gamma / (m.beta * m.norm)) / abs(res) < 4e-13  # 4.2e-14
