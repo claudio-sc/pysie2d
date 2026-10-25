@@ -1,0 +1,69 @@
+(a) far-x field of −(b·∇')G vs the guided closed form, both directions (h₀ = 50, observer h = 100 nm)
+  SOI 220 @1550            TM b=(1,0)               : |u − guided|/Σ|c| at +10µm 1.1e-01  −10µm 1.1e-01  +40µm 3.5e-02  −40µm 3.5e-02
+  SOI 220 @1550            TM b=(0,1)               : |u − guided|/Σ|c| at +10µm 8.8e-03  −10µm 8.8e-03  +40µm 3.0e-03  −40µm 3.0e-03
+  SOI 220 @1550            TM spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 9.6e-02  −10µm 1.1e-01  +40µm 3.2e-02  −40µm 3.8e-02
+  SOI 220 @1550            TE b=(1,0)               : |u − guided|/Σ|c| at +10µm 6.0e-02  −10µm 6.0e-02  +40µm 8.1e-03  −40µm 8.1e-03
+  SOI 220 @1550            TE b=(0,1)               : |u − guided|/Σ|c| at +10µm 2.5e-02  −10µm 2.5e-02  +40µm 3.5e-03  −40µm 3.5e-03
+  SOI 220 @1550            TE spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 3.4e-02  −10µm 8.5e-02  +40µm 4.7e-03  −40µm 1.2e-02
+  air|Si 220|SiO2          TM b=(1,0)               : |u − guided|/Σ|c| at +10µm 6.3e-02  −10µm 6.3e-02  +40µm 8.6e-03  −40µm 8.6e-03
+  air|Si 220|SiO2          TM b=(0,1)               : |u − guided|/Σ|c| at +10µm 4.0e-02  −10µm 4.0e-02  +40µm 4.4e-03  −40µm 4.4e-03
+  air|Si 220|SiO2          TM spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 8.0e-02  −10µm 6.9e-02  +40µm 1.1e-02  −40µm 8.7e-03
+  air|Si 220|SiO2          TE b=(1,0)               : |u − guided|/Σ|c| at +10µm 1.5e-02  −10µm 1.5e-02  +40µm 2.5e-03  −40µm 2.5e-03
+  air|Si 220|SiO2          TE b=(0,1)               : |u − guided|/Σ|c| at +10µm 2.0e-02  −10µm 2.0e-02  +40µm 2.8e-03  −40µm 2.8e-03
+  air|Si 220|SiO2          TE spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 1.3e-02  −10µm 3.3e-02  +40µm 3.1e-03  −40µm 4.3e-03
+  SiN 400 @800 (2 modes)   TM b=(1,0)               : |u − guided|/Σ|c| at +10µm 1.1e-02  −10µm 1.1e-02  +40µm 1.4e-03  −40µm 1.4e-03
+  SiN 400 @800 (2 modes)   TM b=(0,1)               : |u − guided|/Σ|c| at +10µm 4.1e-03  −10µm 4.1e-03  +40µm 3.9e-04  −40µm 3.9e-04
+  SiN 400 @800 (2 modes)   TM spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 8.9e-03  −10µm 1.2e-02  +40µm 1.2e-03  −40µm 1.6e-03
+  SiN 400 @800 (2 modes)   TE b=(1,0)               : |u − guided|/Σ|c| at +10µm 4.2e-03  −10µm 4.2e-03  +40µm 5.3e-04  −40µm 5.3e-04
+  SiN 400 @800 (2 modes)   TE b=(0,1)               : |u − guided|/Σ|c| at +10µm 5.8e-03  −10µm 5.8e-03  +40µm 7.1e-04  −40µm 7.1e-04
+  SiN 400 @800 (2 modes)   TE spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 7.4e-04  −10µm 7.9e-03  +40µm 8.8e-05  −40µm 9.8e-04
+
+(b) power balance Im[(b*·∇)(b·∇')G] = P_up + P_down + Σ(P⁺ + P⁻), and the directionality
+  SOI 220 @1550            TM b=(1,0)          h₀=   20: |Δ|/P = 3.1e-15  guided  67.7 %  P⁺/(P⁺+P⁻) = 0.5000
+  SOI 220 @1550            TM b=(1,0)          h₀=  150: |Δ|/P = 1.5e-15  guided  31.4 %  P⁺/(P⁺+P⁻) = 0.5000
+  SOI 220 @1550            TM b=(0,1)          h₀=   20: |Δ|/P = 1.6e-15  guided  48.7 %  P⁺/(P⁺+P⁻) = 0.5000
+  SOI 220 @1550            TM b=(0,1)          h₀=  150: |Δ|/P = 4.7e-16  guided  16.1 %  P⁺/(P⁺+P⁻) = 0.5000
+  SOI 220 @1550            TM b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 2.9e-15  guided  61.7 %  P⁺/(P⁺+P⁻) = 0.2859
+  SOI 220 @1550            TM b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 1.1e-15  guided  25.4 %  P⁺/(P⁺+P⁻) = 0.2859
+  SOI 220 @1550            TM b=spin-locked    h₀=   20: |Δ|/P = 2.6e-15  guided  56.6 %  P⁺/(P⁺+P⁻) = 1.0000
+  SOI 220 @1550            TM b=spin-locked    h₀=  150: |Δ|/P = 1.5e-15  guided  21.3 %  P⁺/(P⁺+P⁻) = 1.0000
+  SOI 220 @1550            TE b=(1,0)          h₀=   20: |Δ|/P = 1.2e-15  guided  74.2 %  P⁺/(P⁺+P⁻) = 0.5000
+  SOI 220 @1550            TE b=(1,0)          h₀=  150: |Δ|/P = 8.5e-16  guided  13.8 %  P⁺/(P⁺+P⁻) = 0.5000
+  SOI 220 @1550            TE b=(0,1)          h₀=   20: |Δ|/P = 3.4e-16  guided  55.2 %  P⁺/(P⁺+P⁻) = 0.5000
+  SOI 220 @1550            TE b=(0,1)          h₀=  150: |Δ|/P = 0.0e+00  guided   9.6 %  P⁺/(P⁺+P⁻) = 0.5000
+  SOI 220 @1550            TE b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 6.2e-16  guided  66.7 %  P⁺/(P⁺+P⁻) = 0.2675
+  SOI 220 @1550            TE b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 3.7e-16  guided  12.0 %  P⁺/(P⁺+P⁻) = 0.2675
+  SOI 220 @1550            TE b=spin-locked    h₀=   20: |Δ|/P = 2.9e-16  guided  63.3 %  P⁺/(P⁺+P⁻) = 1.0000
+  SOI 220 @1550            TE b=spin-locked    h₀=  150: |Δ|/P = 6.9e-16  guided  11.3 %  P⁺/(P⁺+P⁻) = 1.0000
+  air|Si 220|SiO2          TM b=(1,0)          h₀=   20: |Δ|/P = 8.2e-16  guided  46.3 %  P⁺/(P⁺+P⁻) = 0.5000
+  air|Si 220|SiO2          TM b=(1,0)          h₀=  150: |Δ|/P = 1.7e-15  guided  17.6 %  P⁺/(P⁺+P⁻) = 0.5000
+  air|Si 220|SiO2          TM b=(0,1)          h₀=   20: |Δ|/P = 2.7e-15  guided  51.0 %  P⁺/(P⁺+P⁻) = 0.5000
+  air|Si 220|SiO2          TM b=(0,1)          h₀=  150: |Δ|/P = 3.1e-15  guided  16.1 %  P⁺/(P⁺+P⁻) = 0.5000
+  air|Si 220|SiO2          TM b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 6.6e-16  guided  47.7 %  P⁺/(P⁺+P⁻) = 0.2688
+  air|Si 220|SiO2          TM b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 1.6e-15  guided  17.1 %  P⁺/(P⁺+P⁻) = 0.2688
+  air|Si 220|SiO2          TM b=spin-locked    h₀=   20: |Δ|/P = 1.2e-16  guided  48.6 %  P⁺/(P⁺+P⁻) = 1.0000
+  air|Si 220|SiO2          TM b=spin-locked    h₀=  150: |Δ|/P = 8.1e-16  guided  16.8 %  P⁺/(P⁺+P⁻) = 1.0000
+  air|Si 220|SiO2          TE b=(1,0)          h₀=   20: |Δ|/P = 4.8e-15  guided  78.2 %  P⁺/(P⁺+P⁻) = 0.5000
+  air|Si 220|SiO2          TE b=(1,0)          h₀=  150: |Δ|/P = 1.2e-15  guided  19.5 %  P⁺/(P⁺+P⁻) = 0.5000
+  air|Si 220|SiO2          TE b=(0,1)          h₀=   20: |Δ|/P = 3.6e-15  guided  67.7 %  P⁺/(P⁺+P⁻) = 0.5000
+  air|Si 220|SiO2          TE b=(0,1)          h₀=  150: |Δ|/P = 0.0e+00  guided  13.2 %  P⁺/(P⁺+P⁻) = 0.5000
+  air|Si 220|SiO2          TE b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 3.9e-15  guided  74.0 %  P⁺/(P⁺+P⁻) = 0.2615
+  air|Si 220|SiO2          TE b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 2.2e-16  guided  16.7 %  P⁺/(P⁺+P⁻) = 0.2615
+  air|Si 220|SiO2          TE b=spin-locked    h₀=   20: |Δ|/P = 4.1e-15  guided  72.6 %  P⁺/(P⁺+P⁻) = 1.0000
+  air|Si 220|SiO2          TE b=spin-locked    h₀=  150: |Δ|/P = 6.6e-16  guided  15.8 %  P⁺/(P⁺+P⁻) = 1.0000
+  SiN 400 @800 (2 modes)   TM b=(1,0)          h₀=   20: |Δ|/P = 9.6e-16  guided  58.8 %  P⁺/(P⁺+P⁻) = 0.5000
+  SiN 400 @800 (2 modes)   TM b=(1,0)          h₀=  150: |Δ|/P = 2.1e-16  guided  31.9 %  P⁺/(P⁺+P⁻) = 0.5000
+  SiN 400 @800 (2 modes)   TM b=(0,1)          h₀=   20: |Δ|/P = 7.3e-16  guided  12.1 %  P⁺/(P⁺+P⁻) = 0.5000
+  SiN 400 @800 (2 modes)   TM b=(0,1)          h₀=  150: |Δ|/P = 2.0e-16  guided   2.8 %  P⁺/(P⁺+P⁻) = 0.5000
+  SiN 400 @800 (2 modes)   TM b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 2.2e-15  guided  43.5 %  P⁺/(P⁺+P⁻) = 0.3694
+  SiN 400 @800 (2 modes)   TM b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 1.6e-15  guided  20.0 %  P⁺/(P⁺+P⁻) = 0.3912
+  SiN 400 @800 (2 modes)   TM b=spin-locked    h₀=   20: |Δ|/P = 3.7e-16  guided  27.9 %  P⁺/(P⁺+P⁻) = 0.9132
+  SiN 400 @800 (2 modes)   TM b=spin-locked    h₀=  150: |Δ|/P = 0.0e+00  guided  10.5 %  P⁺/(P⁺+P⁻) = 0.8750
+  SiN 400 @800 (2 modes)   TE b=(1,0)          h₀=   20: |Δ|/P = 1.7e-16  guided  69.7 %  P⁺/(P⁺+P⁻) = 0.5000
+  SiN 400 @800 (2 modes)   TE b=(1,0)          h₀=  150: |Δ|/P = 0.0e+00  guided  22.4 %  P⁺/(P⁺+P⁻) = 0.5000
+  SiN 400 @800 (2 modes)   TE b=(0,1)          h₀=   20: |Δ|/P = 1.6e-16  guided  14.2 %  P⁺/(P⁺+P⁻) = 0.5000
+  SiN 400 @800 (2 modes)   TE b=(0,1)          h₀=  150: |Δ|/P = 1.1e-16  guided   3.6 %  P⁺/(P⁺+P⁻) = 0.5000
+  SiN 400 @800 (2 modes)   TE b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 4.1e-16  guided  47.4 %  P⁺/(P⁺+P⁻) = 0.3448
+  SiN 400 @800 (2 modes)   TE b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 0.0e+00  guided  15.2 %  P⁺/(P⁺+P⁻) = 0.3591
+  SiN 400 @800 (2 modes)   TE b=spin-locked    h₀=   20: |Δ|/P = 3.9e-16  guided  29.9 %  P⁺/(P⁺+P⁻) = 0.9549
+  SiN 400 @800 (2 modes)   TE b=spin-locked    h₀=  150: |Δ|/P = 0.0e+00  guided   9.2 %  P⁺/(P⁺+P⁻) = 0.9377

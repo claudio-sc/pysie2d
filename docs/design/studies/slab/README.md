@@ -20,6 +20,7 @@ Each script runs in under 10 s, except `s4_cutoff.py` (~3 min, QUADPACK referenc
 | `s5_gap.py` | Risk §7.2: gaps down to 2 nm with poles present; M against v0.9; the cost of R(q) against N_layers | done |
 | `s8_residue.py` | Mode normalisation: Res_β R = γ₁u_m(z_top)²/(β_m N_m), N_m = ∫p u_m² | done |
 | `s9_dipole.py` | A4: the far-x guided sum, and the dipole power balance as an equality | done |
+| `s11_inplane.py` | R18's anchor: in-plane dipoles as derivative sources, per-direction mode amplitudes, spin-locked one-way coupling, the power balance | done |
 | `nearfield.py` | The field inside the layers and below; its checks (interface continuity, cover match at z_top, far-x guided sum in the core) run as `__main__` | done |
 | `fig_data.py` | Data for the near-field showcase page (`python fig_data.py OUT.json`) | — |
 
@@ -268,6 +269,38 @@ is the residue at +β, with the contour closed upward for X > 0.
   established. A search found no improper pole of D within |γ| < k of the
   branch point, so a slow leaky wave is not the explanation. Open.
 - Normalise by Σ|terms|, not |Σ|: two supermodes beat, so |Σ| has near-zeros.
+
+### S11: in-plane dipoles, R18's anchor (`s11_inplane.txt`)
+
+A current J in the cover gives ∇·(p∇u) + k²u = −[∇×J]_y for TM (u = H_y).
+An in-plane electric dipole is therefore a **derivative source**,
+u = −(b·∇′)G(r, r₀) with **b ∝ (p_z, −p_x)**. The constant and the sign of
+that map (iω, the cover ε) are pinned in the code-spec. The same form in TE
+(u = E_y) is an in-plane *magnetic* dipole, and the algebra does not depend on
+the polarisation. Applying −(b·∇′) to S8's guided pole gives
+
+    c_m^± = (i/(2β_m N_m)) u_m(z₀) (±iβ_m b_x + γ₁ b_z),
+    P_m^± = u_m(z₀)² |±iβ_m b_x + γ₁ b_z|² / (4β_m N_m),
+
+so **c_m^− = 0 exactly when b_z = iβ_m b_x/γ₁**. That is the spin-locked
+dipole: elliptical, with |b_z/b_x| = β/γ > 1. The power is
+Im[(b*·∇)(b·∇′)G] at coincidence: k²|b|²/8 from the free part, plus the
+reflected part with weight q²|b_x|² − α₁²|b_z|² (the odd cross terms vanish on
+the symmetric path). The up/down integrals take source amplitudes
+A↑ = i(qb_x + α₁b_z) and A↓ = i(qb_x − α₁b_z), and they **must run over the full
+−k…k range**: they are not even in q once b_x b_z ≠ 0.
+
+- **The power balance is an equality to ≤ 5e-15** for b = (1,0), (0,1),
+  (1, 0.7−0.4i) and spin-locked, on SOI, air|Si|SiO₂ and SiN (2 modes), TE and
+  TM, at h₀ = 20 and 150 nm.
+- **The spin-locked dipole sends P⁺/(P⁺+P⁻) = 1.0000 one way** on single-mode
+  slabs, at both heights. On the 2-mode SiN slab it is 0.88–0.95: the lock
+  matches mode 0's γ₁, so mode 1 still couples both ways. Guided shares reach
+  57–78 % at 20 nm, against 28–37 % for the scalar source (S9).
+- **The far-x field matches the closed-form c_m^± in both directions**, with
+  the remainder falling as in S9 (1e-1–1e-3 at 10 µm, 3e-2–9e-5 at 40 µm).
+  For the spin-locked dipole the −x side carries no guided wave. A wrong ± in
+  the closed form would leave an O(1) remainder there.
 
 ## Plan for the rest of the study
 

@@ -320,5 +320,7 @@ v1.1 has shipped, so v1.2 starts, in this order:
 4. **v1.2 code-spec** with the S-parameter API of R13–R14, the R15 guard, the
    R16 adjoint and the R18 sources, and a §8 builder contract and stop rule.
    Before it: the S9 closed form for in-plane dipoles (R18's anchor) is pinned
-   in the study.
+   in the study. *Done (S11, 2026-10-25):* c_m^± = (i/2β_mN_m)u_m(z₀)(±iβ_m b_x +
+   γ₁b_z), the power balance an equality to 5e-15, and spin-locked one-way
+   coupling exact on single-mode slabs. The b ↔ p constant is the spec's to pin.
 5. **Build v1.2**: items 1–7, cover-only particles; then the item 8 example.
