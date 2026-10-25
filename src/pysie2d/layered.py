@@ -278,6 +278,45 @@ class SommerfeldPath:
         )
 
     @classmethod
+    def for_features(
+        cls,
+        k: complex,
+        features: Sequence[tuple[str, complex]],
+        D: float,
+        z_min: float,
+        depth_scale: float = 1.0,
+    ) -> SommerfeldPath:
+        """Path for one wavenumber with an explicit singularity list (a stack).
+
+        Every v0.9 rule applies unchanged — T, δ, clearance C1, node counts,
+        banding — only the right-hand singularities come from the caller
+        instead of :func:`_singularities`: a stack's outer branch points and
+        guided poles (slab-spec §2.4).
+
+        Args:
+            k: Background wavenumber (rad/nm), complex allowed.
+            features: ``(label, q)`` right-hand singularities to clear.
+            D: Horizontal extent of everything the path serves (nm).
+            z_min: Smallest decay length sum it serves (nm).
+            depth_scale: As :meth:`for_wavenumber`.
+
+        Returns:
+            The path.
+
+        Raises:
+            ValueError: As :meth:`for_wavenumber`.
+        """
+        return cls._build(
+            np.atleast_1d(np.asarray(k, dtype=complex)),
+            None,
+            0,
+            D,
+            z_min,
+            depth_scale,
+            features,
+        )
+
+    @classmethod
     def _build(
         cls,
         ks: np.ndarray,
@@ -286,6 +325,7 @@ class SommerfeldPath:
         D: float,
         z_min: float,
         depth_scale: float,
+        features: Sequence[tuple[str, complex]] | None = None,
     ) -> SommerfeldPath:
         if not (D > 0.0 and z_min > 0.0):
             raise ValueError(f"need D > 0 and z_min > 0, got D = {D}, z_min = {z_min}")
@@ -299,7 +339,10 @@ class SommerfeldPath:
                 "the hump depth diverges as Re λ → 0 (holomorphy note §8)"
             )
 
-        samples = [(i, _singularities(k, eps_rel, pol)) for i, k in enumerate(ks)]
+        if features is None:
+            samples = [(i, _singularities(k, eps_rel, pol)) for i, k in enumerate(ks)]
+        else:
+            samples = [(0, [(label, complex(f)) for label, f in features])]
         near = [
             f.real
             for i, feats in samples
