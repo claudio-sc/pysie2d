@@ -25,6 +25,8 @@ the one measured in ``docs/design/studies/halfspace/``.
 
 from __future__ import annotations
 
+import functools
+import math
 import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -504,6 +506,7 @@ def reflected_green(
     xs: np.ndarray | float,
     zs: np.ndarray | float,
     z_int: float,
+    r_fn: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Reflected Green function at observation ``(x, z)`` from a source ``(xs, zs)``.
 
@@ -517,6 +520,8 @@ def reflected_green(
         xs: Source x.
         zs: Source z.
         z_int: Interface height.
+        r_fn: ``q → R(q)`` replacing :func:`fresnel_r` (a stack's recursion);
+            ``eps_rel`` is then unused.
 
     Returns:
         ``(G, dG/dx', dG/dz')``, the source-side derivatives, broadcast shape.
@@ -530,12 +535,13 @@ def reflected_green(
     _check_in_cover(z, z_int, "observation points")
     _check_in_cover(zs, z_int, "source points")
     X, Z = x - xs, z + zs - 2.0 * z_int
-    if eps_rel is None:
+    if eps_rel is None and r_fn is None:
         return _pec_terms(k, pol, X, Z)[:3]
 
     assert path is not None
     a = alpha(path.q, k)
-    base = path.w * fresnel_r(path.q, k, eps_rel, pol) / a
+    r = fresnel_r(path.q, k, eps_rel, pol) if r_fn is None else r_fn(path.q)
+    base = path.w * r / a
     pre = 1j / (2.0 * PI)  # (i/4π)·2: the integral is folded onto q ≥ 0
     shape = X.shape
     Xf, Zf = X.ravel(), Z.ravel()
@@ -562,13 +568,14 @@ def _reflected_blocks(
     z_int: float,
     x_c: float,
     derivative: bool,
+    r_fn: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     h_t, h_s = tgt.g - z_int, src.g - z_int
     _check_in_cover(tgt.g, z_int, "field-particle boundary")
     _check_in_cover(src.g, z_int, "source-particle boundary")
     step = src.delt
 
-    if eps_rel is None:
+    if eps_rel is None and r_fn is None:
         X = tgt.f[:, None] - src.f[None, :]
         Z = h_t[:, None] + h_s[None, :]
         s = -1.0 if pol == 2 else 1.0
@@ -591,8 +598,6 @@ def _reflected_blocks(
     h_min_t, h_min_s = h_t.min(), h_s.min()
     m1 = np.zeros((tgt.n_pts, src.n_pts), dtype=complex)
     m2 = np.zeros_like(m1)
-    eps = _normalised(eps_rel)
-    k2 = k * np.sqrt(eps)
 
     for a0, i0, i1 in path.bands:
         if a0 == 0.0:
@@ -609,7 +614,7 @@ def _reflected_blocks(
         q = np.concatenate([path.q[i0:i1], -path.q[i0:i1]])
         w = np.concatenate([path.w[i0:i1], path.w[i0:i1]])
         a1 = alpha(q, k)
-        r = fresnel_r(q, k, eps_rel, pol)
+        r = fresnel_r(q, k, eps_rel, pol) if r_fn is None else r_fn(q)
         coef = (1j / (4.0 * PI)) * w * r / a1
         e_t = np.exp(1j * (np.outer(x_t[rows], q) + np.outer(h_t[rows], a1)))
         e_s = np.exp(1j * (-np.outer(x_s[cols], q) + np.outer(h_s[cols], a1)))
@@ -623,8 +628,9 @@ def _reflected_blocks(
 
         # d/dk at fixed nodes (the path is fixed per call context, so this is the
         # exact derivative). dα₁/dk = k/α₁ and dα₂/dk = k·ε/α₂ on the sheet.
+        eps = _normalised(eps_rel)
         da1 = k / a1
-        a2 = alpha(q, k2)
+        a2 = alpha(q, k * np.sqrt(eps))
         if pol == 2:
             dr = 2.0 * (a2 * da1 - a1 * k * eps / a2) / (a1 + a2) ** 2
         else:
@@ -1149,3 +1155,685 @@ def transmitted_blocks(
         m2[ix] += left @ e_s.T
         m1[ix] += left @ (e_s * poly).T
     return src.delt * m1, src.delt * m2
+
+
+# --- N-layer stack (v1.2, slab-spec §2) ----------------------------------------
+#
+# Frame as v0.9: cover above z_top, layers downward, bottom below z_bot, every
+# value background-relative (cover ε = 1), k the background wavenumber. Media
+# are numbered 0 (cover) … n+1 (bottom), so layer j of the tuples is medium j+1.
+# Admittance Y = α (TE) or α/ε (TM), so one recursion serves both. Outer α on
+# the vertical-cut sheet (`alpha`); interior α_j on Im α_j ≥ 0, which bounds
+# every e^{2iα_j d_j} by 1 (R and τ are even in every interior α_j).
+
+# γ-grid density for the guided-pole bracketing: n = max(4000, ⌈400(1 + k_max·Σd/π)⌉)
+# (S2, S4: a q-grid misses near-cutoff roots at t ≤ 1e-4; the γ-grid finds all).
+POLE_GRID_MIN = 4000
+POLE_GRID_PER_MODE = 400.0
+# Argument-principle box [0, 1.05γ_hi] × [−h, h], h = 0.01·γ_hi. It must stay
+# thin: Re γ > 0 is the Im α ≥ 0 sheet, which leaves the code's sheet left of
+# k_out (S4 counted a leaky pole at h = 0.05).
+WINDING_OVERSHOOT = 1.05
+WINDING_HALF_HEIGHT = 0.01
+WINDING_POINTS_MIN = 8192
+WINDING_POINTS_PER_K_D = 64.0
+# A shortfall of the bracketing against the count refines the grid ×10, twice.
+POLE_GRID_REFINEMENTS = 2
+# Continuation of the real roots to complex k or a lossy stack (S6): 16 linear
+# homotopy steps, Newton with D′ from a 64-point Cauchy circle of radius
+# 1e-4·|q|, |Δq| < 1e-15·|q|, at most 30 steps per stage.
+CONTINUATION_STEPS = 16
+CAUCHY_POINTS = 64
+CAUCHY_RADIUS = 1e-4
+NEWTON_RTOL = 1e-15
+NEWTON_MAX_STEPS = 30
+# |α_j d_j| below which sin(αd)/α is formed as np.sinc: (e^{iαd} − e^{−iαd})/2iα
+# cancels there.
+SMALL_PHASE = 1e-3
+
+
+def _alpha_interior(q: np.ndarray, kj: complex) -> np.ndarray:
+    """Interior ``α_j = √(k_j² − q²)`` with ``Im α_j ≥ 0``: ``|e^{2iα_j d_j}| ≤ 1``."""
+    a = np.sqrt(kj * kj - q * q)
+    return np.where(a.imag < 0.0, -a, a)
+
+
+def _stack_media(
+    q: np.ndarray,
+    k: complex,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> tuple[list, list, list, list, list]:
+    """Admittances, interior α, Γ at every medium top, and the interface terms.
+
+    Bottom up, ``Γ_{n+1} = 0``; across interface ``i | i+1`` the division-free
+    form ``G_i = num_i/den_i`` with ``num_i = (Y_i − Y_{i+1}) + (Y_i + Y_{i+1})Γ_{i+1}``
+    and ``den_i = (Y_i + Y_{i+1}) + (Y_i − Y_{i+1})Γ_{i+1}``, then
+    ``Γ_i = G_i e^{2iα_i d_i}`` (medium ``i ≥ 1``). Never forms ``e^{+|Im α|d}``:
+    the naive transfer matrix overflows at ``q·Σd ≈ 709`` (S1, finding 1).
+    """
+    n = len(eps_layers)
+    al = [_alpha_interior(q, k * np.sqrt(e)) for e in eps_layers]
+    a_bot = alpha(q, k * np.sqrt(eps_bot))
+    if pol == 2:
+        Y = [alpha(q, k), *al, a_bot]
+    else:
+        Y = [alpha(q, k), *(a / e for a, e in zip(al, eps_layers, strict=True))]
+        Y.append(a_bot / eps_bot)
+    gam: list = [None] * (n + 2)
+    gam[n + 1] = np.zeros_like(Y[0])
+    num: list = [None] * (n + 1)
+    den: list = [None] * (n + 1)
+    for i in range(n, -1, -1):
+        s, t = Y[i] + Y[i + 1], Y[i] - Y[i + 1]
+        num[i] = t + s * gam[i + 1]
+        den[i] = s + t * gam[i + 1]
+        g = num[i] / den[i]
+        gam[i] = g if i == 0 else g * np.exp(2j * al[i - 1] * d[i - 1])
+    return Y, al, gam, num, den
+
+
+def stack_r(
+    q: np.ndarray | complex,
+    k: complex,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> np.ndarray:
+    """Cover-side generalised reflection coefficient of a stack at ``z_top``.
+
+    Args:
+        q: Transverse wavenumber, any shape.
+        k: Cover (background) wavenumber, complex allowed.
+        eps_layers: Layer permittivities relative to the cover, top first;
+            never empty (T6 routes an empty stack to :func:`fresnel_r`).
+        d: Layer thicknesses (nm).
+        eps_bot: Bottom permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+
+    Returns:
+        Complex ``R(q)`` with the shape of ``q``.
+    """
+    q = np.asarray(q, dtype=complex)
+    return _stack_media(q, k, eps_layers, d, eps_bot, pol)[2][0]
+
+
+def stack_tau(
+    q: np.ndarray | complex,
+    k: complex,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> np.ndarray:
+    """``τ = T/α₁``: downward amplitude at ``z_bot`` per unit downward at ``z_top``.
+
+    ``τ = (2/den₀)·Π_{i≥1} 2Y_i e^{iα_i d_i}/den_i``, which is slab-spec §2.1's
+    ``[2/(Y₀+Y₁)]·Π[2Y_i/(Y_i+Y_{i+1})]e^{iα_i d_i}·Π 1/(1 + r_iΓ_{i+1})`` with
+    each ``(Y_i+Y_{i+1})`` cancelled. Finite at ``q = ±k₁`` (``Y₀ = α₁``).
+
+    Args:
+        q: Transverse wavenumber, any shape.
+        k: Cover wavenumber.
+        eps_layers: Layer permittivities relative to the cover, top first.
+        d: Layer thicknesses (nm).
+        eps_bot: Bottom permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+
+    Returns:
+        Complex ``τ(q)`` with the shape of ``q``.
+    """
+    q = np.asarray(q, dtype=complex)
+    Y, al, _, _, den = _stack_media(q, k, eps_layers, d, eps_bot, pol)
+    out = 2.0 / den[0]
+    for i in range(1, len(eps_layers) + 1):
+        out = out * 2.0 * Y[i] * np.exp(1j * al[i - 1] * d[i - 1]) / den[i]
+    return out
+
+
+def stack_layer_factor(
+    q: np.ndarray,
+    k: complex,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+    s: np.ndarray,
+    j: int,
+) -> np.ndarray:
+    """``W/α₁`` in layer ``j`` at depth ``s`` below its top (slab-spec §2.2).
+
+    Per unit downward amplitude at ``z_top``, the field in layer ``j`` is
+    ``W = A_j[e^{iα_j s} + G_j^{bot} e^{iα_j(2d_j − s)}]`` with ``s ∈ [0, d_j]``,
+    ``A₁/α₁ = 2/den₀`` and ``A_{j+1} = A_j e^{iα_j d_j}·2Y_j/den_j``; every
+    exponential is bounded. ``W/α₁`` is finite at ``q = ±k₁``.
+
+    Args:
+        q: (M,) transverse wavenumbers.
+        k: Cover wavenumber.
+        eps_layers: Layer permittivities relative to the cover, top first.
+        d: Layer thicknesses (nm).
+        eps_bot: Bottom permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+        s: (P,) depths below the top of layer ``j`` (nm), in ``[0, d_j]``.
+        j: Layer index, 0 for the top layer.
+
+    Returns:
+        complex (P, M) array.
+    """
+    q = np.asarray(q, dtype=complex)
+    Y, al, gam, num, den = _stack_media(q, k, eps_layers, d, eps_bot, pol)
+    amp = 2.0 / den[0]
+    for i in range(1, j + 1):
+        amp = amp * 2.0 * Y[i] * np.exp(1j * al[i - 1] * d[i - 1]) / den[i]
+    m = j + 1
+    g_bot = num[m] / den[m]
+    a = al[j][None, :]
+    s = np.asarray(s, dtype=float)[:, None]
+    return amp[None, :] * (
+        np.exp(1j * a * s) + g_bot[None, :] * np.exp(1j * a * (2.0 * d[j] - s))
+    )
+
+
+def _dispersion(
+    q: np.ndarray,
+    k: complex,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+    scale_at: complex | None = None,
+) -> np.ndarray:
+    """Scaled transfer-matrix denominator of R; see :func:`stack_dispersion`.
+
+    Each layer's matrix is multiplied by ``e^{−|Im α_j| d_j}``, formed from
+    bounded exponentials (``cos`` itself overflows first). The factor is
+    positive, so roots, signs and the winding number are those of the unscaled
+    D. With ``scale_at`` the factor is frozen at that one ``q``, so the
+    function is holomorphic in ``q`` around it (Newton, Cauchy D′).
+    """
+    q = np.asarray(q, dtype=complex)
+    y1 = alpha(q, k)
+    a_bot = alpha(q, k * np.sqrt(eps_bot))
+    y_bot = a_bot if pol == 2 else a_bot / eps_bot
+    m11, m12 = np.ones_like(q), np.zeros_like(q)
+    m21, m22 = np.zeros_like(q), np.ones_like(q)
+    for e, dj in zip(eps_layers, d, strict=True):
+        kj = k * np.sqrt(e)
+        a = np.sqrt(kj * kj - q * q)  # the entries are even in a: any sheet
+        a_s = a if scale_at is None else np.sqrt(kj * kj - scale_at * scale_at)
+        sc = np.abs(np.imag(a_s)) * dj
+        ep, em = np.exp(1j * a * dj - sc), np.exp(-1j * a * dj - sc)
+        c = 0.5 * (ep + em)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            sinc = np.where(
+                np.abs(a * dj) > SMALL_PHASE,
+                (ep - em) / (2j * a),
+                np.sinc(a * dj / PI) * dj * np.exp(-sc),
+            )
+        w = 1.0 if pol == 2 else e
+        n12, n21 = -w * sinc, (a * a / w) * sinc
+        m11, m12, m21, m22 = (
+            c * m11 + n12 * m21,
+            c * m12 + n12 * m22,
+            n21 * m11 + c * m21,
+            n21 * m12 + c * m22,
+        )
+    return -1j * y_bot * (m11 + 1j * y1 * m12) - (m21 + 1j * y1 * m22)
+
+
+def stack_dispersion(
+    q: np.ndarray | complex,
+    k: complex,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> np.ndarray:
+    """Scaled dispersion function D(q): zero at every guided pole (slab-spec §2.3).
+
+    The transfer-matrix denominator of R with each layer's matrix scaled by
+    ``e^{−|Im α_j| d_j}``: same roots, real on the guided window of a lossless
+    stack, so the roots bracket.
+
+    Args:
+        q: Transverse wavenumber, any shape.
+        k: Cover wavenumber.
+        eps_layers: Layer permittivities relative to the cover, top first.
+        d: Layer thicknesses (nm).
+        eps_bot: Bottom permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+
+    Returns:
+        Complex ``D(q)`` with the shape of ``q``.
+    """
+    return _dispersion(np.asarray(q, dtype=complex), k, eps_layers, d, eps_bot, pol)
+
+
+def _window(
+    k: float, eps_layers: tuple[complex, ...], eps_bot: complex
+) -> tuple[float, float]:
+    """Guided window ``(k_out, k_max)``: ``max(k₁, Re k_bot)``, ``max Re k_j``."""
+    k_out = max(k, float(np.real(k * np.sqrt(eps_bot))))
+    k_max = max(float(np.real(k * np.sqrt(e))) for e in eps_layers)
+    return k_out, k_max
+
+
+def _winding(
+    k: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+    g_lo: float,
+    g_hi: float,
+    h: float,
+    n: int,
+) -> int:
+    """Zeros of D(q(γ)) in the γ-box ``[g_lo, g_hi] × [−h, h]``, argument principle.
+
+    ``q = √(k_out² + γ²)`` uniformises the outer branch point (the outer
+    ``Y = iγ``), so D is analytic through γ = 0 and the box can sit on it.
+    """
+    k_out, _ = _window(k, eps_layers, eps_bot)
+    m = n // 4
+    s = np.linspace(0.0, 1.0, m, endpoint=False)
+    w = g_hi - g_lo
+    gs = np.concatenate(
+        [
+            g_lo + w * s - 1j * h,
+            g_hi + 1j * h * (2.0 * s - 1.0),
+            g_hi - w * s + 1j * h,
+            g_lo + 1j * h * (1.0 - 2.0 * s),
+        ]
+    )
+    v = _dispersion(np.sqrt(k_out * k_out + gs * gs), k, eps_layers, d, eps_bot, pol)
+    ph = np.unwrap(np.angle(np.append(v, v[0])))
+    return int(round((ph[-1] - ph[0]) / (2.0 * PI)))
+
+
+def _bracket(
+    k: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+    n_grid: int,
+) -> np.ndarray:
+    """Real roots of D bracketed on a uniform γ-grid from γ = 0, refined by brentq.
+
+    Near cutoff D is linear in γ, not in q, so the γ-grid sees a root at
+    ``(β − k_out)/k = t`` that a q-grid one cell inside the window misses (S4).
+    """
+    from scipy.optimize import brentq
+
+    k_out, k_max = _window(k, eps_layers, eps_bot)
+    g_hi = np.sqrt(k_max * k_max - k_out * k_out)
+
+    def f(g: np.ndarray | float) -> np.ndarray:
+        q = np.sqrt(k_out * k_out + np.asarray(g, dtype=float) ** 2) + 0j
+        return _dispersion(np.atleast_1d(q), k, eps_layers, d, eps_bot, pol).real
+
+    gs = np.linspace(0.0, g_hi, n_grid + 1)
+    vals = f(gs)
+    roots = []
+    for i in np.flatnonzero(vals[:-1] * vals[1:] < 0.0):
+        g0 = brentq(lambda g: f(g)[0], gs[i], gs[i + 1], xtol=1e-300, rtol=8.9e-16)
+        roots.append(np.sqrt(k_out * k_out + g0 * g0))
+    return np.array(sorted(roots, reverse=True))
+
+
+def _pole_grid(k: float, eps_layers: tuple[complex, ...], d: tuple[float, ...]) -> int:
+    k_max = max(float(np.real(k * np.sqrt(e))) for e in eps_layers)
+    return max(
+        POLE_GRID_MIN, math.ceil(POLE_GRID_PER_MODE * (1.0 + k_max * sum(d) / PI))
+    )
+
+
+def _winding_box(
+    k: float, eps_layers: tuple[complex, ...], d: tuple[float, ...], eps_bot: complex
+) -> tuple[float, float, int]:
+    """``(γ_box, h, n)`` of the count check: the box ``[0, 1.05γ_hi] × [−h, h]``."""
+    k_out, k_max = _window(k, eps_layers, eps_bot)
+    g_hi = np.sqrt(k_max * k_max - k_out * k_out)
+    n = max(WINDING_POINTS_MIN, math.ceil(WINDING_POINTS_PER_K_D * k_max * sum(d)))
+    return WINDING_OVERSHOOT * g_hi, WINDING_HALF_HEIGHT * g_hi, n
+
+
+def guided_poles(
+    k: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> tuple[np.ndarray, int]:
+    """Guided poles of a lossless stack at real ``k``, and their count.
+
+    The real roots of the scaled D, bracketed on a uniform γ-grid from γ = 0
+    and refined by ``brentq``; the count is the argument principle on the thin
+    γ-box. Close pairs vanish in pairs from any bracketing grid (finding 3), so
+    a shortfall refines the grid ×10, twice; the caller compares the two.
+
+    Args:
+        k: Real cover wavenumber.
+        eps_layers: Real layer permittivities relative to the cover.
+        d: Layer thicknesses (nm).
+        eps_bot: Real bottom permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+
+    Returns:
+        ``(roots, count)``: β in descending order, and the winding count.
+    """
+    k_out, k_max = _window(k, eps_layers, eps_bot)
+    if k_max <= k_out:
+        return np.empty(0), 0
+    g_box, h, n = _winding_box(k, eps_layers, d, eps_bot)
+    count = _winding(k, eps_layers, d, eps_bot, pol, 0.0, g_box, h, n)
+    n_grid = _pole_grid(k, eps_layers, d)
+    for refine in range(POLE_GRID_REFINEMENTS + 1):
+        roots = _bracket(k, eps_layers, d, eps_bot, pol, n_grid * 10**refine)
+        if roots.size >= count:
+            break
+    return roots, count
+
+
+def _unresolved_cell(
+    k: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+    roots: np.ndarray,
+) -> tuple[float, float]:
+    """The q-interval of one grid cell holding zeros the bracketing missed.
+
+    Bisects the count box, descending into the half whose winding exceeds the
+    roots found in it, down to the finest grid's cell width.
+    """
+    k_out, k_max = _window(k, eps_layers, eps_bot)
+    g_box, h, n = _winding_box(k, eps_layers, d, eps_bot)
+    cell = np.sqrt(k_max * k_max - k_out * k_out) / (
+        _pole_grid(k, eps_layers, d) * 10**POLE_GRID_REFINEMENTS
+    )
+    g_roots = np.sqrt(np.maximum(roots**2 - k_out * k_out, 0.0))
+    lo, hi = 0.0, g_box
+    while hi - lo > cell:
+        mid = 0.5 * (lo + hi)
+        found = np.count_nonzero((g_roots > lo) & (g_roots < mid))
+        if _winding(k, eps_layers, d, eps_bot, pol, lo, mid, h, n) > found:
+            hi = mid
+        else:
+            lo = mid
+    return float(np.sqrt(k_out**2 + lo**2)), float(np.sqrt(k_out**2 + hi**2))
+
+
+def _cauchy_derivative(
+    q0: complex,
+    k: complex,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> complex:
+    """D′(q₀) by Cauchy's formula on a circle of radius 1e-4·|q₀| (trapezoid)."""
+    r = CAUCHY_RADIUS * abs(q0)
+    t = 2.0 * PI * np.arange(CAUCHY_POINTS) / CAUCHY_POINTS
+    z = q0 + r * np.exp(1j * t)
+    v = _dispersion(z, k, eps_layers, d, eps_bot, pol, scale_at=q0)
+    return complex(np.mean(v * np.exp(-1j * t)) / r)
+
+
+def continue_poles(
+    k_from: complex,
+    k_to: complex,
+    eps_from: tuple[tuple[complex, ...], complex],
+    eps_to: tuple[tuple[complex, ...], complex],
+    d: tuple[float, ...],
+    pol: int,
+    poles: np.ndarray,
+) -> np.ndarray:
+    """Continue real guided poles to complex ``k`` and/or a lossy stack (S6).
+
+    Homotopy in 16 steps, ``ε(s)`` and ``k(s)`` linear; Newton on D at each
+    step, with the scale factor frozen at the current iterate so D is
+    holomorphic there and D′ comes from a Cauchy circle.
+
+    Args:
+        k_from: Wavenumber the poles were found at (real).
+        k_to: Target wavenumber, complex allowed.
+        eps_from: ``(layer ε, ε_bot)`` the poles were found for (real).
+        eps_to: Target ``(layer ε, ε_bot)``, lossy allowed.
+        d: Layer thicknesses (nm).
+        pol: 2 = TE, 1 = TM.
+        poles: The real roots at the start.
+
+    Returns:
+        complex array of the continued poles, in the order given.
+
+    Raises:
+        ValueError: Newton does not reach ``|Δq| < 1e-15·|q|`` within 30 steps
+            at some stage.
+    """
+    (lay0, bot0), (lay1, bot1) = eps_from, eps_to
+    out = []
+    for beta in poles:
+        q = complex(beta)
+        for s in np.linspace(0.0, 1.0, CONTINUATION_STEPS + 1)[1:]:
+            lay = tuple((1.0 - s) * a + s * b for a, b in zip(lay0, lay1, strict=True))
+            bot = (1.0 - s) * bot0 + s * bot1
+            kk = (1.0 - s) * k_from + s * k_to
+            for _ in range(NEWTON_MAX_STEPS):
+                dq = _dispersion(np.array([q]), kk, lay, d, bot, pol, scale_at=q)[0]
+                dq /= _cauchy_derivative(q, kk, lay, d, bot, pol)
+                q -= dq
+                if abs(dq) < NEWTON_RTOL * abs(q):
+                    break
+            else:
+                raise ValueError(
+                    f"guided-pole continuation from β = {beta:.12g} did not converge "
+                    f"at homotopy step s = {s:.4g} (last |Δq|/|q| = {abs(dq / q):.1e})"
+                )
+        out.append(q)
+    return np.array(out, dtype=complex)
+
+
+def stack_features(
+    k: complex, k_bot: complex, poles: Sequence[complex]
+) -> tuple[tuple[str, complex], ...]:
+    """Right-hand singularities of a stack's integrand: ``+k₁``, ``+k_bot``, the β_m.
+
+    The interior ``k_j`` are not singularities: R and τ are even in every
+    interior α_j.
+    """
+    feats = [("+k₁", complex(k)), ("+k_bot", complex(k_bot))]
+    return tuple(feats + [(f"β_{m}", complex(b)) for m, b in enumerate(poles)])
+
+
+@functools.lru_cache(maxsize=64)
+def _stack_poles(
+    k: complex,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> tuple[
+    tuple[complex, ...], tuple[tuple[str, complex], ...], tuple[float, float] | None
+]:
+    """Poles at ``k`` (continued if needed), the path features, and any unresolved cell.
+
+    The roots are found at ``Re k`` with ``Re ε`` and continued when ``Im k ≠ 0``
+    or any ``Im ε ≠ 0``. If the count check is still short after refinement,
+    the unresolved γ-cell's centre becomes a feature: the path for fields needs
+    only clearance, and only the guided outputs raise (§2.4).
+    """
+    kr = float(np.real(k))
+    lay_re = tuple(complex(e.real, 0.0) for e in eps_layers)
+    bot_re = complex(eps_bot.real, 0.0)
+    roots, count = guided_poles(kr, lay_re, d, bot_re, pol)
+    cell = None
+    if count > roots.size:
+        cell = _unresolved_cell(kr, lay_re, d, bot_re, pol, roots)
+    poles: np.ndarray = roots.astype(complex)
+    lossy = any(e.imag != 0.0 for e in eps_layers) or eps_bot.imag != 0.0
+    if roots.size and (np.imag(k) != 0.0 or lossy):
+        poles = continue_poles(
+            kr, k, (lay_re, bot_re), (eps_layers, eps_bot), d, pol, roots
+        )
+    feats = stack_features(k, k * np.sqrt(eps_bot), poles)
+    if cell is not None:
+        feats += (("unresolved pair", complex(0.5 * (cell[0] + cell[1]))),)
+    return tuple(complex(p) for p in poles), feats, cell
+
+
+# (layer ε_rel, thicknesses, ε_bot,rel, z_top): a stack after the T6 normalisation.
+StackRel = tuple[tuple[complex, ...], tuple[float, ...], complex, float]
+
+
+@dataclass(frozen=True, eq=False)
+class StackReflection:
+    """The reflected-field machinery of a stack for one call context.
+
+    The stack's counterpart of :class:`Reflection`, with the same methods, so
+    the solve, the right-hand sides, the cover near field and the LDOS reach
+    it unchanged. ``r`` is the stable recursion :func:`stack_r`; the path's
+    features are the stack's outer branch points and guided poles.
+
+    Attributes:
+        pol: 2 = TE, 1 = TM.
+        k: Background wavenumber (rad/nm), complex allowed.
+        r: ``q → R(q)`` on the code's sheet.
+        features: The path's singularities.
+        z_top: Top interface (nm), after the T6 normalisation.
+        path: The Sommerfeld path.
+        x_c: Horizontal centre of everything the path serves.
+        stack: The normalised relative stack the context was built for.
+    """
+
+    pol: int
+    k: complex
+    r: Callable[[np.ndarray], np.ndarray]
+    features: tuple[tuple[str, complex], ...]
+    z_top: float
+    path: SommerfeldPath
+    x_c: float
+    stack: StackRel
+
+    @classmethod
+    def build(
+        cls,
+        pol: int,
+        k: complex,
+        stack_rel: StackRel,
+        f: np.ndarray,
+        g: np.ndarray,
+        *,
+        z_min: float | None = None,
+    ) -> StackReflection | None:
+        """Reflection for every point ``(f, g)`` the call will touch, all in the cover.
+
+        Sized as :meth:`Reflection.build`: ``z_min = 2·min(g − z_top)`` and
+        ``D = max(ptp f, z_min)``.
+
+        Args:
+            pol: 2 = TE, 1 = TM.
+            k: Background wavenumber.
+            stack_rel: The normalised relative stack (:meth:`Stack.eps_rel`).
+            f: x of every node, source and observation point served.
+            g: Their z.
+            z_min: Overrides ``2·min(g − z_top)`` for a set whose sources and
+                observers are separate, where ``Z ≥ h_obs + h_src`` (the
+                incident field, as in v0.9's ``_background_field``).
+
+        Returns:
+            The context, or ``None`` when no layer is left (T6).
+
+        Raises:
+            ValueError: A point at or below ``z_top``; a pole continuation that
+                does not converge.
+        """
+        eps_layers, d, eps_bot, z_top = stack_rel
+        if not eps_layers:
+            return None
+        f, g = np.asarray(f, dtype=float), np.asarray(g, dtype=float)
+        _check_in_cover(g, z_top, "every node, source and observation point")
+        if z_min is None:
+            z_min = 2.0 * float((g - z_top).min())
+        feats = _stack_poles(complex(k), eps_layers, d, eps_bot, pol)[1]
+        path = SommerfeldPath.for_features(
+            k, feats, max(float(np.ptp(f)), z_min), z_min
+        )
+        return cls(
+            pol,
+            k,
+            lambda q: stack_r(q, k, eps_layers, d, eps_bot, pol),
+            feats,
+            z_top,
+            path,
+            0.5 * float(f.max() + f.min()),
+            stack_rel,
+        )
+
+    def blocks(
+        self, tgt: Geometry | Points, src: Geometry
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Reflected M1/M2 blocks: :func:`reflected_blocks` with the stack's R."""
+        return _reflected_blocks(
+            self.path,
+            self.pol,
+            self.k,
+            None,
+            tgt,
+            src,
+            self.z_top,
+            self.x_c,
+            False,
+            self.r,
+        )
+
+    def green(
+        self,
+        x: np.ndarray | float,
+        z: np.ndarray | float,
+        xs: np.ndarray | float,
+        zs: np.ndarray | float,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """``(G_ind, ∂x'G_ind, ∂z'G_ind)``: :func:`reflected_green`, stack R."""
+        return reflected_green(
+            self.path, self.pol, self.k, None, x, z, xs, zs, self.z_top, self.r
+        )
+
+    def green_grad_src(
+        self,
+        x: np.ndarray | float,
+        z: np.ndarray | float,
+        xs: np.ndarray | float,
+        zs: np.ndarray | float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """``(∂x'G_ind, ∂z'G_ind)``, path factors ``−iq``, ``+iα₁`` (in-plane RHS)."""
+        return self.green(x, z, xs, zs)[1:]
+
+    def plane_wave(self, angle: float, f: np.ndarray, g: np.ndarray) -> np.ndarray:
+        """Reflected plane wave at ``(f, g)``: :meth:`Reflection.plane_wave`, stack R.
+
+        Args:
+            angle: Incidence angle θ (degrees), from the normal, |θ| < 90°.
+            f: x coordinates (nm).
+            g: z coordinates (nm).
+
+        Returns:
+            The reflected wave, shape of ``f``.
+
+        Raises:
+            ValueError: ``|angle| ≥ 90°``.
+        """
+        if abs(angle) >= 90.0:
+            raise ValueError(
+                f"incidence angle {angle}° must satisfy |angle| < 90° over a stack"
+            )
+        theta = np.deg2rad(angle)
+        q, a1 = self.k * np.sin(theta), self.k * np.cos(theta)
+        r = self.r(np.asarray(q))
+        return r * np.exp(1j * (q * f + a1 * (g - 2.0 * self.z_top)))

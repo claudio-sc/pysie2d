@@ -185,3 +185,268 @@ def legacy_pec_green(X: float, Z: float, k: complex) -> complex:
     re = quad(lambda q: integrand(q).real, 0, q_max, **kw)[0]
     im = quad(lambda q: integrand(q).imag, 0, q_max, **kw)[0]
     return re + 1j * im
+
+
+# --- N-layer stack (v1.2): ported from studies/slab/sproto.py ------------------
+#
+# Independent of pysie2d.layered's stack code in every ingredient that could
+# hide a shared error: R by the transfer matrix (not the recursion), each
+# layer scaled by e^{−|Im α|d} (R is homogeneous of degree 0 in the matrix, so
+# the scaling is exact and borrows nothing), the radiation-condition branch,
+# QUADPACK on the real axis, and the guided poles by a symmetric-fold principal
+# value plus iπ·Res, the residue from a Cauchy circle on this module's own R.
+
+
+def _stack_r_ref(
+    q: float,
+    k1: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> complex:
+    """Transfer-matrix R with the radiation-condition branch (real ``k``)."""
+    y1 = _alpha_radiating(k1, q)
+    a_b = _alpha_radiating(k1 * np.sqrt(complex(eps_bot)), q)
+    y_b = a_b if pol == 2 else a_b / eps_bot
+    m = np.eye(2, dtype=complex)
+    for e, dj in zip(eps_layers, d, strict=True):
+        kj = k1 * np.sqrt(complex(e))
+        a = np.sqrt(complex(kj * kj - q * q))
+        w = 1.0 if pol == 2 else e
+        # Formed from bounded exponentials, since cos itself overflows first.
+        ep = np.exp(1j * a * dj - abs(a.imag) * dj)
+        em = np.exp(-1j * a * dj - abs(a.imag) * dj)
+        c = 0.5 * (ep + em)
+        if abs(a * dj) > 1e-3:
+            sinc = (ep - em) / (2j * a)
+        else:
+            sinc = np.sinc(a * dj / PI) * dj * np.exp(-abs(a.imag) * dj)
+        m = np.array([[c, -w * sinc], [(a * a / w) * sinc, c]]) @ m
+    a_ = m[0, 0] + 1j * y1 * m[0, 1]
+    b_ = m[0, 0] - 1j * y1 * m[0, 1]
+    c_ = m[1, 0] + 1j * y1 * m[1, 1]
+    d_ = m[1, 0] - 1j * y1 * m[1, 1]
+    return (d_ + 1j * y_b * b_) / (-1j * y_b * a_ - c_)
+
+
+def stack_r_ref(
+    q: float,
+    k1: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> complex:
+    """Reference R of a stack at one ``q``; see :func:`g_ref_stack`.
+
+    Args:
+        q: Transverse wavenumber (real, or complex off the branch cuts).
+        k1: **Real** cover wavenumber.
+        eps_layers: Layer permittivities relative to the cover, top first.
+        d: Layer thicknesses (nm).
+        eps_bot: Bottom permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+
+    Returns:
+        ``R(q)``.
+    """
+    return _stack_r_ref(q, k1, eps_layers, d, eps_bot, pol)
+
+
+def _residue_ref(
+    beta: float,
+    k_out: float,
+    fn,
+) -> complex:
+    """Residue of ``fn`` at the real pole β by a 64-point Cauchy circle.
+
+    The radius ``min(0.3(β − k_out), 1e-3·β)`` keeps the branch point outside.
+    """
+    r = min(0.3 * (beta - k_out), 1e-3 * beta)
+    t = 2 * PI * np.arange(64) / 64
+    return complex(
+        np.mean([fn(beta + r * np.exp(1j * ti)) * r * np.exp(1j * ti) for ti in t])
+    )
+
+
+def g_ref_stack(
+    X: float,
+    Z: float,
+    k1: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+    poles: tuple[float, ...],
+    which: int = 0,
+    extra_pts: tuple[float, ...] = (),
+    hw_frac: float = 0.45,
+) -> complex:
+    """Reflected G of a stack (or a source derivative) by real-axis quadrature.
+
+    θ-substitution on ``[0, k₁]``, cosh on ``[k₁, ∞)``. Real guided poles:
+    principal value by the symmetric fold ``∫₀ʰ [f(s_p+u) + f(s_p−u)] du`` (the
+    ±Res/u parts cancel, so a wrong residue cannot hide in it), plus ``iπ·Res``
+    for the path passing below +β. For a lossy stack pass no poles and their
+    real parts as ``extra_pts`` (plain QUADPACK with breakpoints).
+
+    Args:
+        X: Horizontal separation ``x − x'`` (nm).
+        Z: ``z + z' − 2·z_top`` (nm), positive.
+        k1: **Real** cover wavenumber.
+        eps_layers: Layer permittivities relative to the cover, top first.
+        d: Layer thicknesses (nm).
+        eps_bot: Bottom permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+        poles: Real guided poles β, all beyond ``k₁``.
+        which: 0 for ``G``, 1 for ``∂G/∂x'``, 2 for ``∂G/∂z'``.
+        extra_pts: Further breakpoints in q.
+        hw_frac: Fold half-width as a fraction of the nearest feature spacing.
+
+    Returns:
+        The requested quantity.
+    """
+    k_bot = float(np.real(k1 * np.sqrt(complex(eps_bot))))
+    k_out = max(k1, k_bot)
+
+    def rr(q):
+        return _stack_r_ref(q, k1, eps_layers, d, eps_bot, pol)
+
+    def fac(q, a):
+        return (np.cos(q * X), q * np.sin(q * X), 1j * a * np.cos(q * X))[which]
+
+    def f1(th):
+        q, a = k1 * np.sin(th), k1 * np.cos(th)
+        return 1j / (2 * PI) * rr(q) * fac(q, a) * np.exp(1j * a * Z)
+
+    def f2(s):
+        q, a = k1 * np.cosh(s), 1j * k1 * np.sinh(s)
+        return 1 / (2 * PI) * rr(q) * fac(q, a) * np.exp(-k1 * np.sinh(s) * Z)
+
+    kw = {"epsabs": 1e-18, "epsrel": 1e-14, "limit": 4000}
+
+    def qd(fn, a, b, pts=None):
+        re = quad(lambda t: fn(t).real, a, b, points=pts or None, **kw)[0]
+        im = quad(lambda t: fn(t).imag, a, b, points=pts or None, **kw)[0]
+        return re + 1j * im
+
+    brk = [k_bot, *extra_pts]
+    pts1 = [np.arcsin(f / k1) for f in brk if 0 < f < k1]
+    s_pole = [np.arccosh(b / k1) for b in poles]
+    pts2 = sorted({np.arccosh(f / k1) for f in brk if f > k1})
+    s_max = np.arccosh(40.0 / (k1 * Z) + max([*poles, *brk, k1]) / k1)
+    out = qd(f1, 0, PI / 2, pts1)
+    edges = sorted({0.0, s_max, *pts2})
+    gaps = [abs(a - b) for a in s_pole for b in s_pole + edges if a != b]
+    hw = hw_frac * min([*gaps, 0.1])
+    cuts = sorted(edges + [s - hw for s in s_pole] + [s + hw for s in s_pole])
+    for a, b in zip(cuts[:-1], cuts[1:], strict=True):
+        c = [s for s in s_pole if a < s < b]
+        if c:
+            sp = c[0]
+            out += qd(lambda u, sp=sp: f2(sp + u) + f2(sp - u), 0.0, b - sp)
+        else:
+            out += qd(f2, a, b)
+    pre = 1j / (2 * PI)
+    for b in poles:
+        res = _residue_ref(b, k_out, rr)
+        a1 = 1j * np.sqrt(b * b - k1 * k1)
+        out += 1j * PI * pre * res / a1 * fac(b, a1) * np.exp(1j * a1 * Z)
+    return out
+
+
+def g_ref_stack_gamma(
+    X: float,
+    Z: float,
+    k1: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+    poles: tuple[float, ...],
+    which: int = 0,
+    hw_frac: float = 0.45,
+) -> complex:
+    """:func:`g_ref_stack` for near-cutoff poles: ``q ≥ k_out`` integrated in γ.
+
+    ``q = √(k_out² + γ²)`` makes the outer branch point a smooth endpoint, so
+    a pole at ``γ_p = √(β² − k_out²)`` sits ``√(2t)·k_out`` from it instead of
+    ``t·k_out``; in the cosh variable the reference swings by O(1) as t → 0
+    (finding 2). ``[k₁, k_out]`` (when ``k₁ < k_out``) by cosh near ``k₁`` and by
+    ``q = √(k_out² − y²)`` near ``k_out``. Same fold, same residue rule.
+
+    Args:
+        X: Horizontal separation (nm).
+        Z: ``z + z' − 2·z_top`` (nm), positive.
+        k1: **Real** cover wavenumber.
+        eps_layers: Layer permittivities relative to the cover, top first.
+        d: Layer thicknesses (nm).
+        eps_bot: Bottom permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+        poles: Real guided poles β.
+        which: 0 for ``G``, 1 for ``∂G/∂x'``, 2 for ``∂G/∂z'``.
+        hw_frac: Fold half-width fraction.
+
+    Returns:
+        The requested quantity.
+    """
+    ko = max(k1, float(np.real(k1 * np.sqrt(complex(eps_bot)))))
+    pre = 1j / (2 * PI)
+
+    def rr(q):
+        return _stack_r_ref(q, k1, eps_layers, d, eps_bot, pol)
+
+    def fac(q, a):
+        return (np.cos(q * X), q * np.sin(q * X), 1j * a * np.cos(q * X))[which]
+
+    def f1(th):
+        q, a = k1 * np.sin(th), k1 * np.cos(th)
+        return pre * rr(q) * fac(q, a) * np.exp(1j * a * Z)
+
+    def f2(s):
+        q, a = k1 * np.cosh(s), 1j * k1 * np.sinh(s)
+        return 1 / (2 * PI) * rr(q) * fac(q, a) * np.exp(-k1 * np.sinh(s) * Z)
+
+    def f3(g):
+        q = np.sqrt(ko * ko + g * g)
+        a = 1j * np.sqrt(q * q - k1 * k1) if ko > k1 else 1j * g
+        # R/α₁·dq/dγ: for k₁ = k_out, α₁ = iγ cancels γ in the Jacobian.
+        w = (1.0 / (1j * q)) if ko == k1 else (g / q) / a
+        return pre * rr(q) * w * fac(q, a) * np.exp(1j * a * Z)
+
+    def f4(y):  # q = √(k_out² − y²): the pole's left flank, uniformised
+        q = np.sqrt(ko * ko - y * y)
+        a = 1j * np.sqrt(q * q - k1 * k1)
+        return pre * rr(q) / a * (y / q) * fac(q, a) * np.exp(1j * a * Z)
+
+    kw = {"epsabs": 1e-18, "epsrel": 1e-14, "limit": 4000}
+
+    def qd(fn, a, b):
+        re = quad(lambda t: fn(t).real, a, b, **kw)[0]
+        im = quad(lambda t: fn(t).imag, a, b, **kw)[0]
+        return re + 1j * im
+
+    out = qd(f1, 0, PI / 2)
+    if ko > k1:
+        mid = 0.5 * (k1 + ko)
+        out += qd(f2, 0, np.arccosh(mid / k1))
+        out += qd(f4, 0, np.sqrt(ko * ko - mid * mid))
+    g_pole = sorted(np.sqrt(b * b - ko * ko) for b in poles)
+    g_max = np.sqrt((40.0 / Z + max([*poles, ko])) ** 2 - ko * ko)
+    edges = [0.0, g_max]
+    gaps = [abs(a - b) for a in g_pole for b in g_pole + edges if a != b]
+    hw = hw_frac * min([*gaps, g_max])
+    cuts = sorted(edges + [g - hw for g in g_pole] + [g + hw for g in g_pole])
+    for a, b in zip(cuts[:-1], cuts[1:], strict=True):
+        c = [g for g in g_pole if a < g < b]
+        if c:
+            gp = c[0]
+            out += qd(lambda u, gp=gp: f3(gp + u) + f3(gp - u), 0.0, b - gp)
+        else:
+            out += qd(f3, a, b)
+    for b in poles:
+        res = _residue_ref(b, ko, rr)
+        a1 = 1j * np.sqrt(b * b - k1 * k1)
+        out += 1j * PI * pre * res / a1 * fac(b, a1) * np.exp(1j * a1 * Z)
+    return out

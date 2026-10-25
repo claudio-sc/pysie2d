@@ -12,6 +12,10 @@ Public API:
         ε(λ_vac) for driven solves, or ``HalfSpace.pec``). The reflected Green
         function is a Sommerfeld integral on a deformed path, valid at complex
         wavelength.
+    Stack: an N-layer dielectric stack below ``z = z_top`` (absolute ε per
+        layer, top to bottom, over a bottom half-space). Particles stay in the
+        cover; the reflected Green function uses a stable recursion on the same
+        deformed path, with the guided poles as features.
     InterfaceGapWarning, SommerfeldPrecisionWarning: the half-space guards — a
         boundary too coarse for its distance to the interface, and a reflected
         block expected to lose digits.
@@ -67,7 +71,7 @@ take a background wavenumber
 ``wnum_bg = 2π·n_clad/λ_vac`` instead. See ``docs/conventions.md`` §2.
 """
 
-from .background import HalfSpace
+from .background import HalfSpace, Stack
 from .cluster import (
     Cluster,
     ClusterBIESolver,
@@ -127,6 +131,7 @@ __all__ = [
     "QNMSolver",
     "SHAPE_STEP",
     "SommerfeldPrecisionWarning",
+    "Stack",
     "richardson_limit",
     "ScatterResult",
     "assemble_cross_block",

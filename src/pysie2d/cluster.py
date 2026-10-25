@@ -25,7 +25,7 @@ from collections.abc import Sequence
 import numpy as np
 
 from . import layered
-from .background import HalfSpace
+from .background import HalfSpace, Stack, _effective, _top
 from .fields import (
     _background_field,
     _check_far_field_below,
@@ -42,6 +42,7 @@ from .kernels import _real_if_real, assemble_cross_block, assemble_matrix
 from .material import Material
 from .solver import wavelength_over_ds
 from .sources import _point_inside, line_dipole_rhs, plane_wave_rhs
+from .waveguide import _StackResult
 
 PI = np.pi
 
@@ -253,7 +254,8 @@ class ClusterBIESolver:
         cluster: The arrangement being solved.
         materials: Per-particle optical properties, in DOF order.
         pol: Polarisation: 1 = TM (H_y), 2 = TE (E_y).
-        background: A :class:`~pysie2d.background.HalfSpace` the whole cluster
+        background: A :class:`~pysie2d.background.HalfSpace` or
+            :class:`~pysie2d.background.Stack` the whole cluster
             sits above, or ``None`` (default) for the homogeneous cladding,
             bit-identical to a solver without the argument. Every particle pair
             is coupled through the substrate, including a particle with itself.
@@ -264,7 +266,7 @@ class ClusterBIESolver:
         cluster: Cluster,
         materials: Sequence[Material],
         pol: int = 2,
-        background: HalfSpace | None = None,
+        background: HalfSpace | Stack | None = None,
     ) -> None:
         """Bind materials and a polarisation to an arrangement.
 
@@ -308,14 +310,14 @@ class ClusterBIESolver:
         self.pol = pol
         self.background = background
         if background is not None:
-            layered.check_interface_gap(cluster.geometries, background.z_int, pol)
+            layered.check_interface_gap(cluster.geometries, _top(background), pol)
 
     def _reflection(
         self,
         wavelength: float | complex,
         f: np.ndarray | None = None,
         g: np.ndarray | None = None,
-    ) -> layered.Reflection | None:
+    ) -> layered.Reflection | layered.StackReflection | None:
         """Reflected-field context for the whole cluster, or ``None`` without one.
 
         One path serves every particle pair, so it is sized for the **cluster's**
@@ -326,15 +328,24 @@ class ClusterBIESolver:
             f: x coordinates of every point to serve; every node by default.
             g: Their z coordinates.
         """
-        if self.background is None:
+        mat = self.materials[0]
+        bg = _effective(self.background, mat.n_clad, wavelength)
+        if bg is None:
             return None
         geoms = self.cluster.geometries
-        mat = self.materials[0]
+        if isinstance(bg, Stack):
+            return layered.StackReflection.build(
+                self.pol,
+                mat.wnum_bg(wavelength),
+                bg.eps_rel(mat.n_clad, wavelength),
+                np.concatenate([gp.f for gp in geoms]) if f is None else f,
+                np.concatenate([gp.g for gp in geoms]) if g is None else g,
+            )
         return layered.Reflection.build(
             self.pol,
             mat.wnum_bg(wavelength),
-            self.background.eps_rel(mat.n_clad, wavelength),
-            self.background.z_int,
+            bg.eps_rel(mat.n_clad, wavelength),
+            bg.z_int,
             np.concatenate([gp.f for gp in geoms]) if f is None else f,
             np.concatenate([gp.g for gp in geoms]) if g is None else g,
         )
@@ -579,7 +590,7 @@ class ClusterBIESolver:
         )
 
 
-class ClusterScatterResult:
+class ClusterScatterResult(_StackResult):
     """Result of a single-wavelength coupled cluster solve.
 
     Observables are additive over boundaries, which is what makes the façade
@@ -618,7 +629,7 @@ class ClusterScatterResult:
         wavelength: float,
         angle: float,
         excitation: str,
-        background: HalfSpace | None = None,
+        background: HalfSpace | Stack | None = None,
         *,
         source: tuple[float, float] | None = None,
     ) -> None:
@@ -645,19 +656,34 @@ class ClusterScatterResult:
         self.background = background
         self.source = source
 
-    def _substrate(self) -> tuple:
-        """Arguments the half-space far-field helpers share."""
-        assert self.background is not None
-        boundaries = [
+    @property
+    def _pol(self) -> int:
+        return self.pol
+
+    @property
+    def _n_clad(self) -> float:
+        return self.materials[0].n_clad
+
+    @property
+    def _excitation_name(self) -> str:
+        return self._excitation
+
+    def _boundaries(self) -> list:
+        return [
             (gp.f, gp.g, gp.df, gp.dg, gp.delt, self.ei_particle(p))
             for p, gp in enumerate(self.cluster.geometries)
         ]
+
+    def _substrate(self) -> tuple:
+        """Arguments the half-space far-field helpers share."""
+        bg = self._bg
+        assert isinstance(bg, HalfSpace)
         return (
-            boundaries,
+            self._boundaries(),
             self.wnum_bg,
-            self.background.eps_rel(self.materials[0].n_clad, self.wavelength),
+            bg.eps_rel(self.materials[0].n_clad, self.wavelength),
             self.pol,
-            self.background.z_int,
+            bg.z_int,
         )
 
     @property
@@ -688,7 +714,10 @@ class ClusterScatterResult:
             observation angles in radians, measured from +z. With a background
             this is the upward amplitude on ``[−π/2, π/2]`` inclusive.
         """
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_far_field(n_angles)
+        if bg is not None:
             return _upward_far_field(n_angles, *self._substrate())
         angles = -PI + np.arange(n_angles) * 2.0 * PI / (n_angles - 1.0)
         return self._amp_at(angles), angles
@@ -716,11 +745,14 @@ class ClusterScatterResult:
             NoFarFieldError: Over PEC, an absorbing substrate (``Im ε ≠ 0``) or
                 ``Re ε ≤ 0``, where no wave reaches infinity below (D2).
         """
-        if self.background is None:
+        bg = self._bg
+        if bg is None:
             raise ValueError(
                 "far_field_down needs a background: without one far_field() "
                 "already covers the full circle"
             )
+        if isinstance(bg, Stack):
+            raise NotImplementedError("far_field_down over a stack is commit 4")
         args = self._substrate()
         _check_far_field_below(args[2])
         return _downward_far_field(n_angles, *args)
@@ -780,7 +812,10 @@ class ClusterScatterResult:
                 "incident plane wave; this result came from "
                 f"{self._excitation} excitation"
             )
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_cross_sections(n_angles)
+        if bg is not None:
             args = self._substrate()
             c = _upward_cross_sections(n_angles, *args)
             if np.imag(self.wavelength) == 0.0:  # D18: no real-axis flux otherwise
@@ -838,8 +873,13 @@ class ClusterScatterResult:
         """
         x = np.asarray(x, dtype=float).ravel()
         z = np.asarray(z, dtype=float).ravel()
-        if self.background is not None:
-            z_int = self.background.z_int
+        bg = self._bg
+        if isinstance(bg, Stack):
+            if np.any(z <= self._stack_rel()[3]):
+                raise NotImplementedError("the field inside a stack is commit 4")
+            return self._cover_field(x, z)
+        if bg is not None:
+            z_int = bg.z_int
             if np.any(z == z_int):
                 raise ValueError(
                     f"observation point exactly at the interface z_int = {z_int}: "
@@ -856,9 +896,10 @@ class ClusterScatterResult:
 
     def _substrate_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
         """Scattered field at points below the interface."""
-        assert self.background is not None
+        bg = self._bg
+        assert isinstance(bg, HalfSpace)
         geoms = self.cluster.geometries
-        eps_rel = self.background.eps_rel(self.materials[0].n_clad, self.wavelength)
+        eps_rel = bg.eps_rel(self.materials[0].n_clad, self.wavelength)
         if eps_rel is None:
             return np.zeros(x.size, dtype=complex)
         # One path for every particle: sized for the whole cluster's extent.
@@ -866,7 +907,7 @@ class ClusterScatterResult:
             self.pol,
             self.wnum_bg,
             eps_rel,
-            self.background.z_int,
+            bg.z_int,
             np.concatenate([gp.f for gp in geoms]),
             np.concatenate([gp.g for gp in geoms]),
             x,
@@ -886,13 +927,16 @@ class ClusterScatterResult:
         """Field at points above the interface (the v0.9 path)."""
         k = _real_if_real(self.wnum_bg)
         refl = None
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            refl = self._stack_cover_reflection(x, z)
+        elif bg is not None:
             geoms = self.cluster.geometries
             refl = layered.Reflection.build(
                 self.pol,
                 self.wnum_bg,
-                self.background.eps_rel(self.materials[0].n_clad, self.wavelength),
-                self.background.z_int,
+                bg.eps_rel(self.materials[0].n_clad, self.wavelength),
+                bg.z_int,
                 np.concatenate([gp.f for gp in geoms] + [x]),
                 np.concatenate([gp.g for gp in geoms] + [z]),
             )
@@ -950,7 +994,9 @@ class ClusterScatterResult:
 
     def _background_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
         """The unmasked background field; see :meth:`incident_field`."""
-        bg = self.background
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_background(x, z)
         n_clad = self.materials[0].n_clad
         return _background_field(
             x,
@@ -985,7 +1031,7 @@ class ClusterScatterResult:
         x = np.asarray(x, dtype=float).ravel()
         z = np.asarray(z, dtype=float).ravel()
         field = self._background_field(x, z)
-        z_int = -np.inf if self.background is None else self.background.z_int
+        z_int = -np.inf if self.background is None else _top(self.background)
         for j in np.flatnonzero(z > z_int):  # particles lie in the cover
             if any(
                 _point_inside(x[j], z[j], gp.f, gp.g) for gp in self.cluster.geometries

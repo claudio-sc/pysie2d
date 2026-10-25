@@ -27,7 +27,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from . import layered
-from .background import HalfSpace
+from .background import HalfSpace, Stack
 from .beyn import beyn_modes, newton_refine
 from .geometry import Geometry
 from .material import Material
@@ -452,10 +452,16 @@ class QNMSolver:
         """Compose a geometry and a material into a reusable mode solver.
 
         Raises:
-            ValueError: With a background whose ``eps_sub`` is a callable —
-                tabulated data is not holomorphic, so Beyn would break
-                silently — or a boundary node at or below the interface.
+            ValueError: With a :class:`~pysie2d.background.Stack` (slab QNMs
+                are out of scope, T5); with a background whose ``eps_sub`` is
+                a callable — tabulated data is not holomorphic, so Beyn would
+                break silently — or a boundary node at or below the interface.
         """
+        if isinstance(background, Stack):
+            raise ValueError(
+                "QNMSolver does not take a Stack: slab quasi-normal modes are out "
+                "of scope (slab-spec R2, T5)"
+            )
         if background is not None and callable(background.eps_sub):
             raise ValueError(
                 "a callable eps_sub is not holomorphic in the wavelength, which "

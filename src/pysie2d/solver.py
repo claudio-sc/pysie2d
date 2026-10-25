@@ -13,7 +13,7 @@ from collections.abc import Callable
 import numpy as np
 
 from . import layered
-from .background import HalfSpace
+from .background import HalfSpace, Stack, _effective, _top
 from .fields import (
     _background_field,
     _check_far_field_below,
@@ -32,6 +32,7 @@ from .kernels import assemble_matrix, assemble_matrix_dwn
 from .material import Material
 from .multipole import Multipoles, decompose
 from .sources import line_dipole_rhs, plane_wave_rhs
+from .waveguide import _StackResult
 
 PI = np.pi
 
@@ -126,7 +127,7 @@ def wavelength_over_ds(
     return float(np.real(wavelength)) / material.n_core / ds_max
 
 
-class ScatterResult:
+class ScatterResult(_StackResult):
     """Result of a single-wavelength BIE solve.
 
     Attributes:
@@ -136,11 +137,11 @@ class ScatterResult:
         material: The scatterer optical properties.
         wavelength: **Vacuum** wavelength (nm) this was solved at.
         angle: Incident plane-wave angle (degrees).
-        background: The substrate the particle sits on, or ``None`` for the
-            homogeneous cladding. With one, ``far_field`` is the upward
-            amplitude, ``cross_sections`` and ``efficiencies`` carry the
-            ``*_up`` and ``*_down`` keys, and ``multipoles`` raises
-            ``NotImplementedError``.
+        background: The substrate or :class:`~pysie2d.background.Stack` the
+            particle sits on, or ``None`` for the homogeneous cladding. With
+            one, ``far_field`` is the upward amplitude, ``cross_sections`` and
+            ``efficiencies`` carry the ``*_up`` and ``*_down`` keys, and
+            ``multipoles`` raises ``NotImplementedError``.
         excitation: ``"plane_wave"``, ``"dipole"`` or ``"custom"`` (a
             user ``incident_rhs``), which :meth:`incident_field` needs.
         source: The dipole position ``(x_s, z_s)``, or ``None``.
@@ -153,7 +154,7 @@ class ScatterResult:
         material: Material,
         wavelength: float,
         angle: float = 0.0,
-        background: HalfSpace | None = None,
+        background: HalfSpace | Stack | None = None,
         *,
         excitation: str = "plane_wave",
         source: tuple[float, float] | None = None,
@@ -168,12 +169,30 @@ class ScatterResult:
         self.excitation = excitation
         self.source = source
 
+    @property
+    def _pol(self) -> int:
+        return self.material.pol
+
+    @property
+    def _n_clad(self) -> float:
+        return self.material.n_clad
+
+    @property
+    def _excitation_name(self) -> str:
+        return self.excitation
+
+    def _boundaries(self) -> list:
+        g = self.geometry
+        return [(g.f, g.g, g.df, g.dg, g.delt, self.ei)]
+
     def _upward(self, n_angles: int) -> dict[str, float]:
         """``σ_sca,up``, ``σ_sca,down`` and ``σ_abs`` over the substrate.
 
         ``σ_sca,down`` is absent at complex λ: the real-axis flux is undefined
         when ``Im k < 0`` (D18).
         """
+        if isinstance(self._bg, Stack):
+            return self._stack_cross_sections(n_angles)
         args = self._substrate()
         c = _upward_cross_sections(n_angles, *args)
         if np.imag(self.wavelength) == 0.0:
@@ -182,14 +201,14 @@ class ScatterResult:
 
     def _substrate(self) -> tuple:
         """Arguments the half-space far-field helpers share."""
-        g = self.geometry
-        assert self.background is not None
+        bg = self._bg
+        assert isinstance(bg, HalfSpace)
         return (
-            [(g.f, g.g, g.df, g.dg, g.delt, self.ei)],
+            self._boundaries(),
             self.wnum_bg,
-            self.background.eps_rel(self.material.n_clad, self.wavelength),
+            bg.eps_rel(self.material.n_clad, self.wavelength),
             self.material.pol,
-            self.background.z_int,
+            bg.z_int,
         )
 
     @property
@@ -237,8 +256,14 @@ class ScatterResult:
         """
         x = np.asarray(x, dtype=float)
         z = np.asarray(z, dtype=float)
-        if self.background is not None:
-            z_int = self.background.z_int
+        bg = self._bg
+        if isinstance(bg, Stack):
+            z_top = self._stack_rel()[3]
+            if np.any(z.ravel() <= z_top):
+                raise NotImplementedError("the field inside a stack is commit 4")
+            return self._cover_field(x, z)
+        if bg is not None:
+            z_int = bg.z_int
             zf = z.ravel()
             if np.any(zf == z_int):
                 raise ValueError(
@@ -258,15 +283,16 @@ class ScatterResult:
     def _substrate_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
         """Scattered field at points below the interface (1-D arrays)."""
         g = self.geometry
-        assert self.background is not None
-        eps_rel = self.background.eps_rel(self.material.n_clad, self.wavelength)
+        bg = self._bg
+        assert isinstance(bg, HalfSpace)
+        eps_rel = bg.eps_rel(self.material.n_clad, self.wavelength)
         if eps_rel is None:
             return np.zeros(x.size, dtype=complex)
         tr = layered.Transmission.build(
             self.material.pol,
             self.wnum_bg,
             eps_rel,
-            self.background.z_int,
+            bg.z_int,
             g.f,
             g.g,
             x,
@@ -282,12 +308,15 @@ class ScatterResult:
         """Scattered field at points above the interface (the v0.9 path)."""
         g = self.geometry
         refl = None
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            refl = self._stack_cover_reflection(x.ravel(), z.ravel())
+        elif bg is not None:
             refl = layered.Reflection.build(
                 self.material.pol,
                 self.wnum_bg,
-                self.background.eps_rel(self.material.n_clad, self.wavelength),
-                self.background.z_int,
+                bg.eps_rel(self.material.n_clad, self.wavelength),
+                bg.z_int,
                 np.concatenate([g.f, x.ravel()]),
                 np.concatenate([g.g, z.ravel()]),
             )
@@ -324,7 +353,9 @@ class ScatterResult:
 
     def _background_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
         """The unmasked background field; see :meth:`incident_field`."""
-        bg = self.background
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_background(x, z)
         return _background_field(
             x,
             z,
@@ -361,7 +392,7 @@ class ScatterResult:
         z = np.asarray(z, dtype=float).ravel()
         field = self._background_field(x, z)
         g = self.geometry
-        z_int = -np.inf if self.background is None else self.background.z_int
+        z_int = -np.inf if self.background is None else _top(self.background)
         for j in np.flatnonzero(z > z_int):  # particles lie in the cover
             if not _is_outside(x[j], z[j], g.f, g.g, g.df, g.dg):
                 field[j] = 0.0
@@ -396,7 +427,7 @@ class ScatterResult:
                 the coefficients are meaningless (measured: 58 % error at
                 0.9 × the circumscribing radius, with nothing else to warn you).
         """
-        if self.background is not None:
+        if self._bg is not None:
             raise NotImplementedError(
                 "multipoles is not available with a background: the expansion "
                 "is of the free-space scattered field"
@@ -443,7 +474,10 @@ class ScatterResult:
             angles: float (n_angles,) observation angles (rad), from −π to π
                 (``−π/2`` to ``π/2`` with a background), measured from +z.
         """
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_far_field(n_angles)
+        if bg is not None:
             return _upward_far_field(n_angles, *self._substrate())
         g = self.geometry
         return far_field(
@@ -481,11 +515,14 @@ class ScatterResult:
             NoFarFieldError: Over PEC, an absorbing substrate (``Im ε ≠ 0``) or
                 ``Re ε ≤ 0``, where no wave reaches infinity below (D2).
         """
-        if self.background is None:
+        bg = self._bg
+        if bg is None:
             raise ValueError(
                 "far_field_down needs a background: without one far_field() "
                 "already covers the full circle"
             )
+        if isinstance(bg, Stack):
+            raise NotImplementedError("far_field_down over a stack is commit 4")
         args = self._substrate()
         _check_far_field_below(args[2])
         return _downward_far_field(n_angles, *args)
@@ -512,7 +549,7 @@ class ScatterResult:
             total ``qsca`` are not defined over a substrate,
             since power also goes into it and the incident wave is reflected.
         """
-        if self.background is not None:
+        if self._bg is not None:
             c = self._upward(n_angles)
             norm = 2.0 * self.geometry.rad
             eff = {"qsca_up": c["c_sca_up"] / norm, "qabs": c["c_abs"] / norm}
@@ -584,7 +621,7 @@ class ScatterResult:
             (2.5 % of a dipole's power at ``ε_rel = −4``). Any loss absorbs it
             into ``c_sca_down`` (conventions §16).
         """
-        if self.background is not None:
+        if self._bg is not None:
             return self._upward(n_angles)
         g = self.geometry
         wnum_bg = self.wnum_bg
@@ -609,8 +646,9 @@ class BIESolver:
     Attributes:
         geometry: Discretized particle boundary.
         material: Optical properties of the scatterer.
-        background: A :class:`~pysie2d.background.HalfSpace` the particle sits
-            above, or ``None`` (default) for the homogeneous cladding, which is
+        background: A :class:`~pysie2d.background.HalfSpace` or
+            :class:`~pysie2d.background.Stack` the particle sits above, or
+            ``None`` (default) for the homogeneous cladding, which is
             bit-identical to a solver without the argument.
 
     Examples:
@@ -626,7 +664,7 @@ class BIESolver:
         self,
         geometry: Geometry,
         material: Material,
-        background: HalfSpace | None = None,
+        background: HalfSpace | Stack | None = None,
     ) -> None:
         """Compose a geometry and a material into a reusable solver.
 
@@ -640,30 +678,43 @@ class BIESolver:
         # A path fixed for a whole QNM search box; None builds one per call.
         self._path: layered.SommerfeldPath | None = None
         if background is not None:
-            layered.check_interface_gap([geometry], background.z_int, material.pol)
+            layered.check_interface_gap([geometry], _top(background), material.pol)
 
     def _reflection(
         self,
         wavelength: float | complex,
         f: np.ndarray | None = None,
         g: np.ndarray | None = None,
-    ) -> layered.Reflection | None:
+    ) -> layered.Reflection | layered.StackReflection | None:
         """Reflected-field context at ``wavelength``, or ``None`` without one.
+
+        A :class:`~pysie2d.background.Stack` dispatches to
+        :class:`~pysie2d.layered.StackReflection` after the T6 normalisation;
+        one with no layer left takes the half-space or no-background path.
 
         Args:
             wavelength: **Vacuum** wavelength (nm).
             f: x coordinates of every point to serve; the boundary by default.
             g: Their z coordinates.
         """
-        if self.background is None:
+        mat = self.material
+        bg = _effective(self.background, mat.n_clad, wavelength)
+        if bg is None:
             return None
         geo = self.geometry
-        mat = self.material
+        if isinstance(bg, Stack):
+            return layered.StackReflection.build(
+                mat.pol,
+                mat.wnum_bg(wavelength),
+                bg.eps_rel(mat.n_clad, wavelength),
+                geo.f if f is None else f,
+                geo.g if g is None else g,
+            )
         return layered.Reflection.build(
             mat.pol,
             mat.wnum_bg(wavelength),
-            self.background.eps_rel(mat.n_clad, wavelength),
-            self.background.z_int,
+            bg.eps_rel(mat.n_clad, wavelength),
+            bg.z_int,
             geo.f if f is None else f,
             geo.g if g is None else g,
             path=self._path,
@@ -771,6 +822,11 @@ class BIESolver:
             mat.eps,
         )
         refl = self._reflection(wavelength)
+        if isinstance(refl, layered.StackReflection):
+            raise ValueError(
+                "no wavelength derivative over a Stack: slab QNMs are out of "
+                "scope (slab-spec R2, T5)"
+            )
         if refl is not None:
             # Added before the chain factor, so it is applied exactly once. The
             # path is fixed, so d/dk at fixed nodes is the exact derivative.

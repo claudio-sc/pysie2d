@@ -1,6 +1,7 @@
 """Field evaluation: far-field amplitude and arbitrary-point near fields."""
 
 import math
+from collections.abc import Callable
 
 import numpy as np
 
@@ -13,9 +14,11 @@ from .layered import (
     NoFarFieldError,
     Reflection,
     SommerfeldPath,
+    StackReflection,
     Transmission,
     alpha,
     fresnel_r,
+    stack_r,
 )
 
 PI = np.pi
@@ -139,6 +142,8 @@ def _upward_amplitude(
     eps_rel: complex | None,
     pol: int,
     z_int: float,
+    *,
+    r: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> np.ndarray:
     """Upward far-field amplitude ``a_up(θ)`` of particles over a half-space.
 
@@ -156,6 +161,8 @@ def _upward_amplitude(
         eps_rel: Substrate permittivity relative to the cover, or ``None``.
         pol: 2 = TE, 1 = TM.
         z_int: Interface height (nm).
+        r: ``q → R(q)`` replacing :func:`fresnel_r` (a stack, referred to
+            ``z_int = z_top``); ``eps_rel`` is then unused here.
 
     Returns:
         complex (M,) amplitude.
@@ -168,10 +175,12 @@ def _upward_amplitude(
         image += _far_field_at(
             PI - angles, nn, wnum_bg, f, g - 2.0 * z_int, df, dg, delt, ei
         )
+    if r is not None:
+        return direct + r(wnum_bg * np.sin(angles)) * image
     if eps_rel is not None and eps_rel == 1.0:
         return direct  # no interface: r ≡ 0, and 0/0 at grazing is avoided
-    r = fresnel_r(wnum_bg * np.sin(angles), wnum_bg, eps_rel, pol)
-    return direct + r * image
+    rr = fresnel_r(wnum_bg * np.sin(angles), wnum_bg, eps_rel, pol)
+    return direct + rr * image
 
 
 def _upward_far_field(
@@ -181,10 +190,13 @@ def _upward_far_field(
     eps_rel: complex | None,
     pol: int,
     z_int: float,
+    *,
+    r: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """``a_up`` on a uniform grid over ``[−π/2, π/2]`` inclusive."""
     angles = np.linspace(-0.5 * PI, 0.5 * PI, n_angles)
-    return _upward_amplitude(angles, boundaries, wnum_bg, eps_rel, pol, z_int), angles
+    amp = _upward_amplitude(angles, boundaries, wnum_bg, eps_rel, pol, z_int, r=r)
+    return amp, angles
 
 
 def _upward_cross_sections(
@@ -194,6 +206,8 @@ def _upward_cross_sections(
     eps_rel: complex | None,
     pol: int,
     z_int: float,
+    *,
+    r: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> dict[str, float]:
     """``σ_sca,up`` and ``σ_abs`` (nm) of particles over a half-space.
 
@@ -222,10 +236,22 @@ def _upward_cross_sections(
         eps_rel: Substrate permittivity relative to the cover, or ``None``.
         pol: 2 = TE, 1 = TM.
         z_int: Interface height (nm).
+        r: ``q → R(q)`` of a stack; ``eps_rel`` is then the **bottom**
+            permittivity, whose critical angle is R's one kink (slab-spec §2.7).
 
     Returns:
         ``{"c_sca_up", "c_abs"}`` in nm.
     """
+    theta, wt = _upward_rule(n_angles, eps_rel)
+    amp = _upward_amplitude(theta, boundaries, wnum_bg, eps_rel, pol, z_int, r=r)
+    c_sca_up = float(np.sum(wt * np.abs(amp) ** 2) / (8.0 * PI * np.real(wnum_bg)))
+    return {"c_sca_up": c_sca_up, "c_abs": _absorbed_cross_section(boundaries, wnum_bg)}
+
+
+def _upward_rule(
+    n_angles: int, eps_rel: complex | None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Nodes and weights on ``[−π/2, π/2]`` of :func:`_upward_cross_sections`."""
     if eps_rel is not None and 0.0 < eps_rel.real < 1.0:
         theta_c = float(np.arcsin(np.sqrt(eps_rel.real)))
         edges = [-0.5 * PI, -theta_c, theta_c, 0.5 * PI]
@@ -239,9 +265,7 @@ def _upward_cross_sections(
     else:
         x, w = np.polynomial.legendre.leggauss(n_angles)
         theta, wt = 0.5 * PI * x, 0.5 * PI * w
-    amp = _upward_amplitude(theta, boundaries, wnum_bg, eps_rel, pol, z_int)
-    c_sca_up = float(np.sum(wt * np.abs(amp) ** 2) / (8.0 * PI * np.real(wnum_bg)))
-    return {"c_sca_up": c_sca_up, "c_abs": _absorbed_cross_section(boundaries, wnum_bg)}
+    return theta, wt
 
 
 def _spectrum(
@@ -770,3 +794,82 @@ def _representation_at(
         - hank0(arg1) * ei_p[None, nn:]
     )
     return (1j / 4.0) * np.sum(integrand * delt, axis=1)
+
+
+# ---------------------------------------------------------------------------
+# Fields over an N-layer stack (v1.2)
+# ---------------------------------------------------------------------------
+
+
+def _stack_planes(stack_rel: tuple) -> np.ndarray:
+    """Every interface height of a normalised stack, top first."""
+    _, d, _, z_top = stack_rel
+    return z_top - np.concatenate([[0.0], np.cumsum(d)])
+
+
+def _stack_background_field(
+    x: np.ndarray,
+    z: np.ndarray,
+    wnum_bg: complex,
+    pol: int,
+    excitation: str,
+    angle: float,
+    source: tuple[float, float] | None,
+    stack_rel: tuple,
+) -> np.ndarray:
+    """Background field over a stack: :func:`_background_field`'s stack twin.
+
+    Plane wave ``exp(ik(x sinθ − z cosθ))`` or dipole ``(i/4)·H₀(kρ)`` plus the
+    stack's reflection above ``z_top``.
+
+    Raises:
+        ValueError: A custom excitation, a point on an interface plane, or the
+            dipole's own position.
+    """
+    if excitation == "custom":
+        raise ValueError(
+            "incident_field is undefined for a custom incident_rhs: the result "
+            "does not know the field it was driven by"
+        )
+    planes = _stack_planes(stack_rel)
+    if np.any(np.isin(z, planes)):
+        raise ValueError(
+            "observation point exactly on an interface plane of the stack: step "
+            "off it (the field is continuous there)"
+        )
+    k = wnum_bg
+    eps_layers, d, eps_bot, z_top = stack_rel
+    out = np.zeros(x.size, dtype=complex)
+    above = z > z_top
+    xa, za = x[above], z[above]
+    if excitation == "dipole":
+        assert source is not None
+        xs, zs = source
+        if np.any((x == xs) & (z == zs)):
+            raise ValueError(
+                f"incident_field at the dipole's own position ({xs}, {zs}): "
+                "the line-source field is singular there"
+            )
+        if xa.size:
+            # Z = z + z' − 2·z_top is never below h_obs + h_src: sizing at
+            # 2·min(h) would explode the tail next to the interface.
+            refl = StackReflection.build(
+                pol,
+                k,
+                stack_rel,
+                np.append(xa, xs),
+                np.append(za, zs),
+                z_min=float((za - z_top).min() + (zs - z_top)),
+            )
+            assert refl is not None
+            out[above] = 0.25j * hank0(k * np.hypot(xa - xs, za - zs))
+            out[above] += refl.green(xa, za, xs, zs)[0]
+    elif xa.size:
+        theta = np.deg2rad(angle)
+        q, a1 = k * np.sin(theta), k * np.cos(theta)
+        r = stack_r(np.asarray(q), k, eps_layers, d, eps_bot, pol)
+        out[above] = np.exp(1j * (q * xa - a1 * za))
+        out[above] += r * np.exp(1j * (q * xa + a1 * (za - 2.0 * z_top)))
+    if not above.all():
+        raise NotImplementedError("the field inside and below a stack is commit 4")
+    return out
