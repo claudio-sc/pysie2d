@@ -17,6 +17,9 @@ Each script runs in under 10 s, except `s4_cutoff.py` (~3 min, QUADPACK referenc
 | `s2_poles.py` | A2: guided poles against the closed-form slab dispersion; mode counting; simple poles | done |
 | `s3_green.py` | A3: reflected G on the feature-aware path against a real-axis reference with explicit pole indentation | done |
 | `s4_cutoff.py` | Risk §7.1: poles at (β − k_out)/k = 1e-1 … 1e-8; mode counting with near-degenerate supermodes | done |
+| `s5_gap.py` | Risk §7.2: gaps down to 2 nm with poles present; M against v0.9; the cost of R(q) against N_layers | done |
+| `s8_residue.py` | Mode normalisation: Res_β R = γ₁u_m(z_top)²/(β_m N_m), N_m = ∫p u_m² | done |
+| `s9_dipole.py` | A4: the far-x guided sum, and the dipole power balance as an equality | done |
 
 ## Frame and conventions used here
 
@@ -188,6 +191,82 @@ splitting falls like e^{−γ_ox d_ox}.
   γ_ox·d_ox is 60 at 6 µm, against an overflow at 709. **Degeneracy comes long
   before overflow.**
 
+### S5: small gaps (`s5_gap.txt`)
+
+Gaps of 10, 5 and 2 nm (z_min = 2·gap), D = 300 nm, on SOI, SiN (2 modes) and
+the double core, TE and TM. Points X ∈ {0, 50, 300} nm, Z ∈ {z_min, 4·z_min},
+G and ∂z′G.
+
+- **Path vs reference ≤ 5e-11 at every gap**, flat from s = 1 to 2 (the
+  reference floor). The path is converged and independent of the hump depth to
+  2e-14.
+- **M is v0.9's plus 1–3 %**: 721/1249/2881 against 675/1227/2859 for a glass
+  half-space at the same D and z_min. The poles add only the T = 1.5·β_max
+  stretch. M ∝ 1/z_min, as in v0.9 (t14).
+- The naive transfer matrix is **already NaN on the path at a 10 nm gap**
+  for SiN and the double core, and at 5 nm for SOI. So S1's recursion is
+  required, not optional.
+- **R(q) on the whole path costs 0.05 ms (N = 0) to 0.8 ms (N = 21)**, linear
+  in N. It is evaluated once per path and wavelength, against ~3.5 ms for one
+  unbanded nn = 256 block-pair product. The stack adds nothing to the GEMM
+  itself.
+
+### S8: mode normalisation and the residue identity (`s8_residue.txt`)
+
+Write the field equation as ∇·(p∇u) + k²w u = 0, with p = 1, w = ε (TE, E_y)
+or p = 1/ε, w = 1 (TM, H_y). The guided modes are orthogonal under the
+**bilinear** form ∫p u_m u_n dz = N_m δ_mn (no conjugate, so it continues to
+complex ε). The 1D Green function of ∇·(p∇g) + (k²w − p q²)g = −δ then has the
+pole
+
+    g(z, z'; q) ⊃ u_m(z) u_m(z') / ((q² − β_m²) N_m).
+
+In the cover, g_refl = (i/2)(R/α₁)e^{iα₁(h+h′)}, with α₁(β) = iγ₁ and
+u_m = u_m(z_top)e^{−γ₁h}. Equating residues gives
+
+    Res_{q=β_m} R = γ₁ u_m(z_top)² / (β_m N_m).
+
+- **Verified to ≤ 4e-14** on six stacks, TE and TM, all 21 modes, including
+  near cutoff. The left side is a Cauchy circle on the recursion. The right side
+  is the (u, p u′) transfer profile with a Gauss–Legendre norm, and uses no R.
+- **The TM 1/ε weight is load-bearing**: with the unweighted ∫u², the identity
+  fails by 74 %.
+- Power: the x-flux of a mode is ∝ β_m·∫p|u_m|² = β_m N_m for real profiles,
+  so the residue is γ₁u_m(z_top)²/P_m up to the physical constants. This is
+  the roadmap's `∝ u_m(z₀)/P_m`.
+
+### S9: line-dipole emission into the modes, anchor A4 (`s9_dipole.txt`)
+
+**(b) Dipole power balance, an equality.** The deformed path gives
+Im G(r₀,r₀) = 1/4 + Im G_refl. Real-axis integrals of R and τ give
+
+    P_up   = (1/π)∫₀^{π/2} |e^{−iα₁h₀} + R e^{iα₁h₀}|²/4 dθ
+    P_down = (1/π)∫₀^{k_b} Re(Y_b)|τ|²|e^{iα₁h₀}|²/4 dq
+
+The profiles of S8 give P_guided = Σ_m u_m(z₀)²/(2β_m N_m), which is the
+iπδ(q − β) part of Im g, counted at ±β.
+
+- **Im G = P_up + P_down + P_guided to ≤ 3.5e-15** on four stacks, TE and TM,
+  at h₀ = 20, 100 and 400 nm. The guided share is up to 1/3 of the total
+  (SOI TM at 20 nm: 0.117 of 0.354).
+- No two terms share an integral. This is v1.1's G14 equality with the missing
+  `P_guided` term in place, and A6 at the Green-function level. With a
+  particle, the same balance needs only P_abs.
+
+**(a) The far-x field.** The guided sum Σ_m (i/(2β_m N_m))u_m(z)u_m(z₀)e^{iβ_m|X|}
+is the residue at +β, with the contour closed upward for X > 0.
+
+- G_total − guided **decays on every stack**, to 1e-3–5e-2 of the guided
+  terms at 40 µm. A wrong sign, a wrong factor i or a wrong phase reference
+  would leave a remainder of order 2. The remainder is physics, not quadrature:
+  the path matches the reference there (≤ 3e-11 at X = 10 and 20 µm).
+- **The rate is X^{−3/2} on 6 of 8 cases** (slope −1.47 to −1.50 by 40 µm).
+  The exceptions are **TM on SiO₂-clad stacks** (SOI, double core). Those decay
+  more slowly: slope −0.6 at 5 µm, still −1.2 at 320 µm. The cause is not
+  established. A search found no improper pole of D within |γ| < k of the
+  branch point, so a slow leaky wave is not the explanation. Open.
+- Normalise by Σ|terms|, not |Σ|: two supermodes beat, so |Σ| has near-zeros.
+
 ## Plan for the rest of the study
 
 Items S4–S6 measure the §7 risks and finish roadmap §9 step 1's scope. S7–S9
@@ -197,17 +276,17 @@ script states its check before it runs.
 | # | Script | Question | Pass condition / output |
 |---|---|---|---|
 | S4 | `s4_cutoff.py` | Near cutoff and near degeneracy | **done**, see above |
-| S5 | `s5_gap.py` | Small gaps (z_min = 2 nm to 10 nm) with poles present: M, accuracy, and timing of the banded GEMM against v0.9's t14 numbers | path vs reference ≤ 1e-10; M ∝ 1/z_min as in v0.9 |
+| S5 | `s5_gap.py` | Small gaps with poles present | **done**, see above |
 | S6 | `s6_lossy.py` | Lossy core (Im n = 1e-3, 1e-1), a thin metal layer, and complex k at Q = 10, 3. Poles leave the axis; continue them from the lossless roots by Newton on D | path vs reference (lossy, real k), δ-independence (complex k), and Im β > 0 at real k |
 | S7 | `s7_transmitted.py` | τ through the stack: the transmitted G below z_bot against a real-axis reference (extends v1.1 GT2) | ≤ the S3 floor |
-| S8 | `s8_residue.py` | **Mode normalisation and the residue–overlap identity.** Res_β R against the closed form built from the normalised profile u_m(z) (the 1/ε weight in TM), and the overlap form of c_m^± | pinned formula, agreement at round-off on all S2 stacks |
-| S9 | `s9_dipole.py` | **A4**: line-dipole emission into mode m. The residue amplitude against `∝ u_m(z₀)/P_m`, both polarisations; the far-x field of the path G against the residue term at large X | closed form at round-off; pins the residue, the normalisation and the phase reference |
+| S8 | `s8_residue.py` | Mode normalisation and the residue identity | **done**, see above |
+| S9 | `s9_dipole.py` | A4: the dipole into modes; power balance | **done**, see above |
 | S10 | `s10_born.py` | **A5 floor**: small-circle S-parameters against the Born closed form, wired as a prototype on the package solver | the rad² rate and the gap dependence of the dressing corrections, measured |
 
 The power balance (A6) and reciprocity (A7) need the assembled solver, so they
 are gates of the v1.2 code-spec, not study items.
 
-## Open after S1–S4
+## Open after S1–S5, S8, S9
 
 - **The mode finder, for the spec.** From S2 and S4: bracket D in γ from γ = 0,
   not in q. Check the bracket count against the argument-principle count in a
@@ -220,5 +299,11 @@ are gates of the v1.2 code-spec, not study items.
   core-localised one is physical. Options for the R9 code-spec: report the
   group's combined residue by one contour around the pair; switch to a localised
   basis; or warn and refuse. This is not measured further here.
+- **The overlap form of c_m^±.** S9a fixes the guided part of G, so the
+  amplitude a scatterer launches is c_m^± = (i/(2β_m N_m))·∫_Γ (the boundary
+  densities against u_m(z′)e^{∓iβ_m x′}). The sign and density wiring of that
+  integral is BIE wiring (φ, χ conventions). It is pinned by A6/A7 in the code-spec
+  gates, not in a study.
+- **The slow TM far-x rate** on SiO₂-clad stacks (S9a).
 - **A fixed hump suffices for real λ.** Whether it still does for slab QNMs is
   the low-priority later item (holomorphy §5), and it is not studied here.

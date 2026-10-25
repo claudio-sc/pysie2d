@@ -468,3 +468,52 @@ def g_ref_gamma(st, k, pol, X, Z, poles, residues, which=0, hw_frac=0.45):
         a1 = 1j * np.sqrt(b * b - k1 * k1)
         out += 1j * PI * pre * res / a1 * fac(b, a1) * np.exp(1j * a1 * Z)
     return out
+
+
+# -- guided-mode profiles (S8, S9) ---------------------------------------------
+def mode_profile(st, k, pol, beta, n_gl=200):
+    """Profile u(z) and norm N = ∫ p u² dz of the guided mode at a real root β.
+
+    ∇·(p∇u) + k² w u = 0 with p = 1, w = ε (TE) or p = 1/ε, w = 1 (TM); the modes are
+    orthogonal under ∫ p u_m u_n dz (bilinear), which is the weight of the 1D Green
+    function's pole, g ⊃ u_m(z)u_m(z')/((q² − β_m²) N_m). Normalised u(z_top) = 1.
+    Built by the (u, v = p u') transfer of R_naive, *not* from R, so that S8 can
+    compare it with R's residue.
+
+    Returns:
+        u: callable of h = z − z_top (array), N, and the bottom mismatch
+        |v_b − p_b γ_b u_b| / |p_b γ_b u_b| (zero at an exact root).
+    """
+    kl, kb = st.ks(k)
+    g1 = np.sqrt(beta * beta - k * k)
+    gb = np.sqrt(beta * beta - kb * kb).real
+    p_b = 1.0 if pol == 2 else 1.0 / st.eps_bot.real
+    u0, v0 = 1.0 + 0j, -g1 + 0j  # cover: u = e^{−γ₁ h}, p = 1
+    tops, N = [], 1.0 / (2 * g1)
+    x, wq = np.polynomial.legendre.leggauss(n_gl)
+    for kj, ej, dj in zip(kl, st.eps, st.d):
+        a = np.sqrt(complex(kj * kj - beta * beta))
+        wj = 1.0 if pol == 2 else ej  # 1/p
+        tops.append((u0, v0, a, wj, dj))
+        s = 0.5 * dj * (x + 1)
+        us = np.cos(a * s) * u0 - wj * np.sinc(a * s / PI) * s * v0
+        N += 0.5 * dj * np.sum(wq * us * us) / wj
+        u0, v0 = (np.cos(a * dj) * u0 - wj * np.sinc(a * dj / PI) * dj * v0,
+                  (a * a / wj) * np.sinc(a * dj / PI) * dj * u0 + np.cos(a * dj) * v0)
+    N += p_b * u0 * u0 / (2 * gb)
+    mismatch = abs(v0 - p_b * gb * u0) / abs(p_b * gb * u0)
+    z_lay = np.concatenate([[0.0], -np.cumsum(st.d)])
+
+    def u(h):
+        h = np.asarray(h, dtype=float)
+        out = np.empty(h.shape, dtype=complex)
+        out[h >= 0] = np.exp(-g1 * h[h >= 0])
+        for j, (ut, vt, a, wj, dj) in enumerate(tops):
+            m = (h < z_lay[j]) & (h >= z_lay[j + 1])
+            s = z_lay[j] - h[m]
+            out[m] = np.cos(a * s) * ut - wj * np.sinc(a * s / PI) * s * vt
+        m = h < z_lay[-1]
+        out[m] = u0 * np.exp(gb * (h[m] - z_lay[-1]))
+        return out
+
+    return u, complex(N), mismatch
