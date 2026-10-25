@@ -286,8 +286,13 @@ v1.1 has shipped, so v1.2 starts, in this order:
    (β − k_out)/k = 1e-8. But a q-grid finder misses such modes, and no grid
    resolves a near-degenerate supermode pair, so the mode solver brackets in γ and
    checks against an argument-principle count. S5–S10 are planned there.
+   *S5 done:* gaps down to 2 nm cost v0.9's M plus 1–3 %.
 2. **Pin the §3 formulas**: mode normalisation, the identity between residue
    and overlap, and the A4 dipole closed form, each verified numerically.
+   *S8, S9 done (2026-10-25):* Res_β R = γ₁u_m(z_top)²/(β_m N_m) with the
+   bilinear N_m = ∫p u_m² (to 4e-14), and the dipole power balance
+   Im G = P_up + P_down + Σ u_m(z₀)²/(2β_m N_m) as an equality (to 4e-15). The
+   wiring of the overlap form is left to the code-spec gates (A6, A7).
 3. **Measure the floors** for A2–A5 and the §7 risks (near-cutoff, small gaps).
 4. **v1.2 code-spec** with the R9 S-parameter API and a §8 builder contract and
    stop rule.

@@ -226,7 +226,7 @@ u_m = u_m(z_top)e^{−γ₁h}. Equating residues gives
 
     Res_{q=β_m} R = γ₁ u_m(z_top)² / (β_m N_m).
 
-- **Verified to ≤ 4e-14** on six stacks, TE and TM, all 21 modes, including
+- **Verified to ≤ 4e-14** on six stacks, TE and TM, 16 modes per polarisation, including
   near cutoff. The left side is a Cauchy circle on the recursion. The right side
   is the (u, p u′) transfer profile with a Gauss–Legendre norm, and uses no R.
 - **The TM 1/ε weight is load-bearing**: with the unweighted ∫u², the identity
