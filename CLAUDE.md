@@ -252,7 +252,9 @@ low-index substrates, shipped as v1.0.1.
 roadmap is [waveguide-roadmap.md](docs/design/waveguide-roadmap.md) (owner decisions
 R1–R10): v1.2 N-layer `Stack`, guided modes, mode source and S-parameters by
 residue; v1.3 MEEP validation of the waveguide coupling; v1.4 a variational-EIM
-2.5D front end. Next step: the v1.2 slab study plan.
+2.5D front end. Code-spec: [slab-spec.md](docs/design/slab-spec.md), study
+[studies/slab/](docs/design/studies/slab/README.md); next step: owner review of
+its T1–T9, then the build.
 
 ## How to work here
 

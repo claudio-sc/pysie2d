@@ -39,7 +39,7 @@ is a **shape optimisation of a scatterer that couples light into the slab**.
 | R13 | **S-parameters are complex amplitudes c_m^± plus power fractions** (settles R9). One code path serves power objectives now and phase-sensitive uses later. |
 | R14 | **The phase reference plane `x_ref` is a required argument.** There is no hidden default; \|S\|² does not depend on it. |
 | R15 | **Near-degenerate guided pairs are detected and refused.** The mode solver checks its bracketed roots against an argument-principle count, and an unresolved pair raises with its beat length (study S4). Revisit when coupled waveguides are a goal. |
-| R16 | **A driven adjoint gradient ships in v1.2**: dJ/dp for the mode powers, mirroring `QNMResult.sensitivity` (frozen map, central difference of M). The anchor is central differences of re-solved designs, as Gate 3. |
+| R16 | *(Revised 2026-10-25 as R16′ in [slab-spec.md](slab-spec.md) §D: a finite-difference helper, because an adjoint with a finite-difference ∂M/∂p costs the same assemblies; the analytic adjoint moves to the Fourier-shape milestone.)* **A driven adjoint gradient ships in v1.2**: dJ/dp for the mode powers, mirroring `QNMResult.sensitivity` (frozen map, central difference of M). The anchor is central differences of re-solved designs, as Gate 3. |
 | R17 | **Shapes: Gielis now, a Fourier-radius family later**, only if Gielis proves too narrow. **The optimisation loop is an `examples/` script** (scipy.optimize with bounds: minimum gap, Gielis closure). The library provides the objective and its gradient, and stays within what can be validated end to end. |
 | R18 | **In-plane electric dipoles (p_x, p_z, any complex mix) join v1.2** as derivative sources of G in TM (`pol = 1`). This makes spin-locked directional coupling expressible. Anchor: the closed form for emission into mode m, which involves ∂u_m at the source (extends study S9). |
 
@@ -319,6 +319,9 @@ v1.1 has shipped, so v1.2 starts, in this order:
 3. **Measure the floors** for A2–A5 and the §7 risks (near-cutoff, small gaps).
 4. **v1.2 code-spec** with the S-parameter API of R13–R14, the R15 guard, the
    R16 adjoint and the R18 sources, and a §8 builder contract and stop rule.
+   *Written (2026-10-25):* [slab-spec.md](slab-spec.md). R16 revised to a
+   finite-difference helper (R16′), in-layer fields in (R19), names accepted
+   (R20); T1–T9 await owner review. Studies S6, S7, S10 and S12 were added for it.
    Before it: the S9 closed form for in-plane dipoles (R18's anchor) is pinned
    in the study. *Done (S11, 2026-10-25):* c_m^± = (i/2β_mN_m)u_m(z₀)(±iβ_m b_x +
    γ₁b_z), the power balance an equality to 5e-15, and spin-locked one-way
