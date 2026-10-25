@@ -20,6 +20,8 @@ Each script runs in under 10 s, except `s4_cutoff.py` (~3 min, QUADPACK referenc
 | `s5_gap.py` | Risk §7.2: gaps down to 2 nm with poles present; M against v0.9; the cost of R(q) against N_layers | done |
 | `s8_residue.py` | Mode normalisation: Res_β R = γ₁u_m(z_top)²/(β_m N_m), N_m = ∫p u_m² | done |
 | `s9_dipole.py` | A4: the far-x guided sum, and the dipole power balance as an equality | done |
+| `nearfield.py` | The field inside the layers and below; its checks (interface continuity, cover match at z_top, far-x guided sum in the core) run as `__main__` | done |
+| `fig_data.py` | Data for the near-field showcase page (`python fig_data.py OUT.json`) | — |
 
 ## Frame and conventions used here
 
