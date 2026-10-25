@@ -258,10 +258,7 @@ class ScatterResult(_StackResult):
         z = np.asarray(z, dtype=float)
         bg = self._bg
         if isinstance(bg, Stack):
-            z_top = self._stack_rel()[3]
-            if np.any(z.ravel() <= z_top):
-                raise NotImplementedError("the field inside a stack is commit 4")
-            return self._cover_field(x, z)
+            return self._stack_eval_field(x.ravel(), z.ravel()).reshape(x.shape)
         if bg is not None:
             z_int = bg.z_int
             zf = z.ravel()
@@ -522,7 +519,7 @@ class ScatterResult(_StackResult):
                 "already covers the full circle"
             )
         if isinstance(bg, Stack):
-            raise NotImplementedError("far_field_down over a stack is commit 4")
+            return self._stack_far_field_down(n_angles)
         args = self._substrate()
         _check_far_field_below(args[2])
         return _downward_far_field(n_angles, *args)

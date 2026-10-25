@@ -992,6 +992,92 @@ class Transmission:
             0.5 * float(fx.max() + fx.min()),
         )
 
+    @classmethod
+    def stack(cls, pol: int, k: complex, stack_rel: StackRel) -> Transmission:
+        """Transmission of a stack (slab-spec §2.5), with no path yet.
+
+        τ from the recursion, the bottom's wavenumber, and the stack's features
+        (outer branch points and guided poles): D3's generic interface.
+
+        Args:
+            pol: 2 = TE, 1 = TM.
+            k: Background wavenumber.
+            stack_rel: The normalised relative stack, with at least one layer.
+
+        Returns:
+            The transmission, ``path = None`` and ``x_c = 0``.
+        """
+        lay, d, e_bot, z_top = stack_rel
+        feats = _stack_poles(complex(k), lay, d, e_bot, pol)[1]
+        return cls(
+            pol=pol,
+            k=k,
+            k_bot=k * np.sqrt(e_bot),
+            eps_bot=e_bot,
+            z_top=z_top,
+            z_bot=z_top - sum(d),
+            tau=lambda q: stack_tau(q, k, lay, d, e_bot, pol),
+            features=feats,
+            path=None,
+            x_c=0.0,
+        )
+
+    @classmethod
+    def build_stack(
+        cls,
+        pol: int,
+        k: complex,
+        stack_rel: StackRel,
+        f_src: np.ndarray,
+        g_src: np.ndarray,
+        f_obs: np.ndarray,
+        g_obs: np.ndarray,
+    ) -> Transmission:
+        """Stack transmission with a path sized for sources above, observers below.
+
+        ``z_min = min h'`` over the sources plus the smallest depth below
+        ``z_bot`` (v1.1 finding 3): the integrand decays like ``e^{−q(h' + |h|)}``
+        and nothing in the layers adds decay.
+
+        Args:
+            pol: 2 = TE, 1 = TM.
+            k: Background wavenumber.
+            stack_rel: The normalised relative stack.
+            f_src: x of every source (boundary nodes, dipole), above ``z_top``.
+            g_src: Their z.
+            f_obs: x of every observation point, below ``z_bot``.
+            g_obs: Their z.
+
+        Returns:
+            The transmission with its path.
+
+        Raises:
+            ValueError: A source at or below ``z_top``, or an observation point
+                at or above ``z_bot``.
+        """
+        tr = cls.stack(pol, k, stack_rel)
+        f_src, g_src = np.asarray(f_src, float), np.asarray(g_src, float)
+        f_obs, g_obs = np.asarray(f_obs, float), np.asarray(g_obs, float)
+        _check_in_cover(g_src, tr.z_top, "every node and source")
+        _check_below(g_obs, tr.z_bot, "every observation point below the stack")
+        z_min = float((g_src - tr.z_top).min() + (tr.z_bot - g_obs).min())
+        fx = np.concatenate([f_src, f_obs])
+        path = SommerfeldPath.for_features(
+            k, tr.features, max(float(np.ptp(fx)), z_min), z_min
+        )
+        return cls(
+            tr.pol,
+            tr.k,
+            tr.k_bot,
+            tr.eps_bot,
+            tr.z_top,
+            tr.z_bot,
+            tr.tau,
+            tr.features,
+            path,
+            0.5 * float(fx.max() + fx.min()),
+        )
+
     def blocks(self, tgt: Points, src: Geometry) -> tuple[np.ndarray, np.ndarray]:
         """:func:`transmitted_blocks` with this context."""
         assert self.path is not None
@@ -1318,7 +1404,8 @@ def stack_layer_factor(
         d: Layer thicknesses (nm).
         eps_bot: Bottom permittivity relative to the cover.
         pol: 2 = TE, 1 = TM.
-        s: (P,) depths below the top of layer ``j`` (nm), in ``[0, d_j]``.
+        s: (P,) depths below the top of layer ``j`` (nm), in ``[0, d_j]``;
+            complex values continue W analytically (a derivative in s).
         j: Layer index, 0 for the top layer.
 
     Returns:
@@ -1332,7 +1419,7 @@ def stack_layer_factor(
     m = j + 1
     g_bot = num[m] / den[m]
     a = al[j][None, :]
-    s = np.asarray(s, dtype=float)[:, None]
+    s = np.asarray(s)[:, None]  # complex depths allowed: W is entire in s
     return amp[None, :] * (
         np.exp(1j * a * s) + g_bot[None, :] * np.exp(1j * a * (2.0 * d[j] - s))
     )

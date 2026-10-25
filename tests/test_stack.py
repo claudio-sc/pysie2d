@@ -11,12 +11,21 @@ equality with every term from its own integral (GW9, GW12, GW13), reciprocity
 import numpy as np
 import pytest
 
-from pysie2d import BIESolver, Geometry, HalfSpace, Material, QNMSolver, layered
+from pysie2d import (
+    BIESolver,
+    Geometry,
+    HalfSpace,
+    Material,
+    NoFarFieldError,
+    QNMSolver,
+    layered,
+)
 from pysie2d.background import NearDegenerateModesError, Stack
 from pysie2d.layered import SommerfeldPath, _singularities
 from pysie2d.reference.sommerfeld import (
     g_ref_stack,
     g_ref_stack_gamma,
+    gt_ref_stack,
     slab3_roots,
     stack_r_ref,
 )
@@ -393,3 +402,110 @@ def test_residue_of_r_is_gamma_over_beta_n(case, pol):
         res = np.mean(layered.stack_r(z, k, lay, d, eb, pol) * r * np.exp(1j * t))
         assert m.profile(0.0) == 1.0
         assert abs(res - m.gamma / (m.beta * m.norm)) / abs(res) < 4e-13  # 4.2e-14
+
+
+# --- GW5: transmitted G below the stack against upward shooting ------------------
+
+GW5_STACKS = {k: STACKS[k] for k in ("SOI", "air|Si|SiO2", "double", "SiN@800")}
+
+
+@pytest.mark.filterwarnings("ignore::scipy.integrate.IntegrationWarning")
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("case", GW5_STACKS, ids=str)
+def test_transmitted_green_below_the_stack_matches_upward_shooting(case, pol):
+    # The forward T = aR + b cancels catastrophically on the tail (finding 4);
+    # the reference shoots T upward from the bottom, a second quadrature with a
+    # different T, branch rule and pole treatment.
+    k, lay, d, eb = _rel(*GW5_STACKS[case])
+    poles = tuple(p.real for p in layered._stack_poles(complex(k), lay, d, eb, pol)[0])
+    z_bot = -sum(d)
+    for x_sep, hs, hb in [
+        (0.0, 20.0, 30.0),
+        (300.0, 50.0, 10.0),
+        (1500.0, 100.0, 200.0),
+    ]:
+        tr = layered.Transmission.build_stack(
+            pol, k, (lay, d, eb, 0.0), [0.0], [hs], [x_sep], [z_bot - hb]
+        )
+        g = tr.green(x_sep, z_bot - hb, 0.0, hs)[0]
+        ref = gt_ref_stack(x_sep, hs, hb, k, lay, d, eb, pol, poles)
+        assert abs(g - ref) / abs(ref) < 4e-10  # measured 1.8e-11
+
+
+# --- GW11: the in-layer field ------------------------------------------------------
+
+GW11_STACKS = {k: STACKS[k] for k in ("SOI", "double", "air|Si|SiO2")}
+
+
+def _ds(fn, s0, rho=1.0, n=16):
+    """d/ds by a Cauchy circle in complex depth: W is entire in s.
+
+    16 points at radius 1 nm: truncation (|α|·ρ)^16/16! is nil, and round-off
+    is ε·|W|/(ρ|α|) ~ 1e-14 relative.
+    """
+    t = 2 * PI * np.arange(n) / n
+    v = np.array([fn(s0 + rho * np.exp(1j * ti)) for ti in t])
+    return np.mean(v * np.exp(-1j * t)[:, None], axis=0) / rho
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("case", GW11_STACKS, ids=str)
+def test_layer_field_satisfies_the_interface_conditions(case, pol):
+    # u and p·∂z u continuous across every interface, each side from its own
+    # formula — layer j at its bottom, layer j+1 (or the τ bottom wave) at its
+    # top — on real and complex q; and at z_top the layer formula is the cover's
+    # 1 + R per unit downward amplitude.
+    k, lay, d, eb = _rel(*GW11_STACKS[case])
+    q = np.linspace(0.01, 6.0, 7) * k + 0j
+    q = np.concatenate([q, q - 0.3j * k])
+    p = [1.0, *([1.0] * len(lay) if pol == 2 else [1 / e for e in lay])]
+    p.append(1.0 if pol == 2 else 1 / eb)
+    a1 = layered.alpha(q, k)
+    r = layered.stack_r(q, k, lay, d, eb, pol)
+
+    def w(s, j):
+        return (
+            a1 * layered.stack_layer_factor(q, k, lay, d, eb, pol, np.array([s]), j)[0]
+        )
+
+    assert np.max(np.abs(1 + r - w(0.0, 0)) / np.abs(1 + r)) < 3e-14  # measured 6.0e-16
+    sides = [(1 + r, -1j * a1 * (1 - r))]  # cover at z_top: u and p·∂z u (p = 1)
+    for j in range(len(lay)):
+        top = (w(0.0, j), -_ds(lambda s, j=j: w(s, j), 0.0) * p[j + 1])
+        bot = (w(d[j], j), -_ds(lambda s, j=j: w(s, j), d[j]) * p[j + 1])
+        sides += [top, bot]
+    tau = a1 * layered.stack_tau(q, k, lay, d, eb, pol)
+    sides.append((tau, -1j * layered.alpha(q, k * np.sqrt(eb)) * tau * p[-1]))
+    for (ua, da), (ub, db) in zip(sides[::2], sides[1::2], strict=True):
+        # Measured 2.6e-13 worst (double core TM), the Cauchy derivative's floor.
+        assert np.max(np.abs(ua - ub) / np.abs(ua)) < 3e-12
+        assert np.max(np.abs(da - db) / np.abs(da)) < 3e-12
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+def test_core_field_far_along_the_stack_is_the_guided_sum(pol):
+    # The public incident field inside the core, 30 µm from a line source, must
+    # be the residue sum Σ (i/2βN)·u(z)u(z_s)·e^{iβX} (S9): radiation and lateral
+    # waves decay like X^{−3/2}. This wires _layer_field end to end.
+    stack = Stack(((N_SI**2, 220.0),), N_CLAD**2)
+    geom = Geometry.gielis(rad=20.0, n_pts=64, m=4, x0=-3000.0, z0=200.0)
+    res = BIESolver(geom, Material(n_core=1.5, n_clad=N_CLAD, pol=pol), stack)
+    res = res.scatter_dipole(1550.0, 0.0, 50.0)
+    zc, x_far = np.array([-60.0, -110.0]), 3e4
+    u = res.incident_field(np.full(2, x_far), zc)
+    total, scale = 0.0, 0.0
+    for m in stack.guided_modes(1550.0, pol, N_CLAD):
+        t = 1j / (2 * m.beta * m.norm) * m.profile(zc) * m.profile(50.0)
+        total, scale = total + t * np.exp(1j * m.beta * x_far), scale + np.abs(t)
+    assert np.max(np.abs(u - total) / scale) < 0.05  # measured 1.6e-2 (TM)
+
+
+def test_fields_refuse_interface_planes_and_lossy_far_field_below():
+    stack = Stack(((N_SI**2, 220.0),), (N_CLAD + 0.01j) ** 2)
+    geom, mat = _particle(2)
+    res = BIESolver(geom, mat, stack).scatter(1550.0)
+    with pytest.raises(ValueError, match="interface plane"):
+        res.eval_field(np.array([0.0]), np.array([-220.0]))
+    with pytest.raises(NoFarFieldError):
+        res.far_field_down()
+    assert {"c_sca_up", "c_sca_down", "c_abs"} <= res.cross_sections().keys()

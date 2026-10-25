@@ -490,3 +490,118 @@ def slab3_roots(
             return roots
         roots.append(brentq(g, a, b, xtol=1e-16 * hi, rtol=8.9e-16, maxiter=200))
         m += 1
+
+
+def _stack_t_ref(
+    q: complex,
+    k1: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+) -> complex:
+    """T by shooting **upward** from the bottom (s7's ``T_ref``).
+
+    The forward form ``T = aR + b`` cancels catastrophically on the tail (true
+    T ~ e^{−qd} from O(1) terms, measured 1e37, finding 4); shooting from the
+    evanescent side makes the growth the dominant direction, so ``T = 1/A_down``
+    is relatively accurate. Independent of the recursion.
+    """
+    y1 = _alpha_radiating(k1, q)
+    a_b = _alpha_radiating(k1 * np.sqrt(complex(eps_bot)), q)
+    y_b = a_b if pol == 2 else a_b / eps_bot
+    u, v = 1.0 + 0j, -1j * y_b  # bottom field e^{−iα_b(z − z_bot)}: u = 1, v = p·u′
+    for e, dj in zip(eps_layers[::-1], d[::-1], strict=True):
+        a = np.sqrt(complex(k1 * k1 * e - q * q))
+        w = 1.0 if pol == 2 else e
+        c = np.cos(a * dj)
+        sinc = np.sinc(a * dj / PI) * dj
+        u, v = c * u + w * sinc * v, -(a * a / w) * sinc * u + c * v
+        if not (np.isfinite(u) and np.isfinite(v)) or abs(u) > 1e290:
+            return 0.0
+    return 1.0 / (0.5 * (u - v / (1j * y1)))  # 1/(downward amplitude at z_top)
+
+
+def gt_ref_stack(
+    X: float,
+    hs: float,
+    hb: float,
+    k1: float,
+    eps_layers: tuple[complex, ...],
+    d: tuple[float, ...],
+    eps_bot: complex,
+    pol: int,
+    poles: tuple[float, ...],
+    hw_frac: float = 0.45,
+) -> complex:
+    """Transmitted G below a stack by real-axis quadrature (s7's ``gt_ref``).
+
+    ``G_t = (i/4π) ∫ τ·e^{iqX + iα₁h' + iα_b|h|} dq`` with ``τ = T/α₁``, T by
+    upward shooting, the radiation-condition branch, θ/cosh substitutions, and
+    the guided poles by the symmetric-fold PV plus ``iπ·Res τ``, the residue a
+    Cauchy circle on this module's own ``T/α₁``.
+
+    Args:
+        X: Horizontal separation (nm).
+        hs: Source height above ``z_top`` (nm), positive.
+        hb: Observation depth below ``z_bot`` (nm), non-negative.
+        k1: **Real** cover wavenumber.
+        eps_layers: Layer permittivities relative to the cover, top first.
+        d: Layer thicknesses (nm).
+        eps_bot: Bottom permittivity relative to the cover.
+        pol: 2 = TE, 1 = TM.
+        poles: Real guided poles β.
+        hw_frac: Fold half-width fraction.
+
+    Returns:
+        ``G_t``.
+    """
+    k_b = k1 * np.sqrt(complex(eps_bot))
+    kbr = float(np.real(k_b))
+
+    def tt(q):
+        return _stack_t_ref(q, k1, eps_layers, d, eps_bot, pol)
+
+    def f1(th):
+        q, a = k1 * np.sin(th), k1 * np.cos(th)
+        ab = _alpha_radiating(k_b, q)
+        # τ dq = (T/α₁)·α₁ dθ
+        return (
+            1j / (2 * PI) * tt(q) * np.cos(q * X) * np.exp(1j * a * hs + 1j * ab * hb)
+        )
+
+    def f2(s):
+        q, a = k1 * np.cosh(s), 1j * k1 * np.sinh(s)
+        ab = _alpha_radiating(k_b, q)
+        # τ dq = (T/α₁)·k₁ sinh s ds = −iT ds, so (i/2π)·τ dq = T ds/2π
+        return 1 / (2 * PI) * tt(q) * np.cos(q * X) * np.exp(1j * a * hs + 1j * ab * hb)
+
+    kw = {"epsabs": 1e-18, "epsrel": 1e-13, "limit": 4000}
+
+    def qd(fn, a, b, pts=None):
+        re = quad(lambda t: fn(t).real, a, b, points=pts, **kw)[0]
+        im = quad(lambda t: fn(t).imag, a, b, points=pts, **kw)[0]
+        return re + 1j * im
+
+    out = qd(f1, 0, PI / 2, [np.arcsin(kbr / k1)] if kbr < k1 else None)
+    sp = [np.arccosh(b / k1) for b in poles]
+    edges = sorted({0.0, *([np.arccosh(kbr / k1)] if kbr > k1 else [])})
+    edges.append(np.arccosh(40.0 / (k1 * (hs + hb)) + max([*poles, kbr, k1]) / k1))
+    gaps = [abs(a - b) for a in sp for b in sp + edges if a != b]
+    hw = hw_frac * min([*gaps, 0.1])
+    cuts = sorted(edges + [s - hw for s in sp] + [s + hw for s in sp])
+    for a, b in zip(cuts[:-1], cuts[1:], strict=True):
+        c = [s for s in sp if a < s < b]
+        if c:
+            s0 = c[0]
+            out += qd(lambda u, s0=s0: f2(s0 + u) + f2(s0 - u), 0.0, b - s0)
+        else:
+            out += qd(f2, a, b)
+    k_out = max(k1, kbr)
+    for b in poles:
+        res = _residue_ref(b, k_out, lambda q: tt(q) / _alpha_radiating(k1, q))
+        a1 = 1j * np.sqrt(b * b - k1 * k1)
+        ab = 1j * np.sqrt(b * b - kbr * kbr)
+        pre = 1j * PI * (1j / (2 * PI))
+        out += pre * res * np.cos(b * X) * np.exp(1j * a1 * hs + 1j * ab * hb)
+    return out
