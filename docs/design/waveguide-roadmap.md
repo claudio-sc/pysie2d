@@ -282,7 +282,10 @@ v1.1 has shipped, so v1.2 starts, in this order:
    bitwise v0.9 at N = 0. The naive form fails by overflow, not by digit loss,
    at SOI with a 5 nm gap. The v0.9 path needs only a feature list, and it
    matches a pole-indented real-axis reference to the reference's floor
-   (≤ 4e-10). S4–S10 are planned there.
+   (≤ 4e-10). *S4 done:* near cutoff is benign for G down to
+   (β − k_out)/k = 1e-8. But a q-grid finder misses such modes, and no grid
+   resolves a near-degenerate supermode pair, so the mode solver brackets in γ and
+   checks against an argument-principle count. S5–S10 are planned there.
 2. **Pin the §3 formulas**: mode normalisation, the identity between residue
    and overlap, and the A4 dipole closed form, each verified numerically.
 3. **Measure the floors** for A2–A5 and the §7 risks (near-cutoff, small gaps).

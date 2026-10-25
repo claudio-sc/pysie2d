@@ -1,0 +1,56 @@
+
+SOI symmetric, SiO2|Si|SiO2 @1550: mode m = 1 near cutoff, k_out = k1
+  TE
+    t=1e-01 d=  284.30nm  found q/γ/wind_q/wind_γ=2/2/2/2  |β_γ−β|/β=0e+00  |Res|/k=1.32e-01  Res circle vs N/D'=1e-15  pole/|G|≤1.1e+00  M=2838 clr=0.84  path−ref=4e-11 s2−s1=1e-14 δ/2−δ=1e-14
+    t=1e-02 d=  255.75nm  found q/γ/wind_q/wind_γ=2/2/2/2  |β_γ−β|/β=0e+00  |Res|/k=1.79e-02  Res circle vs N/D'=3e-15  pole/|G|≤1.9e+00  M=2836 clr=0.85  path−ref=4e-11 s2−s1=5e-14 δ/2−δ=5e-14
+    t=1e-03 d=  248.35nm  found q/γ/wind_q/wind_γ=2/2/2/2  |β_γ−β|/β=0e+00  |Res|/k=1.94e-03  Res circle vs N/D'=2e-15  pole/|G|≤9.1e-01  M=2836 clr=0.86  path−ref=6e-11 s2−s1=3e-14 δ/2−δ=3e-14
+    t=1e-04 d=  246.12nm  found q/γ/wind_q/wind_γ=1/2/2/2  |β_γ−β|/β=0e+00  |Res|/k=1.98e-04  Res circle vs N/D'=8e-15  pole/|G|≤2.5e-01  M=2835 clr=0.86  path−ref=4e-10 s2−s1=4e-14 δ/2−δ=4e-14
+    t=1e-06 d=  245.21nm  found q/γ/wind_q/wind_γ=1/2/1/2  |β_γ−β|/β=0e+00  |Res|/k=2.00e-06  Res circle vs N/D'=2e-11  pole/|G|≤2.4e-02  M=2835 clr=0.86  path−ref=4e-10 s2−s1=4e-14 δ/2−δ=4e-14
+    t=1e-08 d=  245.12nm  found q/γ/wind_q/wind_γ=1/2/1/1  |β_γ−β|/β=0e+00  |Res|/k=2.00e-08  Res circle vs N/D'=6e-10  pole/|G|≤2.4e-03  M=2835 clr=0.86  path−ref=8e-09 s2−s1=5e-14 δ/2−δ=4e-14
+  TM
+    t=1e-01 d=  393.03nm  found q/γ/wind_q/wind_γ=2/2/2/2  |β_γ−β|/β=1e-16  |Res|/k=1.50e-01  Res circle vs N/D'=5e-17  pole/|G|≤1.2e+00  M=2836 clr=0.85  path−ref=3e-13 s2−s1=3e-14 δ/2−δ=3e-14
+    t=1e-02 d=  301.86nm  found q/γ/wind_q/wind_γ=2/2/2/2  |β_γ−β|/β=0e+00  |Res|/k=1.93e-02  Res circle vs N/D'=4e-15  pole/|G|≤1.2e+00  M=2825 clr=0.87  path−ref=3e-11 s2−s1=1e-14 δ/2−δ=7e-15
+    t=1e-03 d=  263.55nm  found q/γ/wind_q/wind_γ=2/2/2/2  |β_γ−β|/β=0e+00  |Res|/k=1.99e-03  Res circle vs N/D'=1e-14  pole/|G|≤4.2e-01  M=2841 clr=0.87  path−ref=2e-11 s2−s1=1e-14 δ/2−δ=7e-15
+    t=1e-04 d=  250.95nm  found q/γ/wind_q/wind_γ=1/2/2/2  |β_γ−β|/β=0e+00  |Res|/k=2.00e-04  Res circle vs N/D'=4e-15  pole/|G|≤1.6e-01  M=2838 clr=0.87  path−ref=2e-10 s2−s1=2e-14 δ/2−δ=2e-14
+    t=1e-06 d=  245.69nm  found q/γ/wind_q/wind_γ=1/2/1/2  |β_γ−β|/β=0e+00  |Res|/k=2.00e-06  Res circle vs N/D'=2e-11  pole/|G|≤1.9e-02  M=2837 clr=0.87  path−ref=8e-10 s2−s1=2e-14 δ/2−δ=2e-14
+    t=1e-08 d=  245.17nm  found q/γ/wind_q/wind_γ=1/2/1/1  |β_γ−β|/β=0e+00  |Res|/k=2.00e-08  Res circle vs N/D'=6e-10  pole/|G|≤2.0e-03  M=2837 clr=0.87  path−ref=4e-09 s2−s1=1e-14 δ/2−δ=1e-14
+
+air|SiN|SiO2 @1550 (true fundamental cutoff): mode m = 0 near cutoff, k_out = k_bot
+  TE
+    t=1e-01 d=  262.19nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=1e-16  |Res|/k=2.26e-01  Res circle vs N/D'=2e-16  pole/|G|≤1.1e+00  M=2838 clr=0.87  path−ref=2e-11 s2−s1=3e-14 δ/2−δ=3e-14
+    t=1e-02 d=  145.69nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=1.42e-01  Res circle vs N/D'=2e-15  pole/|G|≤6.8e-01  M=2832 clr=0.87  path−ref=4e-12 s2−s1=4e-15 δ/2−δ=4e-15
+    t=1e-03 d=  123.75nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=5.43e-02  Res circle vs N/D'=3e-14  pole/|G|≤2.7e-01  M=2831 clr=0.87  path−ref=7e-11 s2−s1=1e-14 δ/2−δ=1e-14
+    t=1e-04 d=  117.71nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=1.83e-02  Res circle vs N/D'=5e-15  pole/|G|≤9.4e-02  M=2831 clr=0.87  path−ref=5e-12 s2−s1=1e-14 δ/2−δ=1e-14
+    t=1e-06 d=  115.30nm  found q/γ/wind_q/wind_γ=0/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=1.88e-03  Res circle vs N/D'=2e-11  pole/|G|≤9.7e-03  M=2831 clr=0.87  path−ref=7e-10 s2−s1=1e-14 δ/2−δ=1e-14
+    t=1e-08 d=  115.06nm  found q/γ/wind_q/wind_γ=0/1/0/1  |β_γ−β|/β=0e+00  |Res|/k=1.88e-04  Res circle vs N/D'=6e-10  pole/|G|≤9.8e-04  M=2831 clr=0.87  path−ref=3e-08 s2−s1=9e-15 δ/2−δ=1e-14
+  TM
+    t=1e-01 d=  433.69nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=9.03e-02  Res circle vs N/D'=9e-16  pole/|G|≤5.3e-01  M=2838 clr=0.87  path−ref=1e-12 s2−s1=3e-14 δ/2−δ=3e-14
+    t=1e-02 d=  277.32nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=5.20e-02  Res circle vs N/D'=2e-15  pole/|G|≤2.5e-01  M=2832 clr=0.87  path−ref=2e-12 s2−s1=7e-15 δ/2−δ=7e-15
+    t=1e-03 d=  239.23nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=1.84e-02  Res circle vs N/D'=3e-14  pole/|G|≤8.7e-02  M=2831 clr=0.87  path−ref=2e-11 s2−s1=2e-14 δ/2−δ=2e-14
+    t=1e-04 d=  227.96nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=6.01e-03  Res circle vs N/D'=2e-15  pole/|G|≤2.9e-02  M=2831 clr=0.87  path−ref=6e-12 s2−s1=2e-14 δ/2−δ=2e-14
+    t=1e-06 d=  223.37nm  found q/γ/wind_q/wind_γ=0/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=6.09e-04  Res circle vs N/D'=2e-11  pole/|G|≤2.9e-03  M=2831 clr=0.87  path−ref=2e-10 s2−s1=2e-14 δ/2−δ=2e-14
+    t=1e-08 d=  222.92nm  found q/γ/wind_q/wind_γ=0/1/0/1  |β_γ−β|/β=0e+00  |Res|/k=6.10e-05  Res circle vs N/D'=6e-10  pole/|G|≤2.9e-04  M=2831 clr=0.87  path−ref=9e-09 s2−s1=2e-14 δ/2−δ=2e-14
+
+(b) Si 220 | SiO2 d_ox | Si 220 in SiO2 @1550: supermode splitting
+  TE d_ox=  300: found q/γ/γ×100/wind_q/wind_γ = 2/2/2/2/2  Δβ/β = 1.4e-02  |Res|/k = 1.3e-01, 1.5e-01  path δ/2−δ = 1e-14
+  TE d_ox= 1000: found q/γ/γ×100/wind_q/wind_γ = 0/0/2/2/2  Δβ/β = 1.3e-05  |Res|/k = 1.4e-01, 1.4e-01  path δ/2−δ = 2e-14
+  TE d_ox= 2000: found q/γ/γ×100/wind_q/wind_γ = 0/0/0/2/2
+  TE d_ox= 3000: found q/γ/γ×100/wind_q/wind_γ = 0/0/0/2/2
+  TE d_ox= 4000: found q/γ/γ×100/wind_q/wind_γ = 0/0/0/2/2
+  TE d_ox= 6000: found q/γ/γ×100/wind_q/wind_γ = 0/0/0/2/2
+  TM d_ox=  300: found q/γ/γ×100/wind_q/wind_γ = 2/2/2/2/2  Δβ/β = 6.9e-02  |Res|/k = 1.2e-01, 1.9e-01  path δ/2−δ = 2e-14
+  TM d_ox= 1000: found q/γ/γ×100/wind_q/wind_γ = 2/2/2/2/2  Δβ/β = 1.1e-03  |Res|/k = 1.5e-01, 1.5e-01  path δ/2−δ = 1e-14
+  TM d_ox= 2000: found q/γ/γ×100/wind_q/wind_γ = 0/0/2/2/2  Δβ/β = 3.0e-06  |Res|/k = 1.5e-01, 1.5e-01  path δ/2−δ = 1e-14
+  TM d_ox= 3000: found q/γ/γ×100/wind_q/wind_γ = 0/0/0/2/2
+  TM d_ox= 4000: found q/γ/γ×100/wind_q/wind_γ = 0/0/0/2/2
+  TM d_ox= 6000: found q/γ/γ×100/wind_q/wind_γ = 0/0/0/2/2
+
+(c) whose floor is it? Both references at t = 1e-6 and 1e-8, fold half-width 0.45 vs 0.2 (path s = 2)
+  SOI sym TE1       t=1e-06 X=    0 Z=  20: path − g_ref (.45/.2) = 2e-09/5e-08   path − g_ref_gamma (.45/.2) = 2e-10/3e-09
+  SOI sym TE1       t=1e-06 X= 1500 Z= 100: path − g_ref (.45/.2) = 8e-09/1e-07   path − g_ref_gamma (.45/.2) = 4e-10/2e-10
+  SOI sym TE1       t=1e-08 X=    0 Z=  20: path − g_ref (.45/.2) = 2e-08/7e-04   path − g_ref_gamma (.45/.2) = 8e-09/3e-08
+  SOI sym TE1       t=1e-08 X= 1500 Z= 100: path − g_ref (.45/.2) = 5e-08/2e-03   path − g_ref_gamma (.45/.2) = 4e-09/2e-08
+  air|SiN|SiO2 TE0  t=1e-06 X=    0 Z=  20: path − g_ref (.45/.2) = 8e-09/3e-07   path − g_ref_gamma (.45/.2) = 7e-10/4e-08
+  air|SiN|SiO2 TE0  t=1e-06 X= 1500 Z= 100: path − g_ref (.45/.2) = 3e-09/1e-07   path − g_ref_gamma (.45/.2) = 2e-10/1e-08
+  air|SiN|SiO2 TE0  t=1e-08 X=    0 Z=  20: path − g_ref (.45/.2) = 4e-07/5e+00   path − g_ref_gamma (.45/.2) = 3e-08/7e-09
+  air|SiN|SiO2 TE0  t=1e-08 X= 1500 Z= 100: path − g_ref (.45/.2) = 2e-04/2e+00   path − g_ref_gamma (.45/.2) = 1e-08/3e-09

@@ -298,7 +298,7 @@ def R_ref(st, k, pol, q):
     return (d_ + 1j * Yb * b_) / (-1j * Yb * a_ - c_)
 
 
-def g_ref(st, k, pol, X, Z, poles, residues, which=0, extra_pts=()):
+def g_ref(st, k, pol, X, Z, poles, residues, which=0, extra_pts=(), hw_frac=0.45):
     """Real-axis QUADPACK: θ-substitution on [0, k₁], cosh on [k₁, ∞).
 
     Real guided poles: PV by a symmetric fold, plus iπ·Res for the path
@@ -335,7 +335,7 @@ def g_ref(st, k, pol, X, Z, poles, residues, which=0, extra_pts=()):
     # PV by the symmetric fold ∫₀ʰ [f(s_p+u) + f(s_p−u)] du: the ±Res/u parts cancel,
     # so no residue enters the PV and a wrong residue cannot hide in it.
     edges = sorted(set([0.0, s_max] + pts2))
-    hw = 0.45 * min([abs(a - b) for a in s_pole for b in s_pole + edges if a != b] + [0.1])
+    hw = hw_frac * min([abs(a - b) for a in s_pole for b in s_pole + edges if a != b] + [0.1])
     cuts = sorted(edges + [s - hw for s in s_pole] + [s + hw for s in s_pole])
     for a, b in zip(cuts[:-1], cuts[1:]):
         c = [s for s in s_pole if a < s < b]
@@ -345,6 +345,125 @@ def g_ref(st, k, pol, X, Z, poles, residues, which=0, extra_pts=()):
         else:
             out += qd(f2, a, b)
     pre = 1j / (2 * PI)
+    for b, res in zip(poles, residues):
+        a1 = 1j * np.sqrt(b * b - k1 * k1)
+        out += 1j * PI * pre * res / a1 * fac(b, a1) * np.exp(1j * a1 * Z)
+    return out
+
+
+def guided_poles_gamma(st, k, pol, n_grid=4000):
+    """Real roots of D bracketed on a uniform grid in γ = √(q² − k_out²), from γ = 0.
+
+    Near cutoff D is linear in γ (the outer Y = iγ), not in q, so a q-grid that
+    starts one cell inside the window misses a root at (β − k_out)/k ≲ cell/k,
+    while γ = 0 is an exact grid point here and D(k_out) is finite.
+    """
+    lo, hi = guided_window(st, k)
+    if hi <= lo:
+        return []
+    g_hi = np.sqrt(hi * hi - lo * lo)
+    gs = np.linspace(0.0, g_hi, n_grid + 1)[:-1]
+
+    def f(g):
+        return float(np.real(st.D(np.array(np.sqrt(lo * lo + g * g), dtype=complex), k, pol)))
+
+    vals = np.array([f(g) for g in gs])
+    roots = []
+    for a, b, fa, fb in zip(gs[:-1], gs[1:], vals[:-1], vals[1:]):
+        if fa * fb < 0:
+            g0 = brentq(f, a, b, xtol=1e-300, rtol=8.9e-16, maxiter=300)
+            roots.append(np.sqrt(lo * lo + g0 * g0))
+    return sorted(roots, reverse=True)
+
+
+def winding_count_gamma(st, k, pol, n=8192, h_frac=0.01):
+    """Zeros of D(q(γ)) with Re γ > 0, by the argument principle in the γ-plane.
+
+    q = √(k_out² + γ²) uniformises the outer branch point: the outer Y = iγ, so D
+    is analytic through γ = 0, and the contour can run along Re γ = 0 itself
+    (D(γ = 0) ≠ 0 generically). Improper zeros at Re γ < 0, which a mode becomes
+    below cutoff, stay outside. A rectangle [0, 1.05 γ_hi] × [−h, h], trapezoid.
+
+    Trap (S4): Re γ > 0 is the Im α ≥ 0 sheet, which differs from the code's
+    vertical-cut sheet left of k_out (Re q² < k_out², i.e. |Im γ| > Re γ). A box
+    of h = 0.05·γ_hi counted a leaky pole at q = 0.99655·k_out + 6e-5i·k (Si/6 µm
+    SiO₂/Si), which is improper on the code's sheet. Keep the box thin.
+    """
+    lo, hi = guided_window(st, k)
+    g_hi = 1.05 * np.sqrt(hi * hi - lo * lo)
+    h = h_frac * g_hi
+    m = n // 4
+    s = np.linspace(0, 1, m, endpoint=False)
+    zs = np.concatenate([g_hi * s - 1j * h, g_hi + 1j * h * (2 * s - 1),
+                         g_hi * (1 - s) + 1j * h, 1j * h * (1 - 2 * s)])
+    q = np.sqrt(lo * lo + zs * zs)
+    v = st.D(q, k, pol)
+    ph = np.unwrap(np.angle(np.append(v, v[0])))
+    return int(round((ph[-1] - ph[0]) / (2 * PI)))
+
+
+def g_ref_gamma(st, k, pol, X, Z, poles, residues, which=0, hw_frac=0.45):
+    """Real-axis reference for near-cutoff poles: q ≥ k_out integrated in γ.
+
+    q = √(k_out² + γ²) makes the outer branch point a smooth endpoint (the outer α
+    is iγ and dq = γ/q dγ), so a pole at γ_p = √(β² − k_out²) is separated from it
+    by γ_p ≈ √(2t)·k_out instead of t·k_out. [0, k₁] by θ, [k₁, k_out] (if
+    k₁ < k_out) by cosh near k₁ and by q = √(k_out² − y²) near
+    k_out, where a near-cutoff pole is t·k_out beyond the panel's end. PV by the same symmetric fold.
+    """
+    k1 = float(np.real(k))
+    _, kb = st.ks(k)
+    ko = max(k1, float(np.real(kb)))
+    pre = 1j / (2 * PI)
+
+    def fac(q, a):
+        return [np.cos(q * X), q * np.sin(q * X), 1j * a * np.cos(q * X)][which]
+
+    def f1(th):
+        q, a = k1 * np.sin(th), k1 * np.cos(th)
+        return pre * R_ref(st, k, pol, q) * fac(q, a) * np.exp(1j * a * Z)
+
+    def f2(s):
+        q, a = k1 * np.cosh(s), 1j * k1 * np.sinh(s)
+        return 1 / (2 * PI) * R_ref(st, k, pol, q) * fac(q, a) * np.exp(-k1 * np.sinh(s) * Z)
+
+    def f3(g):
+        q = np.sqrt(ko * ko + g * g)
+        a = 1j * np.sqrt(q * q - k1 * k1) if ko > k1 else 1j * g
+        jac = g / q
+        # R/α₁·dq/dγ: for k₁ = k_out, α₁ = iγ cancels γ in the Jacobian
+        w = (1.0 / (1j * q)) if ko == k1 else jac / a
+        return pre * R_ref(st, k, pol, q) * w * fac(q, a) * np.exp(1j * a * Z)
+
+    kw = dict(epsabs=1e-18, epsrel=1e-14, limit=4000)
+
+    def qd(fn, a, b):
+        re = quad(lambda t: fn(t).real, a, b, **kw)[0]
+        im = quad(lambda t: fn(t).imag, a, b, **kw)[0]
+        return re + 1j * im
+
+    def f4(y):  # q = √(k_out² − y²) on [mid, k_out]: the pole's left flank, uniformised
+        q = np.sqrt(ko * ko - y * y)
+        a = 1j * np.sqrt(q * q - k1 * k1)
+        return pre * R_ref(st, k, pol, q) / a * (y / q) * fac(q, a) * np.exp(1j * a * Z)
+
+    out = qd(f1, 0, PI / 2)
+    if ko > k1:
+        mid = 0.5 * (k1 + ko)
+        out += qd(f2, 0, np.arccosh(mid / k1))
+        out += qd(f4, 0, np.sqrt(ko * ko - mid * mid))
+    g_pole = sorted(np.sqrt(b * b - ko * ko) for b in poles)
+    g_max = np.sqrt((40.0 / Z + max(list(poles) + [ko])) ** 2 - ko * ko)
+    edges = [0.0, g_max]
+    hw = hw_frac * min([abs(a - b) for a in g_pole for b in g_pole + edges if a != b] + [g_max])
+    cuts = sorted(edges + [g - hw for g in g_pole] + [g + hw for g in g_pole])
+    for a, b in zip(cuts[:-1], cuts[1:]):
+        c = [g for g in g_pole if a < g < b]
+        if c:
+            gp = c[0]
+            out += qd(lambda u: f3(gp + u) + f3(gp - u), 0.0, b - gp)
+        else:
+            out += qd(f3, a, b)
     for b, res in zip(poles, residues):
         a1 = 1j * np.sqrt(b * b - k1 * k1)
         out += 1j * PI * pre * res / a1 * fac(b, a1) * np.exp(1j * a1 * Z)
