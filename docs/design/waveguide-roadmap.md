@@ -21,13 +21,31 @@ Owner decisions taken 2026-10-23:
 | R1 | **Scatterers stay outside the core.** No particle intersects or sits inside a layer of the stack. Etched gratings, holes in the core and photonic-crystal waveguides are out of scope. |
 | R2 | **S-parameters first.** QNMs with a slab background come later and are low priority: isolated-cluster QNMs (shipped) guide the design, and the slab-coupled response is read from the driven S-parameters. |
 | R3 | **v1.1 (transmitted fields) stays first** (done: v1.1.0). Its generic τ = T/α₁ and its `P_down` by interface flux are prerequisites. The G14 → GT7 power equality is also the slab's best anchor. |
-| R4 | **Particles on both sides of the stack**, staged as v1.2 item 6. In the 2.5D top view the strip has two claddings, and side-coupled structures commonly sit on both. |
+| R4 | *(Dropped 2026-10-25, see below.)* **Particles on both sides of the stack**, staged as v1.2 item 6. In the 2.5D top view the strip has two claddings, and side-coupled structures commonly sit on both. |
 | R5 | **General N-layer `Stack` in v1.2**, not a three-layer slab first. The gates run on the three-layer case first. |
 | R6 | **v1.3 is a MEEP milestone**: eigenmode S-parameters, plus one MEEP LDOS run that closes a v1.0 gap. |
 | R7 | **The 2.5D front end lives in the library**, as a thin layer on the v1.2 mode solver. |
 | R8 | **Out-of-plane loss in 2.5D is a documented limitation**, not estimated. An estimate would be new physics with no anchor. |
 | R9 | **The S-parameter API shape** (layout over mode and direction, phase reference plane) **is settled in the v1.2 code-spec**, with the options laid out there. |
 | R10 | **The 2.5D method is variational EIM** (owner, 2026-10-23), with plain EIM as an option for regions whose stack guides a mode. See v1.4 for the reasons. |
+
+Owner decisions taken 2026-10-25, before the v1.2 code-spec. The goal they serve
+is a **shape optimisation of a scatterer that couples light into the slab**.
+
+| # | Decision |
+|---|---|
+| R11 | **Cross-section first, top view later.** The first optimisation is a wire (infinite along y) above a slab, which v1.2 makes exact in 2D. The same machinery is carried to the 2.5D top view in v1.4. |
+| R12 | **First objective: dipole power into one direction of TE₀**, with an antenna shape. It is normalised to the dipole's total power, so it is a true efficiency, and the power balance (A6) checks every evaluation. |
+| R13 | **S-parameters are complex amplitudes c_m^± plus power fractions** (settles R9). One code path serves power objectives now and phase-sensitive uses later. |
+| R14 | **The phase reference plane `x_ref` is a required argument.** There is no hidden default; \|S\|² does not depend on it. |
+| R15 | **Near-degenerate guided pairs are detected and refused.** The mode solver checks its bracketed roots against an argument-principle count, and an unresolved pair raises with its beat length (study S4). Revisit when coupled waveguides are a goal. |
+| R16 | **A driven adjoint gradient ships in v1.2**: dJ/dp for the mode powers, mirroring `QNMResult.sensitivity` (frozen map, central difference of M). The anchor is central differences of re-solved designs, as Gate 3. |
+| R17 | **Shapes: Gielis now, a Fourier-radius family later**, only if Gielis proves too narrow. **The optimisation loop is an `examples/` script** (scipy.optimize with bounds: minimum gap, Gielis closure). The library provides the objective and its gradient, and stays within what can be validated end to end. |
+| R18 | **In-plane electric dipoles (p_x, p_z, any complex mix) join v1.2** as derivative sources of G in TM (`pol = 1`). This makes spin-locked directional coupling expressible. Anchor: the closed form for emission into mode m, which involves ∂u_m at the source (extends study S9). |
+
+**R4 is dropped for now** (owner, 2026-10-25): particles stay on the cover side
+of the stack. Its item 6 is removed from v1.2 below and returns to the roadmap
+only when a design needs it.
 
 ## 2. Why this is one reframing, not a new solver
 
@@ -133,10 +151,15 @@ Branch `v1.2-slab-waveguide`. Additive.
    win there is threading (performance §3.1).
 5. **Power account.** `P_up` (v0.9, generalised to the stack's R), `P_down`
    (v1.1, the stack's τ), `P_abs`, plus the guided powers.
-6. **Particles on both sides of the stack** (R4). Coupling across the stack is
-   v1.1's transmitted G, generalised to the stack's τ; bottom-to-bottom needs
-   the stack's reflection from below (the reversed stack's R). Staged last, so
-   items 1–5 are gated on cover-only particles first.
+6. **Driven adjoint gradient** (R16) of the mode powers and of c_m^±, with
+   respect to shape and material parameters, on the frozen map.
+7. **In-plane electric dipole sources** (R18): p_x, p_z and complex mixes in TM,
+   for dipole-to-mode coupling, including the directional (spin-locked) case.
+8. **`examples/` optimisation** (R12, R17): a Gielis antenna that maximises the
+   +x TE₀ efficiency of a dipole over SOI, with a minimum-gap bound.
+
+Mode solver guard (R15): an unresolved near-degenerate pair raises. The old
+item 6, particles on both sides of the stack (R4), is dropped for now.
 
 ### v1.3 — external validation of waveguide coupling (MEEP)
 
@@ -294,6 +317,8 @@ v1.1 has shipped, so v1.2 starts, in this order:
    Im G = P_up + P_down + Σ u_m(z₀)²/(2β_m N_m) as an equality (to 4e-15). The
    wiring of the overlap form is left to the code-spec gates (A6, A7).
 3. **Measure the floors** for A2–A5 and the §7 risks (near-cutoff, small gaps).
-4. **v1.2 code-spec** with the R9 S-parameter API and a §8 builder contract and
-   stop rule.
-5. **Build v1.2**: items 1–5 on cover-only particles, item 6 last.
+4. **v1.2 code-spec** with the S-parameter API of R13–R14, the R15 guard, the
+   R16 adjoint and the R18 sources, and a §8 builder contract and stop rule.
+   Before it: the S9 closed form for in-plane dipoles (R18's anchor) is pinned
+   in the study.
+5. **Build v1.2**: items 1–7, cover-only particles; then the item 8 example.
