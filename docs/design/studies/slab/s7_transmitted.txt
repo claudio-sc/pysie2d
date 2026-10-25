@@ -1,0 +1,8 @@
+SOI 220          TE: path−ref = 2e-12  (ref fold spread 5e-12)  s2−s1 = 4e-14  δ/2−δ = 3e-14
+SOI 220          TM: path−ref = 3e-11  (ref fold spread 1e-11)  s2−s1 = 4e-14  δ/2−δ = 3e-14
+air|Si 220|SiO2  TE: path−ref = 7e-14  (ref fold spread 5e-13)  s2−s1 = 2e-13  δ/2−δ = 2e-13
+air|Si 220|SiO2  TM: path−ref = 5e-12  (ref fold spread 5e-12)  s2−s1 = 7e-15  δ/2−δ = 5e-15
+Si/SiO2/Si       TE: path−ref = 4e-11  (ref fold spread 3e-11)  s2−s1 = 6e-14  δ/2−δ = 6e-14
+Si/SiO2/Si       TM: path−ref = 1e-12  (ref fold spread 2e-11)  s2−s1 = 4e-14  δ/2−δ = 4e-14
+SiN 400 @800     TE: path−ref = 6e-12  (ref fold spread 9e-12)  s2−s1 = 3e-14  δ/2−δ = 3e-14
+SiN 400 @800     TM: path−ref = 1e-11  (ref fold spread 2e-11)  s2−s1 = 2e-14  δ/2−δ = 3e-14

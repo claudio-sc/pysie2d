@@ -1,0 +1,8 @@
+  SOI 220 @1550            a = 16.0 nm (k·a = 0.094): max |S_BIE − S_Born|/|S_Born| = 2.42e-02
+  SOI 220 @1550            a =  8.0 nm (k·a = 0.047): max |S_BIE − S_Born|/|S_Born| = 6.71e-03  ratio 3.61
+  SOI 220 @1550            a =  4.0 nm (k·a = 0.023): max |S_BIE − S_Born|/|S_Born| = 1.85e-03  ratio 3.63
+  SOI 220 @1550            a =  2.0 nm (k·a = 0.012): max |S_BIE − S_Born|/|S_Born| = 5.04e-04  ratio 3.66
+  SiN 400 @800 (2 modes)   a = 16.0 nm (k·a = 0.181): max |S_BIE − S_Born|/|S_Born| = 4.89e-02
+  SiN 400 @800 (2 modes)   a =  8.0 nm (k·a = 0.091): max |S_BIE − S_Born|/|S_Born| = 1.45e-02  ratio 3.36
+  SiN 400 @800 (2 modes)   a =  4.0 nm (k·a = 0.045): max |S_BIE − S_Born|/|S_Born| = 4.24e-03  ratio 3.43
+  SiN 400 @800 (2 modes)   a =  2.0 nm (k·a = 0.023): max |S_BIE − S_Born|/|S_Born| = 1.21e-03  ratio 3.49

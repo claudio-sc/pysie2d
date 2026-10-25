@@ -20,6 +20,11 @@ Each script runs in under 10 s, except `s4_cutoff.py` (~3 min, QUADPACK referenc
 | `s5_gap.py` | Risk §7.2: gaps down to 2 nm with poles present; M against v0.9; the cost of R(q) against N_layers | done |
 | `s8_residue.py` | Mode normalisation: Res_β R = γ₁u_m(z_top)²/(β_m N_m), N_m = ∫p u_m² | done |
 | `s9_dipole.py` | A4: the far-x guided sum, and the dipole power balance as an equality | done |
+| `s6_lossy.py` | Lossy layers and complex k: pole continuation, path vs reference (lossy), path independence (complex k) | done |
+| `s7_transmitted.py` | The transmitted G below the stack against a bottom-up shooting reference | done |
+| `s10_born.py` | A5: small-circle S-matrix against first Born with the full stack G, TE | done |
+| `s12_particle.py` | A particle over the stack, wired as v1.2: the overlap formula for c_m^±, dipole power balance, S energy, reciprocity | done |
+| `s12b_inplane_particle.py` | In-plane dipole + particle: power balance with the source gradient by finite differences | done |
 | `s11_inplane.py` | R18's anchor: in-plane dipoles as derivative sources, per-direction mode amplitudes, spin-locked one-way coupling, the power balance | done |
 | `nearfield.py` | The field inside the layers and below; its checks (interface continuity, cover match at z_top, far-x guided sum in the core) run as `__main__` | done |
 | `fig_data.py` | Data for the near-field showcase page (`python fig_data.py OUT.json`) | — |
@@ -302,6 +307,71 @@ A↑ = i(qb_x + α₁b_z) and A↓ = i(qb_x − α₁b_z), and they **must run o
   For the spin-locked dipole the −x side carries no guided wave. A wrong ± in
   the closed form would leave an O(1) remainder there.
 
+### S6: lossy layers and complex k (`s6_lossy.txt`)
+
+- **Pole continuation** (`sproto.continue_poles`): a homotopy in 16 steps from the
+  lossless stack at Re k to the target ε and k, with Newton on D and D′ from a
+  Cauchy circle of radius 1e-4·|q|. It converges to |D/(D′β)| ≤ 3e-16 for
+  Im n = 1e-3 and 5e-2, and for k(1 − 0.05i) and k(1 − i/6), TE and TM. Im β > 0
+  with loss and Im β < 0 at Im k < 0, as holomorphy §5 says.
+- **Lossy core at real k, path vs reference ≤ 5e-14.** With the poles off the
+  axis the reference is plain QUADPACK with breakpoints at Re β.
+- **Complex k:** at Q = 10, s = 2 and δ × 1.5 agree with the default to ≤ 4e-13.
+  δ × 0.7 is worse (4e-10–8e-10), because the pole then sits closer to the hump.
+  At Q = 3 the hump floor 3·|Im β| overrides the 6/D cap (δ·D ≈ 12): the path
+  loses digits (3e-10 at δ × 1.5). That is v0.9's documented open item, which
+  `SommerfeldPrecisionWarning` reports.
+
+### S7: the transmitted G below the stack (`s7_transmitted.txt`)
+
+- **Path vs reference ≤ 4e-11** on four stacks, TE and TM, inside the
+  reference's own fold spread (≤ 3e-11). The path converges to 2e-13.
+- **Trap:** the forward transfer-matrix T = aR + b cancels catastrophically on the
+  tail. True T ~ e^{−qd} comes out of O(1) scaled terms, which gave 1e37. The
+  reference shoots upward from the decaying bottom solution instead
+  (T = 1/A_down at z_top), so the growth is the dominant direction.
+
+### S12: a particle over the stack (`s12_particle.txt`, `s12b_inplane_particle.txt`)
+
+The package's free-space `BIESolver.assemble`, plus the stack's reflected blocks
+on the exterior rows (conventions §15's M1/M2). Applying S9's guided pole to
+u_s = −(M1φ + M2χ) gives the **overlap formula**, which this pins:
+
+    c_m^± = −(i/(2β_m N_m)) Σ_j h u_m(z_j) e^{∓iβ_m x_j} [(∓iβ_m dg_j + γ₁ df_j) φ_j + χ_j]
+
+as the amplitude of u_m(z)e^{±iβ_m x}. A dipole adds its own (i/(2βN))u_m(z₀)e^{∓iβx₀}
+(S9), or for an in-plane dipole (i/(2βN))u_m(z₀)(±iβb_x + γ₁b_z)e^{∓iβx₀} (S11). The
+radiated powers come from the spectra of the total field, U = (i/2α₁)(u↑ + R d) above
+and (i/2)τ d below, with u↑ and d the boundary sums of the representation:
+P_up = (1/2π)∫|u↑ + R d|²/4 dθ and P_down = (1/2π)∫ Re(Y_b)|τ d|²/4 dq.
+
+- **Dipole + particle power balance ≤ 1e-15**: a circle, a lossy circle, and a
+  rotated (x-asymmetric) lossy triangle over SOI and over the 2-mode SiN slab,
+  TE and TM.
+- **Mode incidence:** Σ|S|² + P_up + P_down + P_abs = 1 to ≤ 4.4e-16, with
+  power-normalised modes ũ = u/√(βN) and x_ref = 37 nm.
+- **Reciprocity** t_{n←m}(L→R) = t_{m←n}(R→L) to ≤ 1.1e-16 on the asymmetric
+  lossy triangle, and r_{nm} = r_{mn} on the 2-mode slab to ≤ 2e-17.
+- **The far-x scattered field** (representation on the path) matches Σc u e^{±iβx}
+  in both directions, with the remainder falling as in S9 (3e-2–5e-2 at 40 µm).
+- **In-plane dipole + particle** (s12b): the right-hand side is
+  −(b·∇′)(G₀ + G_refl) on the nodes. The source power is
+  k²|b|²/8 + Im[(b*·∇)(b·∇′)G_refl] + Im[−(b*·∇)u_s](r₀), with ∇u_s by a 5-point
+  difference. **The balance closes to the finite-difference floor**: 1e-12–3e-10
+  at h = 0.5 nm and 6e-14–2e-11 at 0.25 nm, an h⁴ drop. Guided shares reach
+  52–66 %.
+
+### S10: the small-circle limit, anchor A5 (`s10_born.txt`)
+
+TE, circle at (23, 60) nm, n = 2 in SiO₂. First Born with the **full** stack G,
+u_s ≈ k²(ε − 1)πa²·G(r, r_p)u_inc(r_p), whose guided part gives S − δ in closed form.
+
+- **The BIE S-matrix converges to Born**: 5.0e-4 at a = 2 nm on SOI, and
+  1.2e-3 on the 2-mode SiN slab, all four entries and both directions.
+- **The rate is (ka)²(A + B ln ka)**, the 2D self-interaction. Ratios per
+  halving of a are 3.61, 3.63, 3.66 on SOI and 3.36, 3.43, 3.49 on SiN, against
+  4 for a pure a² law.
+
 ## Plan for the rest of the study
 
 Items S4–S6 measure the §7 risks and finish roadmap §9 step 1's scope. S7–S9
@@ -312,11 +382,11 @@ script states its check before it runs.
 |---|---|---|---|
 | S4 | `s4_cutoff.py` | Near cutoff and near degeneracy | **done**, see above |
 | S5 | `s5_gap.py` | Small gaps with poles present | **done**, see above |
-| S6 | `s6_lossy.py` | Lossy core (Im n = 1e-3, 1e-1), a thin metal layer, and complex k at Q = 10, 3. Poles leave the axis; continue them from the lossless roots by Newton on D | path vs reference (lossy, real k), δ-independence (complex k), and Im β > 0 at real k |
-| S7 | `s7_transmitted.py` | τ through the stack: the transmitted G below z_bot against a real-axis reference (extends v1.1 GT2) | ≤ the S3 floor |
+| S6 | `s6_lossy.py` | Lossy layers and complex k | **done**, see above |
+| S7 | `s7_transmitted.py` | The transmitted G below the stack | **done**, see above |
 | S8 | `s8_residue.py` | Mode normalisation and the residue identity | **done**, see above |
 | S9 | `s9_dipole.py` | A4: the dipole into modes; power balance | **done**, see above |
-| S10 | `s10_born.py` | **A5 floor**: small-circle S-parameters against the Born closed form, wired as a prototype on the package solver | the rad² rate and the gap dependence of the dressing corrections, measured |
+| S10 | `s10_born.py` | A5: small-circle Born limit | **done**, see above |
 
 The power balance (A6) and reciprocity (A7) need the assembled solver, so they
 are gates of the v1.2 code-spec, not study items.

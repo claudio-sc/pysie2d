@@ -517,3 +517,27 @@ def mode_profile(st, k, pol, beta, n_gl=200):
         return out
 
     return u, complex(N), mismatch
+
+
+def continue_poles(st_from, st_to, k_from, k_to, pol, poles, steps=16):
+    """Newton-continue real guided poles to a lossy stack and/or complex k.
+
+    Homotopy in s ∈ [0, 1]: ε_j(s) = (1−s)ε_j⁰ + s·ε_j, k(s) likewise; Newton on the
+    entire D (in q) at each step, D'(q) by a Cauchy circle. Returns the poles and the
+    worst |D|/|D'·q| at the end (a relative step size).
+    """
+    out, worst = [], 0.0
+    for b in poles:
+        q = complex(b)
+        for s in np.linspace(0, 1, steps + 1)[1:]:
+            st = Stack([(1 - s) * e0 + s * e1 for e0, e1 in zip(st_from.eps, st_to.eps)], st_from.d,
+                       (1 - s) * st_from.eps_bot + s * st_to.eps_bot)
+            kk = (1 - s) * k_from + s * k_to
+            for _ in range(30):
+                dq = st.D(np.array([q]), kk, pol)[0] / dD(st, kk, pol, q, r=1e-4 * abs(q))
+                q -= dq
+                if abs(dq) < 1e-15 * abs(q):
+                    break
+        worst = max(worst, abs(dq) / abs(q))
+        out.append(q)
+    return out, worst

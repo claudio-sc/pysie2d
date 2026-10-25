@@ -1,0 +1,12 @@
+  SOI TM circle                 b=(1,0)      : up  15.8 %  down  19.2 %  abs -0.0 %  guided  65.0 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 4e-11 / 3e-12
+  SOI TM circle                 b=(0,1)      : up  38.7 %  down  30.2 %  abs -0.0 %  guided  31.2 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 3e-11 / 2e-12
+  SOI TM circle                 b=spin-locked: up  28.8 %  down  33.9 %  abs -0.0 %  guided  37.3 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 3e-10 / 2e-11
+  SOI TM lossy rotated triangle b=(1,0)      : up  14.1 %  down  18.5 %  abs  1.0 %  guided  66.4 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 1e-11 / 6e-13
+  SOI TM lossy rotated triangle b=(0,1)      : up  41.2 %  down  27.1 %  abs  0.5 %  guided  31.2 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 1e-11 / 9e-13
+  SOI TM lossy rotated triangle b=spin-locked: up  33.4 %  down  13.6 %  abs  1.1 %  guided  52.0 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 7e-11 / 4e-12
+  SOI TE circle                 b=(1,0)      : up  40.0 %  down  24.8 %  abs -0.0 %  guided  35.2 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 1e-12 / 6e-14
+  SOI TE circle                 b=(0,1)      : up  16.1 %  down  53.8 %  abs -0.0 %  guided  30.0 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 2e-11 / 1e-12
+  SOI TE circle                 b=spin-locked: up  23.1 %  down  41.7 %  abs -0.0 %  guided  35.2 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 4e-11 / 2e-12
+  SOI TE lossy rotated triangle b=(1,0)      : up  34.1 %  down  15.0 %  abs  1.4 %  guided  49.6 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 7e-12 / 4e-13
+  SOI TE lossy rotated triangle b=(0,1)      : up  16.2 %  down  52.2 %  abs  1.4 %  guided  30.2 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 4e-12 / 3e-13
+  SOI TE lossy rotated triangle b=spin-locked: up  19.6 %  down  41.5 %  abs  1.2 %  guided  37.7 %   |Δ|/P_src (FD h = 0.5 / 0.25 nm) = 1e-11 / 7e-13

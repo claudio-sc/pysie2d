@@ -1,0 +1,21 @@
+(a) pole continuation
+  TE Im n = 1e-3         : β/k₀ = ['1.972148+0.000685j']  Newton last step 6e-17  |D(β)|/|D'β| = 3e-17
+  TE Im n = 5e-2         : β/k₀ = ['1.972078+0.034248j']  Newton last step 3e-17  |D(β)|/|D'β| = 5e-17
+  TE k(1 − 0.05i), Q=10  : β/k₀ = ['1.971934-0.123866j']  Newton last step 3e-16  |D(β)|/|D'β| = 6e-17
+  TE k(1 − i/6), Q=3     : β/k₀ = ['1.969862-0.413452j']  Newton last step 7e-17  |D(β)|/|D'β| = 7e-17
+  TM Im n = 1e-3         : β/k₀ = ['1.421966+0.000513j']  Newton last step 1e-16  |D(β)|/|D'β| = 3e-16
+  TM Im n = 5e-2         : β/k₀ = ['1.421327+0.025647j']  Newton last step 1e-16  |D(β)|/|D'β| = 9e-17
+  TM k(1 − 0.05i), Q=10  : β/k₀ = ['1.418469-0.134017j']  Newton last step 5e-17  |D(β)|/|D'β| = 5e-17
+  TM k(1 − i/6), Q=3     : β/k₀ = ['1.383054-0.460699j']  Newton last step 1e-16  |D(β)|/|D'β| = 1e-16
+
+(b) lossy core at real k: path vs real-axis reference (D = 1500, z_min = 20)
+  TE Im n = 1e-03: Im β/k₀ = 6.85e-04  path−ref = 3e-14  δ/2−δ = 2e-14
+  TE Im n = 5e-02: Im β/k₀ = 3.42e-02  path−ref = 1e-14  δ/2−δ = 2e-14
+  TM Im n = 1e-03: Im β/k₀ = 5.13e-04  path−ref = 5e-14  δ/2−δ = 1e-14
+  TM Im n = 5e-02: Im β/k₀ = 2.56e-02  path−ref = 7e-15  δ/2−δ = 1e-14
+
+(c) complex k, lossless SOI: path independence and convergence
+  TE Q = 10: Im β/k = -0.124, δ/k = 0.400, min clearance/δ = 0.56  s2−s1 = 2e-13  δ×1.5 = 2e-13  δ×0.7 = 4e-10
+  TE Q = 3: Im β/k = -0.408, δ/k = 1.223, min clearance/δ = 0.53  s2−s1 = 3e-13  δ×1.5 = 2e-12  δ×0.7 = 2e-09
+  TM Q = 10: Im β/k = -0.134, δ/k = 0.402, min clearance/δ = 0.53  s2−s1 = 4e-13  δ×1.5 = 4e-13  δ×0.7 = 8e-10
+  TM Q = 3: Im β/k = -0.454, δ/k = 1.363, min clearance/δ = 0.53  s2−s1 = 2e-16  δ×1.5 = 3e-10  δ×0.7 = 3e-09
