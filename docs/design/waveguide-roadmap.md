@@ -278,7 +278,11 @@ v1.1 has shipped, so v1.2 starts, in this order:
 
 1. **v1.2 study plan** in `docs/design/studies/slab/`: the `Stack` R(q)
    prototype with a stable recursion (and a test that fails on the naive
-   form), and the guided-pole path.
+   form), and the guided-pole path. *S1–S3 done (2026-10-25).* The recursion is
+   bitwise v0.9 at N = 0. The naive form fails by overflow, not by digit loss,
+   at SOI with a 5 nm gap. The v0.9 path needs only a feature list, and it
+   matches a pole-indented real-axis reference to the reference's floor
+   (≤ 4e-10). S4–S10 are planned there.
 2. **Pin the §3 formulas**: mode normalisation, the identity between residue
    and overlap, and the A4 dipole closed form, each verified numerically.
 3. **Measure the floors** for A2–A5 and the §7 risks (near-cutoff, small gaps).
