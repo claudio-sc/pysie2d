@@ -127,7 +127,7 @@ from .solver import (
 from .sources import line_dipole_rhs, plane_wave_rhs
 from .waveguide import ModeAmplitudes
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 __all__ = [
     "BIESolver",
