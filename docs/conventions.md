@@ -20,6 +20,22 @@ Mapping to analytic Mie coefficients (Bohren & Huffman ch. 8):
 - `pol = 2` (TE, `E_y`) ↔ `b_n` ↔ efficiency keys `Q_*_TE`.
 - `pol = 1` (TM, `H_y`) ↔ `a_n` ↔ efficiency keys `Q_*_TM`.
 
+> **⚠ The TE/TM labels here are the opposite of the waveguide/nanowire
+> literature's.** This repo names the polarisation after the field *component*
+> along the axis being E (TE ≡ `E_y` ∥ axis), following the original
+> formulation. Much of the nanowire and anapole literature — including the
+> eigen-eps note `manuscripts/anapole-design-rules/note.tex` — names it after the
+> field *transverse* to the axis, so its "TE" is E ⊥ axis. Translate every
+> number, formula and figure label through this table before using it:
+>
+> | pysie2d | field along axis | eigen-eps note | anapoles of the disk sit on |
+> | --- | --- | --- | --- |
+> | `pol = 2`, "TE", `b_n` | `E_y` | **TM**ₙ | zeros of `J_{n+1}` (mid-branch), `c₀ = 1/(n+1)` |
+> | `pol = 1`, "TM", `a_n` | `H_y` | **TE**ₙ | zeros of `J_n` (hugs the pole), `c₀ = 2/n`; TE₀ on `J_2`, `c₀ = 1/2` |
+>
+> The labels are swapped; the physics is not. A pysie2d `pol = 2` result is
+> compared against the note's **TM** formulas, never its TE ones.
+
 ## 2. Units, wavelength, and the background index
 
 Lengths are in **nanometres**, everywhere.
