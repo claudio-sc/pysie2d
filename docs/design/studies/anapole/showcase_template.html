@@ -1,0 +1,487 @@
+<title>Dark Silicon Wires</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+/* Layout: lab-notebook sequel to the nanolens pages — size ladder first, then one selected design in detail, then the eigenvalue check. */
+:root{--bg:#f7f8fa;--surface:#fff;--ink:#12151b;--ink-2:#4a5160;--ink-3:#7a8191;--rule:#dde1e8;--accent:#2a78d6;--accent-soft:#e3eefb;
+--s-design:#eb6834;--s-circle:#8a8f9a;--s-alt:#2a78d6;--shape-fill:rgba(235,104,52,.22);
+--o0:#2a78d6;--o1:#eb6834;--o2:#1f9a6a;--o3:#9b5bd1;--o4:#c49a14;--o5:#5f6673;--o6:#8a909b;--o7:#b3b8c1;--o8:#c9ccd3;--map-ground:#07050c;
+--f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;--f-body:"IBM Plex Sans",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1216;--surface:#171b21;--ink:#eef0f4;--ink-2:#b4bac6;--ink-3:#868d9b;--rule:#2a303a;--accent:#3987e5;--accent-soft:#1b2a3e;--s-design:#ef7a45;--s-circle:#9aa0ab;--s-alt:#3987e5;--shape-fill:rgba(239,122,69,.25);--o0:#4a94ea;--o1:#ef7a45;--o2:#3cbf8c;--o3:#b483e6;--o4:#ddb53a;--o5:#a2a8b3;--o6:#7d838e;--o7:#5d636d;--o8:#474c55;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1216;--surface:#171b21;--ink:#eef0f4;--ink-2:#b4bac6;--ink-3:#868d9b;--rule:#2a303a;--accent:#3987e5;--accent-soft:#1b2a3e;--s-design:#ef7a45;--s-circle:#9aa0ab;--s-alt:#3987e5;--shape-fill:rgba(239,122,69,.25);--o0:#4a94ea;--o1:#ef7a45;--o2:#3cbf8c;--o3:#b483e6;--o4:#ddb53a;--o5:#a2a8b3;--o6:#7d838e;--o7:#5d636d;--o8:#474c55;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1120px;margin:0 auto;padding-block:32px 64px;padding-inline:16px;display:grid;gap:44px}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:clamp(28px,4.2vw,40px);line-height:1.1}h2{font-size:22px}h3{font-size:15px;font-weight:500;color:var(--ink-2)}
+p{margin:0;max-width:68ch;color:var(--ink-2)}
+.eyebrow{font:12px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+header,section,.head{display:grid;gap:10px}
+.setup{display:flex;flex-wrap:wrap;gap:4px 18px;font:13px var(--f-mono);color:var(--ink-2)}
+.figs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.fig{background:var(--surface);padding:14px 16px;display:grid;gap:2px;align-content:start}
+.fig .v{font:600 28px/1.1 var(--f-display);font-variant-numeric:tabular-nums}.fig .l{font-size:13px;color:var(--ink-2)}
+@media(max-width:760px){.figs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--ink-2)}
+.legend i{display:inline-block;width:16px;height:0;border-top:2px solid;vertical-align:middle;margin-right:6px}
+.legend i.dot{width:8px;height:8px;border:0;border-radius:50%;margin-right:6px}
+.plot{position:relative;width:100%;min-width:0}.plot svg{display:block;width:100%;height:auto;overflow:visible}
+svg text{font-family:var(--f-mono);font-size:11px;fill:var(--ink-3)}svg .grid{stroke:var(--rule)}svg .axis{stroke:var(--ink-3)}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:6px 9px;font:12px/1.45 var(--f-mono);color:var(--ink);box-shadow:0 2px 10px rgba(0,0,0,.12);white-space:nowrap;font-variant-numeric:tabular-nums;z-index:2}
+.tip .sw{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.cap{font-size:13px;color:var(--ink-3)}
+.strip{display:grid;grid-template-columns:repeat(15,minmax(0,1fr));gap:4px}
+@media(max-width:760px){.strip{grid-template-columns:repeat(6,minmax(0,1fr))}}
+.thumb{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:4px 2px 2px;cursor:pointer;display:grid;gap:0;justify-items:center;font:10px var(--f-mono);color:var(--ink-3)}
+.thumb svg{width:100%;aspect-ratio:1;display:block}
+.thumb[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.thumb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.detail{display:grid;grid-template-columns:minmax(0,280px) minmax(0,1fr);gap:28px;align-items:start}
+@media(max-width:760px){.detail{grid-template-columns:minmax(0,1fr)}}
+.side{display:grid;gap:14px}
+.bigshape{background:var(--surface);border:1px solid var(--rule);border-radius:8px}
+.bigshape svg{display:block;width:100%;aspect-ratio:1}
+dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0;font-size:13px}
+dt{color:var(--ink-3)}dd{margin:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.charts{display:grid;gap:22px;min-width:0}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}
+@media(max-width:760px){.pair{grid-template-columns:minmax(0,1fr)}}
+.chart{display:grid;gap:8px;min-width:0}
+ul{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--ink-2);max-width:80ch;font-size:14px}
+footer{font-size:13px;color:var(--ink-3)}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.seg button{font:500 13px var(--f-body);background:var(--surface);color:var(--ink-2);border:0;padding:7px 12px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.maps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media(max-width:760px){.maps{grid-template-columns:minmax(0,1fr)}}
+.mapbox{position:relative;width:100%;max-width:100%;aspect-ratio:1;background:var(--map-ground);border-radius:6px;overflow:hidden}
+.mapbox canvas,.mapbox svg{position:absolute;inset:0;width:100%;height:100%}
+.mapbox canvas{image-rendering:auto}
+.ro{position:absolute;left:8px;top:8px;font:12px/1.3 var(--f-mono);color:#f2eef8;background:rgba(7,5,12,.72);padding:4px 7px;border-radius:4px;pointer-events:none;font-variant-numeric:tabular-nums}
+.cbar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;font:12px var(--f-mono);color:var(--ink-2);max-width:520px}
+.cbar canvas{width:100%;height:12px;border-radius:2px;display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+</style>
+<div class="wrap">
+<header>
+  <div class="eyebrow">pysie2d · anapole study · dark states</div>
+  <h1>Dark silicon wires at 1550 nm</h1>
+  <p>Shapes optimised to scatter as little as possible, each against the circle of the same area.</p>
+  <div class="setup"><span>Si n = 3.476 in air</span><span>pol = 2 (E<sub>y</sub>)</span><span>plane wave along z</span><span>perimeter ≤ 10 λ/n</span><span>10 cosine orders</span><span>30 sizes × 8 starts</span></div>
+</header>
+
+<section>
+  <div class="figs" id="figs"></div>
+</section>
+
+<section>
+  <div class="head"><h2>Darkness against size</h2></div>
+  <div class="chart">
+    <div class="legend"><span><i class="dot" style="background:var(--s-design)"></i>Optimised</span><span><i class="dot" style="background:var(--s-circle)"></i>Circle, same area</span></div>
+    <div class="plot" id="p-size"></div>
+    <p class="cap">c<sub>sca</sub>/area at 1550 nm. Click a point or a shape to inspect it.</p>
+  </div>
+  <div class="strip" id="strip"></div>
+</section>
+
+<section>
+  <div class="head"><h2 id="sel-title">Selected design</h2></div>
+  <div class="detail">
+    <div class="side">
+      <div class="bigshape" id="bigshape"></div>
+      <dl id="stats"></dl>
+    </div>
+    <div class="charts">
+      <div class="chart">
+        <h3>Spectrum, 1000–2400 nm</h3>
+        <div class="legend"><span><i style="border-color:var(--s-design)"></i>Optimised</span><span><i style="border-color:var(--s-circle)"></i>Circle, same area</span></div>
+        <div class="plot" id="p-spec"></div>
+      </div>
+      <div class="chart">
+        <h3>Zoom, 1510–1590 nm in 0.2 nm steps</h3>
+        <div class="plot" id="p-zoom"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="head"><h2 id="mp-title">Multipoles and fields</h2>
+  <p>Scattered power per cylindrical order n, c<sub>sca,n</sub>/area, with ±n combined. The circle is analytic Mie.</p></div>
+  <div class="pair">
+    <div class="chart"><h3>At 1550 nm</h3><div class="legend"><span><i class="dot" style="background:var(--s-design)"></i>Optimised</span><span><i class="dot" style="background:var(--s-circle)"></i>Circle</span></div><div class="plot" id="p-bars"></div></div>
+    <div class="chart"><h3>Per order, 1530–1570 nm</h3><div class="legend" id="lg-z"></div><div class="plot" id="p-ozoom"></div></div>
+  </div>
+  <div class="pair">
+    <div class="chart"><h3>Optimised, per order</h3><div class="legend" id="lg-d"></div><div class="plot" id="p-ospec"></div></div>
+    <div class="chart"><h3>Circle, per order</h3><div class="legend" id="lg-c"></div><div class="plot" id="p-ocirc"></div></div>
+  </div>
+  <div class="controls">
+    <span class="seg" id="seg-q"><button type="button" id="q-int" aria-pressed="true">|E<sub>y</sub>|²</button><button type="button" id="q-re" aria-pressed="false">Re E<sub>y</sub></button><button type="button" id="q-sca" aria-pressed="false">|E<sub>sca</sub>|, log</button></span>
+    <div class="cbar"><span id="cb-lo"></span><canvas id="cbar" width="256" height="1"></canvas><span id="cb-hi"></span></div>
+  </div>
+  <div class="maps">
+    <div class="chart"><h3>Optimised, 1550 nm</h3><div class="mapbox" id="mb-d"><canvas id="cv-d"></canvas><svg id="ov-d" preserveAspectRatio="none"></svg><div class="ro" id="ro-d" hidden></div></div></div>
+    <div class="chart"><h3>Circle, same area, 1550 nm</h3><div class="mapbox" id="mb-c"><canvas id="cv-c"></canvas><svg id="ov-c" preserveAspectRatio="none"></svg><div class="ro" id="ro-c" hidden></div></div></div>
+  </div>
+  <p class="cap" id="map-cap">Plane wave travelling −z (downwards), E<sub>y</sub> out of the page. Both maps share one colour scale. A thin band at each surface is blank, where the field evaluation is not reliable.</p>
+</section>
+
+<section>
+  <div class="head"><div class="eyebrow">Manufacturable · CD 200 nm</div><h2>R<sub>eq</sub> = 500 nm under fabrication rules</h2>
+  <p>Radius of curvature ≥ 100 nm, width and gap ≥ 200 nm. The best nominal design against one re-optimised for the worst case over a ±10 nm boundary bias.</p></div>
+  <div class="figs" id="m5-figs"></div>
+  <div class="controls"><span class="seg" id="m5-seg"><button type="button" id="m5-b-nominal" aria-pressed="true">Best nominal</button><button type="button" id="m5-b-tolerant" aria-pressed="false">Tolerant to ±10 nm</button></span></div>
+  <div class="detail">
+    <div class="side"><div class="bigshape" id="m5-shape"></div><p class="cap">Dashed: the boundary biased by −10 and +10 nm. Grey: the circle.</p></div>
+    <div class="charts">
+      <div class="chart"><h3>c<sub>sca</sub>/area at 1550 nm against boundary bias</h3>
+        <div class="legend"><span><i style="border-color:var(--s-design)"></i>Best nominal</span><span><i style="border-color:var(--o2)"></i>Tolerant</span><span><i style="border-color:var(--s-circle)"></i>Circle</span></div>
+        <div class="plot" id="m5-bias"></div><p class="cap">Shaded: the ±10 nm window the tolerant design was optimised over.</p></div>
+      <div class="chart"><h3>Spectrum under bias</h3>
+        <div class="legend"><span><i style="border-color:var(--o0);border-top-style:dashed"></i>−10 nm</span><span><i style="border-color:var(--s-design)"></i>As drawn</span><span><i style="border-color:var(--o3);border-top-style:dashed"></i>+10 nm</span><span><i style="border-color:var(--s-circle)"></i>Circle</span></div>
+        <div class="plot" id="m5-spec"></div></div>
+    </div>
+  </div>
+  <div class="pair">
+    <div class="chart"><h3>Per order at 1550 nm</h3><div class="legend"><span><i class="dot" style="background:var(--s-design)"></i>Design</span><span><i class="dot" style="background:var(--s-circle)"></i>Circle</span></div><div class="plot" id="m5-bars"></div></div>
+    <div class="chart"><h3>Per order, 1300–1800 nm</h3><div class="legend" id="m5-lg"></div><div class="plot" id="m5-ospec"></div></div>
+  </div>
+  <div class="controls">
+    <span class="seg"><button type="button" id="m5-q-int" aria-pressed="true">|E<sub>y</sub>|²</button><button type="button" id="m5-q-re" aria-pressed="false">Re E<sub>y</sub></button><button type="button" id="m5-q-sca" aria-pressed="false">|E<sub>sca</sub>|, log</button></span>
+    <div class="cbar"><span id="m5-cb-lo"></span><canvas id="m5-cbar" width="256" height="1"></canvas><span id="m5-cb-hi"></span></div>
+  </div>
+  <div class="maps">
+    <div class="chart"><h3>Design, 1550 nm</h3><div class="mapbox" id="m5-mb-d"><canvas id="m5-cv-d"></canvas><svg id="m5-ov-d" preserveAspectRatio="none"></svg><div class="ro" id="m5-ro-d" hidden></div></div></div>
+    <div class="chart"><h3>Circle, same area, 1550 nm</h3><div class="mapbox" id="m5-mb-c"><canvas id="m5-cv-c"></canvas><svg id="m5-ov-c" preserveAspectRatio="none"></svg><div class="ro" id="m5-ro-c" hidden></div></div></div>
+  </div>
+</section>
+
+<section>
+  <div class="head"><h2>Off the circle, the anapole leaves the eigenvalue</h2>
+  <p>Superellipse |x|<sup>p</sup> + |z|<sup>p</sup> = 1 at X = 0.5. The interior transmission eigenvalue against the ε where the driven multipole actually vanishes.</p></div>
+  <div class="pair">
+    <div class="chart"><h3>pol = 2 (note's TM₀), monopole</h3><div class="legend"><span><i style="border-color:var(--s-alt);border-top-style:dashed"></i>Eigenvalue</span><span><i style="border-color:var(--s-design)"></i>Driven zero</span></div><div class="plot" id="p-ite2"></div></div>
+    <div class="chart"><h3>pol = 1 (note's TE₁), dipole</h3><div class="legend"><span><i style="border-color:var(--s-alt);border-top-style:dashed"></i>Eigenvalue</span><span><i style="border-color:var(--s-design)"></i>Driven zero</span></div><div class="plot" id="p-ite1"></div></div>
+  </div>
+</section>
+
+<section>
+  <div class="head"><h2>Limits</h2></div>
+  <ul>
+    <li>The deepest designs are needle-like, with curvature radii of a few nm. No fabrication rule was imposed.</li>
+    <li>Deep dips are broadband zeros: c<sub>sca</sub> grows as (Δλ)², and widths at ×10 and ×100 differ by about √10. R<sub>eq</sub> = 700 nm instead sits on a 0.2 nm Fano feature.</li>
+    <li>Above about 360 nm usually one start in eight finds the best value, so darker designs likely exist.</li>
+    <li>Fixed index and lossless silicon. Converged to ≤ 3·10⁻⁵ in boundary points; the circle matches Mie to 10⁻¹⁵.</li>
+  </ul>
+</section>
+<footer>pysie2d · docs/design/studies/anapole · forward solves and finite-difference optimisation.</footer>
+</div>
+
+<script>
+(() => {
+const D = __DATA__;
+const MP = __MP__;
+const F5 = __F5__;
+const NS = "http://www.w3.org/2000/svg";
+const ds = D.designs;
+const iz1550 = D.zoom_lams.indexOf(1550);
+ds.forEach(d => { d.c1550 = d.zoom[iz1550]; d.g = d.circle_per_area / d.c1550; });
+
+const fmtE = v => { if (!isFinite(v)) return "—"; const e = Math.floor(Math.log10(v)); const m = v / 10 ** e; return (Math.abs(e) <= 2 ? v.toPrecision(3) : m.toFixed(2) + "e" + e); };
+const sup = n => String(n).replace(/-/g, "⁻").replace(/\d/g, c => "⁰¹²³⁴⁵⁶⁷⁸⁹"[c]);
+// SVG presentation attributes (fill, stroke) do not reliably resolve CSS custom properties:
+// a var(--token) there can render as no stroke or default black. Resolve tokens to literal colours.
+const tok = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const col = v => typeof v === "string" && v.startsWith("var(--") ? tok(v.slice(4, -1)) : v;
+const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, (k === "fill" || k === "stroke") ? col(attrs[k]) : attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+function chart(host, o) {
+  host.innerHTML = "";
+  const W = 640, H = o.h || 280, m = {l: 58, r: 14, t: 10, b: 34};
+  const svg = el("svg", {viewBox: `0 0 ${W} ${H}`, role: "img"}, host);
+  const xs = o.x, [x0, x1] = o.xDomain || [Math.min(...xs), Math.max(...xs)];
+  const lo_ = o.yMin || 0; let ys = []; o.series.forEach(s => s.y.forEach(v => { if (isFinite(v) && (!o.logY || v > lo_)) ys.push(v); }));
+  if (o.yMin && ys.length) ys.push(o.yMin);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (o.logY) { y0 = Math.floor(Math.log10(y0)); y1 = Math.ceil(Math.log10(y1)); } else { const p = (y1 - y0) * 0.08; y0 -= p; y1 += p; }
+  const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
+  const Y = v => { const t = o.logY ? Math.log10(Math.max(v, 10 ** y0)) : v; return H - m.b - (t - y0) / (y1 - y0) * (H - m.t - m.b); };
+  // grid + y ticks
+  if (o.logY) {
+    const step = y1 - y0 > 6 ? 2 : 1;
+    for (let e = y0; e <= y1; e += step) { const y = Y(10 ** e); el("line", {x1: m.l, x2: W - m.r, y1: y, y2: y, class: "grid"}, svg); el("text", {x: m.l - 6, y: y + 4, "text-anchor": "end"}, svg).textContent = "10" + sup(e); }
+  } else {
+    const n = 5; for (let i = 0; i <= n; i++) { const v = y0 + (y1 - y0) * i / n; const y = Y(v); el("line", {x1: m.l, x2: W - m.r, y1: y, y2: y, class: "grid"}, svg); el("text", {x: m.l - 6, y: y + 4, "text-anchor": "end"}, svg).textContent = v.toFixed(1); }
+  }
+  (o.xTicks).forEach(v => { const x = X(v); el("line", {x1: x, x2: x, y1: H - m.b, y2: H - m.b + 4, class: "axis"}, svg); el("text", {x, y: H - m.b + 17, "text-anchor": "middle"}, svg).textContent = o.xFmt ? o.xFmt(v) : v; });
+  el("line", {x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, class: "axis"}, svg);
+  if (o.xLabel) el("text", {x: W - m.r, y: H - 2, "text-anchor": "end"}, svg).textContent = o.xLabel;
+  if (o.yLabel) el("text", {x: 4, y: m.t + 2, "dominant-baseline": "hanging"}, svg).textContent = o.yLabel;
+  if (o.band) { const a = X(o.band[0]), b = X(o.band[1]); el("rect", {x: a, y: m.t, width: b - a, height: H - m.t - m.b, fill: "var(--accent-soft)"}, svg); }
+  if (o.vline) { const x = X(o.vline); el("line", {x1: x, x2: x, y1: m.t, y2: H - m.b, stroke: "var(--ink-3)", "stroke-dasharray": "2 3", "stroke-width": 1}, svg); }
+  o.series.forEach(s => {
+    if (s.line !== false) {
+      let d = "", pen = false;
+      xs.forEach((xv, i) => { const v = s.y[i]; if (xv < x0 || xv > x1 || !isFinite(v) || (o.logY && v <= 0 && !o.yMin)) { pen = false; return; } d += (pen ? "L" : "M") + X(xv).toFixed(1) + " " + Y(v).toFixed(1); pen = true; });
+      el("path", {d, fill: "none", stroke: s.color, "stroke-width": s.w || 1.6, "stroke-dasharray": s.dash || "", "stroke-linejoin": "round"}, svg);
+    }
+    if (s.dots) xs.forEach((xv, i) => { const c = el("circle", {cx: X(xv), cy: Y(s.y[i]), r: s.r ? s.r(i) : 3.5, fill: s.color, stroke: "var(--surface)", "stroke-width": 1}, svg); if (o.onClick) { c.style.cursor = "pointer"; c.addEventListener("click", () => o.onClick(i)); } });
+  });
+  if (o.mark != null) { const i = o.mark; const s = o.series[0]; el("circle", {cx: X(xs[i]), cy: Y(s.y[i]), r: 7, fill: "none", stroke: "var(--accent)", "stroke-width": 2}, svg); }
+  // hover
+  const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; host.appendChild(tip);
+  const cross = el("line", {y1: m.t, y2: H - m.b, stroke: "var(--ink-3)", "stroke-width": .7, visibility: "hidden"}, svg);
+  const hit = el("rect", {x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent"}, svg);
+  if (o.onClick) hit.style.pointerEvents = "none";
+  const move = ev => {
+    const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) / r.width * W;
+    const xv = x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0);
+    let i = 0, best = Infinity; xs.forEach((v, k) => { const dd = Math.abs(v - xv); if (dd < best) { best = dd; i = k; } });
+    if (xs[i] < x0 || xs[i] > x1) return;
+    cross.setAttribute("x1", X(xs[i])); cross.setAttribute("x2", X(xs[i])); cross.setAttribute("visibility", "visible");
+    tip.innerHTML = `<div>${o.xFmt ? o.xFmt(xs[i]) : xs[i]} ${o.xUnit || ""}</div>` + o.series.map(s => `<div><span class="sw" style="background:${s.color}"></span>${s.name}: ${o.logY ? fmtE(s.y[i]) : s.y[i].toFixed(3)}</div>`).join("");
+    tip.hidden = false;
+    const left = (X(xs[i]) / W) * r.width; tip.style.left = Math.min(left + 12, r.width - tip.offsetWidth - 4) + "px"; tip.style.top = "8px";
+  };
+  svg.addEventListener("mousemove", move); svg.addEventListener("mouseleave", () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); });
+}
+
+function shapeSVG(d, opts = {}) {
+  const pts = d.shape, R = d.r_eq;
+  const ext = Math.max(...pts.map(p => Math.max(Math.abs(p[0]), Math.abs(p[1]))), R) * 1.12;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `${-ext} ${-ext} ${2 * ext} ${2 * ext}`);
+  if (opts.circle) el("circle", {cx: 0, cy: 0, r: R, fill: "none", stroke: "var(--s-circle)", "stroke-dasharray": `${ext * .03} ${ext * .03}`, "stroke-width": ext * .008}, svg);
+  el("path", {d: "M" + pts.map(p => `${p[0]} ${-p[1]}`).join("L") + "Z", fill: opts.fill || "var(--shape-fill)", stroke: "var(--s-design)", "stroke-width": ext * (opts.sw || .012), "stroke-linejoin": "round"}, svg);
+  if (opts.arrow) {
+    const y0 = -ext * .97, y1 = -ext * .72, x = -ext * .82;
+    el("line", {x1: x, x2: x, y1: y0, y2: y1, stroke: "var(--ink-3)", "stroke-width": ext * .01}, svg);
+    el("path", {d: `M${x - ext * .03} ${y1 - ext * .05}L${x} ${y1}L${x + ext * .03} ${y1 - ext * .05}`, fill: "none", stroke: "var(--ink-3)", "stroke-width": ext * .01}, svg);
+    const t = el("text", {x: x + ext * .05, y: y0 + ext * .1, style: `font-size:${ext * .07}px`}, svg); t.textContent = "k";
+    const sb = el("line", {x1: ext * .45, x2: ext * .45 + 200, y1: ext * .95, y2: ext * .95, stroke: "var(--ink-3)", "stroke-width": ext * .012}, svg);
+    const st = el("text", {x: ext * .45, y: ext * .9, style: `font-size:${ext * .065}px`}, svg); st.textContent = "200 nm";
+  }
+  return svg;
+}
+
+// figures
+const best = ds.reduce((a, b) => b.g > a.g ? b : a);
+document.getElementById("figs").innerHTML = [
+  [`×${Math.round(best.g).toLocaleString("en")}`, `darker than the circle, R<sub>eq</sub> = ${best.r_eq} nm`],
+  [fmtE(best.c1550).replace(/e(-?\d+)/, (m, e) => "·10" + sup(e)), "c<sub>sca</sub>/area at 1550 nm (nm⁻¹)"],
+  [`${best.width_x10.toFixed(1)} nm`, "detuning to ×10 above the minimum"],
+  [`${ds.filter(d => d.g > 100).length} / ${ds.length}`, "sizes more than ×100 darker"],
+].map(([v, l]) => `<div class="fig"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+
+let sel = ds.indexOf(best);
+const strip = document.getElementById("strip");
+function drawStrip() { strip.innerHTML = ""; ds.forEach((d, i) => {
+  const b = document.createElement("button"); b.type = "button"; b.className = "thumb"; b.id = "t" + d.r_eq;
+  b.title = `R_eq ${d.r_eq} nm, ×${d.g.toFixed(0)}`;
+  const op = Math.min(1, .15 + Math.log10(Math.max(d.g, 1)) / 4.4 * .85);
+  b.appendChild(shapeSVG(d, {fill: `rgba(235,104,52,${op.toFixed(2)})`, sw: .025}));
+  const s = document.createElement("span"); s.textContent = d.r_eq; b.appendChild(s);
+  b.addEventListener("click", () => select(i)); strip.appendChild(b);
+}); }
+
+function sizeChart() {
+  chart(document.getElementById("p-size"), {
+    x: ds.map(d => d.r_eq), xTicks: [120, 200, 300, 400, 500, 600, 700], xLabel: "R_eq (nm)", xUnit: "nm", yLabel: "c_sca/area (nm⁻¹)", logY: true, h: 260,
+    series: [
+      {name: "Optimised", y: ds.map(d => d.c1550), color: "var(--s-design)", dots: true},
+      {name: "Circle", y: ds.map(d => d.circle_per_area), color: "var(--s-circle)", dots: true, w: 1.2},
+    ], mark: sel, onClick: select,
+  });
+}
+
+function select(i) {
+  sel = i; const d = ds[i];
+  document.querySelectorAll(".thumb").forEach((b, k) => b.setAttribute("aria-pressed", k === i));
+  document.getElementById("sel-title").textContent = `R_eq = ${d.r_eq} nm`;
+  const big = document.getElementById("bigshape"); big.innerHTML = ""; big.appendChild(shapeSVG(d, {circle: true, arrow: true}));
+  const w = v => (d.g > 30 && v != null && isFinite(v)) ? v.toFixed(1) + " nm" : "—";
+  document.getElementById("stats").innerHTML = [
+    ["c_sca/area at 1550", fmtE(d.c1550) + " nm⁻¹"], ["Circle, same area", fmtE(d.circle_per_area) + " nm⁻¹"],
+    ["Darker by", "×" + (d.g >= 100 ? Math.round(d.g).toLocaleString("en") : d.g.toFixed(1))],
+    ["Width to ×10", w(d.width_x10)], ["Width to ×100", w(d.width_x100)],
+    ["Perimeter / cap", d.perim_frac.toFixed(3)], ["r_max / r_min", d.r_ratio.toFixed(1)],
+    ["Smallest curvature radius", d.min_curv_radius.toFixed(1) + " nm"], ["Starts reaching best", d.starts_at_best + " / 8"],
+  ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  chart(document.getElementById("p-spec"), {
+    x: D.lams, xTicks: [1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400], xLabel: "λ (nm)", xUnit: "nm", yLabel: "c_sca/area (nm⁻¹)", logY: true, vline: 1550,
+    series: [{name: "Optimised", y: d.spec, color: "var(--s-design)"}, {name: "Circle", y: d.spec_circle, color: "var(--s-circle)", w: 1.2}],
+  });
+  chart(document.getElementById("p-zoom"), {
+    x: D.zoom_lams, xTicks: [1510, 1530, 1550, 1570, 1590], xLabel: "λ (nm)", xUnit: "nm", xFmt: v => v.toFixed(1), yLabel: "c_sca/area (nm⁻¹)", logY: true, vline: 1550, h: 240,
+    series: [{name: "Optimised", y: d.zoom, color: "var(--s-design)"}],
+  });
+  sizeChart();
+  drawMP(i);
+}
+
+const T = D.ite_trace;
+const drawIte = () => [["p-ite2", "pol2"], ["p-ite1", "pol1"]].forEach(([id, k]) => chart(document.getElementById(id), {
+  x: T.p, xTicks: T.p.filter(p => p !== 2.25), xLabel: "p", yLabel: "ε", h: 240, xFmt: v => v.toString(),
+  series: [{name: "Eigenvalue", y: T[k + "_ite"], color: "var(--s-alt)", dash: "5 4", dots: true}, {name: "Driven zero", y: T[k + "_driven"], color: "var(--s-design)", dots: true}],
+}));
+
+// ---------- multipoles and fields
+const ORD = n => `var(--o${n})`;
+const ordName = n => n === MP.n_ord ? `n ≥ ${n}` : `n = ${n}`;
+function legendOrders(id) {
+  document.getElementById(id).innerHTML = [...Array(MP.n_ord + 1).keys()].map(n =>
+    `<span><i style="border-color:${ORD(n)}${n === MP.n_ord ? ";border-top-style:dashed" : ""}"></i>${ordName(n)}</span>`).join("");
+}
+function orderSeries(rows) { return rows.map((y, n) => ({name: ordName(n), y, color: ORD(n), w: n < 4 ? 1.8 : 1.2, dash: n === MP.n_ord ? "4 3" : ""})); }
+
+function bars(host, labels, groups) {
+  host.innerHTML = "";
+  const W = 640, H = 240, m = {l: 58, r: 10, t: 10, b: 34};
+  const svg = el("svg", {viewBox: `0 0 ${W} ${H}`, role: "img"}, host);
+  const vals = groups.flatMap(g => g.y).filter(v => v > 1e-10).concat([1e-10]);
+  const y0 = Math.floor(Math.log10(Math.min(...vals))), y1 = Math.ceil(Math.log10(Math.max(...vals)));
+  const Y = v => H - m.b - (Math.log10(Math.max(v, 10 ** y0)) - y0) / (y1 - y0) * (H - m.t - m.b);
+  const step = y1 - y0 > 6 ? 2 : 1;
+  for (let e = y0; e <= y1; e += step) { const y = Y(10 ** e); el("line", {x1: m.l, x2: W - m.r, y1: y, y2: y, class: "grid"}, svg); el("text", {x: m.l - 6, y: y + 4, "text-anchor": "end"}, svg).textContent = "10" + sup(e); }
+  const bw = (W - m.l - m.r) / labels.length, gw = bw * 0.78 / groups.length;
+  const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; host.appendChild(tip);
+  labels.forEach((lab, i) => {
+    const xc = m.l + bw * (i + 0.5);
+    el("text", {x: xc, y: H - m.b + 17, "text-anchor": "middle"}, svg).textContent = lab;
+    groups.forEach((g, j) => {
+      const x = xc - bw * 0.39 + j * gw, y = Y(g.y[i]);
+      const r = el("rect", {x: x + 1, y, width: gw - 2, height: H - m.b - y, fill: g.color, rx: 1.5}, svg);
+      r.addEventListener("mousemove", ev => { const b = host.getBoundingClientRect(); tip.innerHTML = `${lab}<br>${g.name}: ${fmtE(g.y[i])} nm⁻¹`; tip.hidden = false; tip.style.left = Math.min(ev.clientX - b.left + 12, b.width - tip.offsetWidth - 4) + "px"; tip.style.top = "8px"; });
+      r.addEventListener("mouseleave", () => { tip.hidden = true; });
+    });
+  });
+  el("line", {x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, class: "axis"}, svg);
+  el("text", {x: 4, y: m.t + 2, "dominant-baseline": "hanging"}, svg).textContent = "c_sca,n/area (nm⁻¹)";
+}
+
+const f32 = b => { const s = atob(b), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return new Float32Array(u.buffer); };
+const fieldCache = {};
+function fields(k) { return decodeField("s" + k, MP.designs[k].field, MP.designs[k].ext); }
+function decodeField(key, f, ext) {
+  if (fieldCache[key]) return fieldCache[key];
+  const o = {}, G = MP.grid, kb = 2 * Math.PI / 1550;
+  for (const w of ["design", "circle"]) {
+    const g = f[w], tr = f32(g.tot_re), ti = f32(g.tot_im), ins = atob(g.inside);
+    const sr = new Float32Array(G * G), si = new Float32Array(G * G);
+    // Outside, scattered = total − incident e^{−ikz}; rows run z = +ext … −ext, as in multipole_data.py.
+    for (let i = 0; i < G * G; i++) {
+      if (ins.charCodeAt(i) || !isFinite(tr[i])) { sr[i] = si[i] = NaN; continue; }
+      const z = ext - Math.floor(i / G) * 2 * ext / (G - 1);
+      sr[i] = tr[i] - Math.cos(kb * z); si[i] = ti[i] + Math.sin(kb * z);
+    }
+    o[w] = {tr, ti, sr, si};
+  }
+  return fieldCache[key] = o;
+}
+const INFERNO = [[0,0,4],[31,12,72],[85,15,109],[136,34,106],[186,54,85],[227,89,51],[249,140,10],[249,201,50],[252,255,164]];
+const RDBU = [[33,102,172],[67,147,195],[146,197,222],[209,229,240],[247,247,247],[253,219,199],[244,165,130],[214,96,77],[178,24,43]];
+const cmap = (stops, t) => { t = Math.max(0, Math.min(1, t)) * (stops.length - 1); const i = Math.min(Math.floor(t), stops.length - 2), f = t - i; return stops[i].map((c, k) => Math.round(c + (stops[i + 1][k] - c) * f)); };
+let qty = "int";
+function drawMaps(k) { paintMaps(fields(k), MP.designs[k].ext, ds[k].shape, ds[k].r_eq, "", qty); }
+function paintMaps(F, ext, shape, rEq, pfx, qty) {
+  const G = MP.grid;
+  const val = (w, i) => { const a = F[w];
+    if (qty === "int") return a.tr[i] ** 2 + a.ti[i] ** 2;
+    if (qty === "re") return a.tr[i];
+    const m = Math.hypot(a.sr[i], a.si[i]); return m > 0 ? Math.log10(m) : NaN; };
+  let lo, hi, stops;
+  // 99.5th percentile over both maps: a single hot pixel at a needle tip would otherwise wash the scale out.
+  const pct = f => { const a = []; for (const w of ["design", "circle"]) for (let i = 0; i < G * G; i++) { const v = f(val(w, i)); if (isFinite(v)) a.push(v); } a.sort((p, q) => p - q); return a[Math.floor(.995 * (a.length - 1))]; };
+  if (qty === "int") { lo = 0; hi = pct(v => v); stops = INFERNO; }
+  else if (qty === "re") { const mx = pct(Math.abs); lo = -mx; hi = mx; stops = RDBU; }
+  else { lo = -5; hi = 0.5; stops = INFERNO; }
+  for (const [w, id] of [["design", "d"], ["circle", "c"]]) {
+    const cv = document.getElementById(pfx + "cv-" + id); cv.width = G; cv.height = G;
+    const ctx = cv.getContext("2d"), img = ctx.createImageData(G, G);
+    for (let i = 0; i < G * G; i++) { const v = val(w, i), o = 4 * i;
+      if (!isFinite(v)) { img.data[o + 3] = 0; continue; }
+      const [r, g, b] = cmap(stops, (v - lo) / (hi - lo)); img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255; }
+    ctx.putImageData(img, 0, 0);
+    const ov = document.getElementById(pfx + "ov-" + id); ov.innerHTML = ""; ov.setAttribute("viewBox", `${-ext} ${-ext} ${2 * ext} ${2 * ext}`);
+    if (w === "design") el("path", {d: "M" + shape.map(p => `${p[0]} ${-p[1]}`).join("L") + "Z", fill: "none", stroke: "#ffffff", "stroke-opacity": .7, "stroke-width": ext * .006}, ov);
+    else el("circle", {cx: 0, cy: 0, r: rEq, fill: "none", stroke: "#ffffff", "stroke-opacity": .7, "stroke-width": ext * .006}, ov);
+    const sb = ext * .55; el("line", {x1: sb, x2: sb + 200, y1: ext * .9, y2: ext * .9, stroke: "#ffffff", "stroke-width": ext * .012}, ov);
+    const t = el("text", {x: sb, y: ext * .84, style: `font-size:${ext * .06}px;fill:#f2eef8`}, ov); t.textContent = "200 nm";
+    const box = document.getElementById(pfx + "mb-" + id), ro = document.getElementById(pfx + "ro-" + id);
+    box.onmousemove = ev => { const r = box.getBoundingClientRect(); const ix = Math.floor((ev.clientX - r.left) / r.width * G), iz = Math.floor((ev.clientY - r.top) / r.height * G);
+      if (ix < 0 || iz < 0 || ix >= G || iz >= G) return; const v = val(w, iz * G + ix);
+      const x = -ext + ix * 2 * ext / (G - 1), z = ext - iz * 2 * ext / (G - 1);
+      ro.textContent = `x ${x.toFixed(0)} z ${z.toFixed(0)} nm · ` + (!isFinite(v) ? "—" : qty === "sca" ? `|E_sca| ${fmtE(10 ** v)}` : qty === "re" ? `Re E ${v.toFixed(3)}` : `|E|² ${v.toFixed(3)}`); ro.hidden = false; };
+    box.onmouseleave = () => { ro.hidden = true; };
+  }
+  const cb = document.getElementById(pfx + "cbar"), cx = cb.getContext("2d"), im = cx.createImageData(256, 1);
+  for (let i = 0; i < 256; i++) { const [r, g, b] = cmap(stops, i / 255); im.data.set([r, g, b, 255], 4 * i); }
+  cx.putImageData(im, 0, 0);
+  document.getElementById(pfx + "cb-lo").textContent = qty === "sca" ? "10⁻⁵" : lo.toFixed(qty === "re" ? 2 : 0);
+  document.getElementById(pfx + "cb-hi").textContent = qty === "sca" ? "3" : hi.toFixed(2);
+}
+["int", "re", "sca"].forEach(q => document.getElementById("q-" + q).addEventListener("click", () => {
+  qty = q; ["int", "re", "sca"].forEach(r => document.getElementById("q-" + r).setAttribute("aria-pressed", r === q)); drawMaps(sel); }));
+
+function drawMP(k) {
+  const md = MP.designs[k], d = ds[k];
+  document.getElementById("mp-title").textContent = `Multipoles and fields, R_eq = ${d.r_eq} nm`;
+  const i1550 = MP.lams.indexOf(1550), labels = [...Array(MP.n_ord + 1).keys()].map(n => n === MP.n_ord ? `≥${n}` : String(n));
+  bars(document.getElementById("p-bars"), labels, [
+    {name: "Optimised", y: md.spec.map(r => r[i1550]), color: "var(--s-design)"},
+    {name: "Circle", y: md.circ.map(r => r[i1550]), color: "var(--s-circle)"}]);
+  ["lg-z", "lg-d", "lg-c"].forEach(legendOrders);
+  const yl = "c_sca,n/area (nm⁻¹)";
+  chart(document.getElementById("p-ozoom"), {x: MP.zoom_lams, xTicks: [1530, 1540, 1550, 1560, 1570], xLabel: "λ (nm)", xUnit: "nm", xFmt: v => v.toFixed(1), yLabel: yl, logY: true, yMin: 1e-10, vline: 1550, h: 240, series: orderSeries(md.zoom)});
+  chart(document.getElementById("p-ospec"), {x: MP.lams, xTicks: [1000, 1400, 1800, 2200], xLabel: "λ (nm)", xUnit: "nm", yLabel: yl, logY: true, yMin: 1e-10, vline: 1550, series: orderSeries(md.spec)});
+  chart(document.getElementById("p-ocirc"), {x: MP.lams, xTicks: [1000, 1400, 1800, 2200], xLabel: "λ (nm)", xUnit: "nm", yLabel: yl, logY: true, yMin: 1e-10, vline: 1550, series: orderSeries(md.circ)});
+  drawMaps(k);
+}
+
+// ---------- R_eq = 500 nm, CD-compliant
+let m5 = "nominal", m5q = "int";
+const iB = F5.bias.indexOf(0), win = F5.bias.map((b, i) => Math.abs(b) <= 10 ? i : -1).filter(i => i >= 0);
+const worstOf = arr => Math.max(...win.map(i => arr[i]));
+const cNom = F5.circle.bias[iB];
+function drawM5Figs() {
+  const n = F5.designs.nominal, t = F5.designs.tolerant, x = v => "×" + (cNom / v >= 100 ? Math.round(cNom / v) : (cNom / v).toFixed(1));
+  document.getElementById("m5-figs").innerHTML = [
+    [x(n.bias[iB]), "best nominal, as drawn"], [x(worstOf(n.bias)), "best nominal, worst within ±10 nm"],
+    [x(t.bias[iB]), "tolerant, as drawn"], [x(worstOf(t.bias)), "tolerant, worst within ±10 nm"],
+  ].map(([v, l]) => `<div class="fig"><div class="v">${v}</div><div class="l">${l} (darker than the circle)</div></div>`).join("");
+}
+function drawM5() {
+  const d = F5.designs[m5];
+  ["nominal", "tolerant"].forEach(k => document.getElementById("m5-b-" + k).setAttribute("aria-pressed", k === m5));
+  const host = document.getElementById("m5-shape"); host.innerHTML = "";
+  const svg = shapeSVG({shape: d.shape, r_eq: 500}, {circle: true, arrow: true}); host.appendChild(svg);
+  const ext = parseFloat(svg.getAttribute("viewBox").split(" ")[2]) / 2;
+  for (const k of ["shape_m10", "shape_p10"]) el("path", {d: "M" + d[k].map(p => `${p[0]} ${-p[1]}`).join("L") + "Z", fill: "none", stroke: k === "shape_m10" ? "var(--o0)" : "var(--o3)", "stroke-width": ext * .008, "stroke-dasharray": `${ext * .02} ${ext * .015}`}, svg);
+  chart(document.getElementById("m5-bias"), {x: F5.bias, xTicks: [-15, -10, -5, 0, 5, 10, 15], xLabel: "bias δ (nm)", xUnit: "nm bias", yLabel: "c_sca/area (nm⁻¹)", logY: true, h: 240, band: [-10, 10],
+    series: [{name: "Best nominal", y: F5.designs.nominal.bias, color: "var(--s-design)", w: m5 === "nominal" ? 2.4 : 1.2},
+             {name: "Tolerant", y: F5.designs.tolerant.bias, color: "var(--o2)", w: m5 === "tolerant" ? 2.4 : 1.2},
+             {name: "Circle", y: F5.circle.bias, color: "var(--s-circle)", w: 1.2}]});
+  chart(document.getElementById("m5-spec"), {x: F5.lams, xTicks: [1300, 1400, 1500, 1600, 1700, 1800], xLabel: "λ (nm)", xUnit: "nm", yLabel: "c_sca/area (nm⁻¹)", logY: true, vline: 1550, h: 240,
+    series: [{name: "−10 nm", y: d.spec["-10"], color: "var(--o0)", dash: "5 4"}, {name: "As drawn", y: d.spec["0"], color: "var(--s-design)", w: 2},
+             {name: "+10 nm", y: d.spec["10"], color: "var(--o3)", dash: "5 4"}, {name: "Circle", y: F5.circle.spec["0"], color: "var(--s-circle)", w: 1.2}]});
+  const i1550 = F5.lams_mp.indexOf(1550), labels = [...Array(MP.n_ord + 1).keys()].map(n => n === MP.n_ord ? `≥${n}` : String(n));
+  bars(document.getElementById("m5-bars"), labels, [{name: "Design", y: d.mp.map(r => r[i1550]), color: "var(--s-design)"}, {name: "Circle", y: F5.circle.mp.map(r => r[i1550]), color: "var(--s-circle)"}]);
+  legendOrders("m5-lg");
+  chart(document.getElementById("m5-ospec"), {x: F5.lams_mp, xTicks: [1300, 1400, 1500, 1600, 1700, 1800], xLabel: "λ (nm)", xUnit: "nm", yLabel: "c_sca,n/area (nm⁻¹)", logY: true, yMin: 1e-10, vline: 1550, h: 240, series: orderSeries(d.mp)});
+  paintMaps(decodeField("m5" + m5, d.field, d.ext), d.ext, d.shape, 500, "m5-", m5q);
+}
+["nominal", "tolerant"].forEach(k => document.getElementById("m5-b-" + k).addEventListener("click", () => { m5 = k; drawM5(); }));
+["int", "re", "sca"].forEach(q => document.getElementById("m5-q-" + q).addEventListener("click", () => {
+  m5q = q; ["int", "re", "sca"].forEach(r => document.getElementById("m5-q-" + r).setAttribute("aria-pressed", r === q)); drawM5(); }));
+
+function renderAll() { drawStrip(); drawIte(); select(sel); drawM5Figs(); drawM5(); }
+renderAll();
+// Literal colours are baked in at draw time, so redraw when the viewer's theme changes.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
+new MutationObserver(renderAll).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+})();
+</script>

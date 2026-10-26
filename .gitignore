@@ -17,3 +17,11 @@ validation/**/_last-*.npz
 
 # Gate-2 convergence-study output: raw, large, and regenerable.
 validation/_study/
+
+# Anapole study: large, regenerable outputs (sweep.py, multipole_data.py, showcase*_data.py, ite_vs_driven.py).
+docs/design/studies/anapole/results/sweep.json
+docs/design/studies/anapole/results/multipoles.json
+docs/design/studies/anapole/results/showcase.json
+docs/design/studies/anapole/results/showcase_500.json
+docs/design/studies/anapole/results/*.npz
+docs/design/studies/anapole/results/dark-silicon-wires.html
