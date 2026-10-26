@@ -29,7 +29,7 @@ import numpy as np
 from . import layered
 from .background import HalfSpace, Stack
 from .beyn import beyn_modes, newton_refine
-from .geometry import Geometry
+from .geometry import Geometry, _check_frozen_nodes
 from .material import Material
 from .solver import BIESolver, size_parameter
 
@@ -393,32 +393,7 @@ class QNMResult:
         (``docs/conventions.md`` §10).
         """
         geom, mat = at(delta)
-        # A geometry built directly from arrays may carry no node set at all.
-        # Refuse it by name: `None` would otherwise reach the comparison below
-        # as an AttributeError, and a base result without one would silently
-        # compare None to None and accept two unrelated discretisations.
-        if geom.nodes is None or self.geometry.nodes is None:
-            missing = "perturbed" if geom.nodes is None else "base"
-            raise ValueError(
-                f"the {missing} geometry carries no node set (parametrisation is "
-                "None), so the shape derivative cannot be taken on a frozen one "
-                "(docs/conventions.md §10). Build both with Geometry.gielis, "
-                "which always records its parametrisation, or pass "
-                "parametrisation= to Geometry()"
-            )
-        # The whole node set, not θ alone: assembly reads w' and w'' too, and two
-        # maps can share their angles at every node while differing in both.
-        base = self.geometry.nodes
-        same = geom.n_pts == self.geometry.n_pts and all(
-            np.array_equal(getattr(geom.nodes, name), getattr(base, name))
-            for name in ("theta", "dw", "ddw")
-        )
-        if not same:
-            raise ValueError(
-                "perturbed geometry must carry the base node set exactly "
-                "(docs/conventions.md §10); build it with Geometry.gielis(..., "
-                "parametrisation=result.geometry.parametrisation)"
-            )
+        _check_frozen_nodes(self.geometry, geom)
         return BIESolver(geom, mat)
 
 

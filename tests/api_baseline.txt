@@ -111,6 +111,7 @@ assemble_matrix_reference(pol: int, nn: int, f: numpy.ndarray, g: numpy.ndarray,
 eval_field(ei: numpy.ndarray, nn: int, f: numpy.ndarray, df: numpy.ndarray, g: numpy.ndarray, dg: numpy.ndarray, delt: float, wnum_bg: complex, x_pts: numpy.ndarray, z_pts: numpy.ndarray, ri: complex | None = None, eta_in: complex = 1.0) -> numpy.ndarray
 far_field(nn: int, nff: int, wnum_bg: complex, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, delt: float, ei: numpy.ndarray) -> tuple[numpy.ndarray, numpy.ndarray]
 line_dipole_rhs(nn: int, wnum_bg: complex, f: numpy.ndarray, g: numpy.ndarray, x_s: float, z_s: float) -> numpy.ndarray
+mode_sensitivity(at: collections.abc.Callable[[float], tuple[pysie2d.geometry.Geometry, pysie2d.material.Material]], run: collections.abc.Callable[[pysie2d.geometry.Geometry, pysie2d.material.Material], pysie2d.waveguide.ModeAmplitudes], *, step: float = 1e-05) -> dict[str, numpy.ndarray | float]
 multipole_decompose(ei: numpy.ndarray, nn: int, f: numpy.ndarray, df: numpy.ndarray, g: numpy.ndarray, dg: numpy.ndarray, delt: float, wnum_bg: complex, r0: float, *, mmax: int = 8, ntheta: int | None = None, x0: float = 0.0, z0: float = 0.0) -> pysie2d.multipole.Multipoles
 multipole_reconstruct(c: numpy.ndarray, wnum_bg: complex, r: float, theta: numpy.ndarray) -> numpy.ndarray
 plane_wave_rhs(nn: int, titad: float, wnum_bg: complex, f: numpy.ndarray, g: numpy.ndarray) -> numpy.ndarray

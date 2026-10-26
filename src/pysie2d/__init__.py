@@ -23,6 +23,8 @@ Public API:
         referred to ``x_ref``) and the full power account of a solve over a
         stack, from ``ScatterResult.mode_amplitudes(x_ref)``;
         ``BIESolver.scatter_mode`` drives a solve with one guided mode.
+    mode_sensitivity: central differences of every ``ModeAmplitudes`` output
+        in one parameter, on the frozen node set (slab-spec R16′).
     NearDegenerateModesError: a ``ValueError`` raised when two guided modes
         are closer than the mode finder separates (slab-spec R15).
     InterfaceGapWarning, SommerfeldPrecisionWarning: the half-space guards — a
@@ -115,6 +117,7 @@ from .qnm import (
     QNMSolver,
     richardson_limit,
 )
+from .sensitivity import mode_sensitivity
 from .solver import (
     BIESolver,
     ScatterResult,
@@ -158,6 +161,7 @@ __all__ = [
     "eval_field",
     "far_field",
     "line_dipole_rhs",
+    "mode_sensitivity",
     "multipole_decompose",
     "multipole_reconstruct",
     "plane_wave_rhs",

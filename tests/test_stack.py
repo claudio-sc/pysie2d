@@ -31,6 +31,7 @@ from pysie2d.reference.sommerfeld import (
     slab3_roots,
     stack_r_ref,
 )
+from pysie2d.sensitivity import mode_sensitivity
 from pysie2d.waveguide import _amplitudes
 
 PI = np.pi
@@ -869,3 +870,77 @@ def test_moment_is_tm_only():
     solver, lam, src = _solver("SOI circle", 2)
     with pytest.raises(ValueError, match="pol = 1"):
         solver.scatter_dipole(lam, *src, moment=(1.0, 0.0))
+
+
+# --- GW17: mode_sensitivity against the exact translation law ---------------------
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize(
+    "stack, lam", [(SOI, 1550.0), (SIN, 800.0)], ids=["SOI", "SiN"]
+)
+def test_mode_sensitivity_reproduces_the_translation_law(stack, lam, pol):
+    # Moving the particle by Δ along x at fixed x_ref multiplies the scattered
+    # S_{n←m}^{fwd} by e^{i(β_m − β_n)Δ} and S^{bwd} by e^{i(β_m + β_n)Δ}
+    # (slab-spec §2.9), so the derivatives are i(β_m ∓ β_n)·S_scat exactly and
+    # every power is stationary. SiN's two modes make the forward one nonzero.
+    base = Geometry.gielis(rad=80.0, n_pts=160, m=4, z0=110.0)
+    mat = Material(n_core=N_SI, n_clad=N_CLAD, pol=pol)
+
+    def at(dx):
+        geom = Geometry.gielis(
+            rad=80.0,
+            n_pts=160,
+            m=4,
+            x0=dx,
+            z0=110.0,
+            parametrisation=base.parametrisation,
+        )
+        return geom, mat
+
+    beta = np.array([m.beta for m in stack.guided_modes(lam, pol, N_CLAD)])
+    for m in range(beta.size):
+
+        def run(geom, material, m=m):
+            res = BIESolver(geom, material, stack).scatter_mode(lam, m, 1, x_ref=0.0)
+            return res.mode_amplitudes(0.0)
+
+        d = mode_sensitivity(at, run)
+        a0 = run(*at(0.0))
+        fwd = a0.s_plus - (np.arange(beta.size) == m)
+        scale = np.max(np.abs(beta[m] * fwd) + np.abs(beta[m] * a0.s_minus))
+        # Measured ≤ 3.2e-9 relative at SHAPE_STEP, the central difference's
+        # round-off floor ε/h; 10× that.
+        assert (
+            np.max(np.abs(d["s_plus"] - 1j * (beta[m] - beta) * fwd)) / scale < 3.2e-8
+        )
+        assert (
+            np.max(np.abs(d["s_minus"] - 1j * (beta[m] + beta) * a0.s_minus)) / scale
+            < 3.2e-8
+        )
+        assert (
+            max(np.abs(d["p_plus"]).max(), np.abs(d["p_minus"]).max()) < 8e-11
+        )  # 8.3e-12
+        assert max(abs(d["p_up"]), abs(d["p_down"]), abs(d["p_abs"])) < 2e-11  # 1.7e-12
+        assert d["p_source"] == 0.0  # the incident power is 1 at every Δ
+
+
+def test_mode_sensitivity_refuses_a_foreign_node_set():
+    # The check is QNMResult.sensitivity's, factored: a displaced geometry on
+    # another node set, or with none at all, is refused by name (§10).
+    mat = Material(n_core=N_SI, n_clad=N_CLAD, pol=2)
+
+    def foreign(dx):
+        n = 160 if dx == 0.0 else 162
+        return Geometry.gielis(rad=80.0, n_pts=n, m=4, x0=dx, z0=110.0), mat
+
+    with pytest.raises(ValueError, match="node set exactly"):
+        mode_sensitivity(foreign, lambda g, m: None)
+
+    def bare(dx):
+        g = Geometry.gielis(rad=80.0, n_pts=160, m=4, x0=dx, z0=110.0)
+        arrays = {k: getattr(g, k) for k in ("f", "g", "df", "dg", "ddf", "ddg")}
+        return Geometry(**arrays, rad=80.0), mat
+
+    with pytest.raises(ValueError, match="no node set"):
+        mode_sensitivity(bare, lambda g, m: None)
