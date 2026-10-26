@@ -17,6 +17,7 @@ import numpy as np
 from scipy.linalg import lu_factor, lu_solve
 
 from . import layered
+from .background import _top
 from .kernels import _real_if_real, hank0, hank1
 from .solver import BIESolver
 
@@ -158,7 +159,7 @@ def relative_ldos_map(
     # can be valid: the factorisation is reused, and so is the path.
     refl = None
     if solver.background is not None:
-        z_int = solver.background.z_int
+        z_int = _top(solver.background)
         above = np.isfinite(xf) & np.isfinite(zf) & (zf > z_int)
         refl = solver._reflection(
             wavelength, np.concatenate([f, xf[above]]), np.concatenate([g, zf[above]])
@@ -189,7 +190,7 @@ def relative_ldos_map(
         crossings = np.count_nonzero(straddles & (xs[:, None] < x_cross), axis=1)
         valid = (crossings % 2 == 0) & (dist.min(axis=1) >= exclusion)
         if solver.background is not None:
-            valid &= zs > solver.background.z_int
+            valid &= zs > _top(solver.background)
         if not valid.any():
             continue
 

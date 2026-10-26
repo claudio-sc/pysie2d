@@ -550,3 +550,42 @@ class Geometry:
             z0=z0,
             parametrisation=parametrisation,
         )
+
+
+def _check_frozen_nodes(base: Geometry, geom: Geometry) -> None:
+    """Refuse a perturbed geometry that does not carry the base node set exactly.
+
+    The one precondition of a shape derivative a user cannot see the violation
+    of: with re-inverted nodes every number downstream still looks plausible
+    (``docs/conventions.md`` §10). Shared by ``QNMResult.sensitivity`` and
+    ``mode_sensitivity``.
+
+    Raises:
+        ValueError: Either geometry carries no node set, or the two differ in
+            ``n_pts``, θ, w′ or w″.
+    """
+    # A geometry built directly from arrays may carry no node set at all.
+    # Refuse it by name: `None` would otherwise reach the comparison below
+    # as an AttributeError, and a base without one would silently compare
+    # None to None and accept two unrelated discretisations.
+    if geom.nodes is None or base.nodes is None:
+        missing = "perturbed" if geom.nodes is None else "base"
+        raise ValueError(
+            f"the {missing} geometry carries no node set (parametrisation is "
+            "None), so the shape derivative cannot be taken on a frozen one "
+            "(docs/conventions.md §10). Build both with Geometry.gielis, "
+            "which always records its parametrisation, or pass "
+            "parametrisation= to Geometry()"
+        )
+    # The whole node set, not θ alone: assembly reads w' and w'' too, and two
+    # maps can share their angles at every node while differing in both.
+    same = geom.n_pts == base.n_pts and all(
+        np.array_equal(getattr(geom.nodes, name), getattr(base.nodes, name))
+        for name in ("theta", "dw", "ddw")
+    )
+    if not same:
+        raise ValueError(
+            "perturbed geometry must carry the base node set exactly "
+            "(docs/conventions.md §10); build it with Geometry.gielis(..., "
+            "parametrisation=result.geometry.parametrisation)"
+        )

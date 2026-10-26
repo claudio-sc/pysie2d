@@ -1,6 +1,7 @@
 """Field evaluation: far-field amplitude and arbitrary-point near fields."""
 
 import math
+from collections.abc import Callable
 
 import numpy as np
 
@@ -13,9 +14,13 @@ from .layered import (
     NoFarFieldError,
     Reflection,
     SommerfeldPath,
+    StackReflection,
     Transmission,
+    _stack_poles,
     alpha,
     fresnel_r,
+    stack_layer_factor,
+    stack_r,
 )
 
 PI = np.pi
@@ -139,6 +144,8 @@ def _upward_amplitude(
     eps_rel: complex | None,
     pol: int,
     z_int: float,
+    *,
+    r: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> np.ndarray:
     """Upward far-field amplitude ``a_up(θ)`` of particles over a half-space.
 
@@ -156,6 +163,8 @@ def _upward_amplitude(
         eps_rel: Substrate permittivity relative to the cover, or ``None``.
         pol: 2 = TE, 1 = TM.
         z_int: Interface height (nm).
+        r: ``q → R(q)`` replacing :func:`fresnel_r` (a stack, referred to
+            ``z_int = z_top``); ``eps_rel`` is then unused here.
 
     Returns:
         complex (M,) amplitude.
@@ -168,10 +177,12 @@ def _upward_amplitude(
         image += _far_field_at(
             PI - angles, nn, wnum_bg, f, g - 2.0 * z_int, df, dg, delt, ei
         )
+    if r is not None:
+        return direct + r(wnum_bg * np.sin(angles)) * image
     if eps_rel is not None and eps_rel == 1.0:
         return direct  # no interface: r ≡ 0, and 0/0 at grazing is avoided
-    r = fresnel_r(wnum_bg * np.sin(angles), wnum_bg, eps_rel, pol)
-    return direct + r * image
+    rr = fresnel_r(wnum_bg * np.sin(angles), wnum_bg, eps_rel, pol)
+    return direct + rr * image
 
 
 def _upward_far_field(
@@ -181,10 +192,13 @@ def _upward_far_field(
     eps_rel: complex | None,
     pol: int,
     z_int: float,
+    *,
+    r: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """``a_up`` on a uniform grid over ``[−π/2, π/2]`` inclusive."""
     angles = np.linspace(-0.5 * PI, 0.5 * PI, n_angles)
-    return _upward_amplitude(angles, boundaries, wnum_bg, eps_rel, pol, z_int), angles
+    amp = _upward_amplitude(angles, boundaries, wnum_bg, eps_rel, pol, z_int, r=r)
+    return amp, angles
 
 
 def _upward_cross_sections(
@@ -194,6 +208,8 @@ def _upward_cross_sections(
     eps_rel: complex | None,
     pol: int,
     z_int: float,
+    *,
+    r: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> dict[str, float]:
     """``σ_sca,up`` and ``σ_abs`` (nm) of particles over a half-space.
 
@@ -222,10 +238,22 @@ def _upward_cross_sections(
         eps_rel: Substrate permittivity relative to the cover, or ``None``.
         pol: 2 = TE, 1 = TM.
         z_int: Interface height (nm).
+        r: ``q → R(q)`` of a stack; ``eps_rel`` is then the **bottom**
+            permittivity, whose critical angle is R's one kink (slab-spec §2.7).
 
     Returns:
         ``{"c_sca_up", "c_abs"}`` in nm.
     """
+    theta, wt = _upward_rule(n_angles, eps_rel)
+    amp = _upward_amplitude(theta, boundaries, wnum_bg, eps_rel, pol, z_int, r=r)
+    c_sca_up = float(np.sum(wt * np.abs(amp) ** 2) / (8.0 * PI * np.real(wnum_bg)))
+    return {"c_sca_up": c_sca_up, "c_abs": _absorbed_cross_section(boundaries, wnum_bg)}
+
+
+def _upward_rule(
+    n_angles: int, eps_rel: complex | None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Nodes and weights on ``[−π/2, π/2]`` of :func:`_upward_cross_sections`."""
     if eps_rel is not None and 0.0 < eps_rel.real < 1.0:
         theta_c = float(np.arcsin(np.sqrt(eps_rel.real)))
         edges = [-0.5 * PI, -theta_c, theta_c, 0.5 * PI]
@@ -239,9 +267,7 @@ def _upward_cross_sections(
     else:
         x, w = np.polynomial.legendre.leggauss(n_angles)
         theta, wt = 0.5 * PI * x, 0.5 * PI * w
-    amp = _upward_amplitude(theta, boundaries, wnum_bg, eps_rel, pol, z_int)
-    c_sca_up = float(np.sum(wt * np.abs(amp) ** 2) / (8.0 * PI * np.real(wnum_bg)))
-    return {"c_sca_up": c_sca_up, "c_abs": _absorbed_cross_section(boundaries, wnum_bg)}
+    return theta, wt
 
 
 def _spectrum(
@@ -337,7 +363,12 @@ def _downward_far_field(
 
 
 def _flux_rule(
-    wnum_bg: complex, eps_rel: complex, pol: int, D: float, z_min: float
+    wnum_bg: complex,
+    eps_rel: complex,
+    pol: int,
+    D: float,
+    z_min: float,
+    tr: Transmission | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Real-axis nodes and weights for the interface flux, on ``(−q_max, q_max)``.
 
@@ -355,11 +386,14 @@ def _flux_rule(
         pol: 2 = TE, 1 = TM.
         D: Horizontal extent of the sources (nm).
         z_min: Twice the lowest source height above the interface (nm).
+        tr: A stack's transmission (its features and bottom), replacing the
+            half-space one built from ``eps_rel``.
 
     Returns:
         ``(q, w)``, real nodes and weights.
     """
-    tr = Transmission.half_space(pol, wnum_bg, eps_rel, 0.0)
+    if tr is None:
+        tr = Transmission.half_space(pol, wnum_bg, eps_rel, 0.0)
     bp = {0.0}
     for _, s in tr.features:
         bp.add(abs(s.real))
@@ -395,6 +429,7 @@ def _downward_power(
     wnum_bg: complex,
     eps_rel: complex,
     pol: int,
+    tr: Transmission | None = None,
 ) -> float:
     """``P_down = (1/8π)·Σ w·Re w_bot·|τ·A|²``, the power through the interface.
 
@@ -409,11 +444,13 @@ def _downward_power(
         wnum_bg: Background wavenumber (real).
         eps_rel: Substrate permittivity relative to the cover (not PEC).
         pol: 2 = TE, 1 = TM.
+        tr: A stack's transmission, replacing the half-space one.
 
     Returns:
         The downward power.
     """
-    tr = Transmission.half_space(pol, wnum_bg, eps_rel, 0.0)
+    if tr is None:
+        tr = Transmission.half_space(pol, wnum_bg, eps_rel, 0.0)
     a_bot = alpha(q, tr.k_bot)
     w_bot = (a_bot if pol == 2 else a_bot / tr.eps_bot).real
     return float(np.sum(w * w_bot * np.abs(tr.tau(q) * A) ** 2) / (8.0 * PI))
@@ -499,6 +536,7 @@ def _background_field(
     source: tuple[float, float] | None,
     eps_rel: complex | None,
     z_int: float | None,
+    b: tuple[complex, complex] | None = None,
 ) -> np.ndarray:
     """Background (unscattered) field at every point, with no particle mask.
 
@@ -519,6 +557,9 @@ def _background_field(
         eps_rel: Substrate permittivity relative to the cover, or ``None`` for
             PEC; ignored without a substrate.
         z_int: Interface height, or ``None`` for no substrate.
+        b: ``b = (p_z, −p_x)`` of an in-plane dipole, whose field is
+            ``−(b·∇′)`` of the line source's (slab-spec §2.8); ``None`` for the
+            scalar line source.
 
     Returns:
         complex (M,) field.
@@ -549,9 +590,17 @@ def _background_field(
             "step off it (the field is continuous there)"
         )
 
+    def deriv(gs: tuple) -> np.ndarray:
+        """``G`` itself, or ``−(b·∇′)G`` from ``(G, ∂x′G, ∂z′G)``."""
+        return gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
+
     def free(xp: np.ndarray, zp: np.ndarray) -> np.ndarray:
         if dipole:
-            return 0.25j * hank0(k * np.hypot(xp - xs, zp - zs))
+            rho = np.hypot(xp - xs, zp - zs)
+            if b is None:
+                return 0.25j * hank0(k * rho)
+            h1 = 0.25j * k * hank1(k * rho) / rho
+            return -(b[0] * h1 * (xp - xs) + b[1] * h1 * (zp - zs))
         theta = np.deg2rad(angle)
         return np.exp(1j * k * (xp * np.sin(theta) - zp * np.cos(theta)))
 
@@ -575,7 +624,7 @@ def _background_field(
                     extent = max(float(np.ptp(np.append(xa, xs))), z_min)
                     path = SommerfeldPath.for_wavenumber(k, eps_rel, pol, extent, z_min)
                 refl = Reflection(pol, k, eps_rel, z_int, path, 0.0)
-                out[above] += refl.green(xa, za, xs, zs)[0]
+                out[above] += deriv(refl.green(xa, za, xs, zs))
             else:  # one real q: no path
                 refl = Reflection(pol, k, eps_rel, z_int, None, 0.0)
                 out[above] += refl.plane_wave(angle, xa, za)
@@ -585,7 +634,7 @@ def _background_field(
         elif dipole:
             tr = Transmission.build(pol, k, eps_rel, z_int, [xs], [zs], xb, zb)
             assert tr is not None
-            out[~above] = tr.green(xb, zb, xs, zs)[0]
+            out[~above] = deriv(tr.green(xb, zb, xs, zs))
         else:
             tr = Transmission.half_space(pol, k, eps_rel, z_int)
             out[~above] = tr.plane_wave(angle, xb, zb)
@@ -770,3 +819,439 @@ def _representation_at(
         - hank0(arg1) * ei_p[None, nn:]
     )
     return (1j / 4.0) * np.sum(integrand * delt, axis=1)
+
+
+# ---------------------------------------------------------------------------
+# Fields over an N-layer stack (v1.2)
+# ---------------------------------------------------------------------------
+
+
+def _stack_planes(stack_rel: tuple) -> np.ndarray:
+    """Every interface height of a normalised stack, top first."""
+    _, d, _, z_top = stack_rel
+    return z_top - np.concatenate([[0.0], np.cumsum(d)])
+
+
+def _stack_source_spectra(
+    q: np.ndarray, a1: np.ndarray, z_top: float, source: tuple
+) -> tuple[np.ndarray, np.ndarray]:
+    """``(↑, ↓)`` spectra of a source ``(x_s, z_s, b)``, referred to ``z_top``.
+
+    Scalar line source (``b is None``): ``e^{−iqx_s ∓ iα₁h_s}`` (v1.1 §16). An
+    in-plane dipole multiplies them by ``i(q b_x ± α₁ b_z)`` (slab-spec §2.7).
+    """
+    xs, zs, b = source
+    hs = zs - z_top
+    up = np.exp(-1j * q * xs - 1j * a1 * hs)
+    dn = np.exp(-1j * q * xs + 1j * a1 * hs)
+    if b is not None:
+        up = up * 1j * (q * b[0] + a1 * b[1])
+        dn = dn * 1j * (q * b[0] - a1 * b[1])
+    return up, dn
+
+
+def _stack_spectra(
+    q: np.ndarray,
+    a1: np.ndarray,
+    boundaries: list[_Boundary],
+    z_top: float,
+    source: tuple | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Upward and downward spectra ``(u↑, d)`` of the total field (slab-spec §2.7).
+
+    ``d`` is :func:`_spectrum` itself and ``u↑`` is it at ``−α₁``; the source's
+    own spectra are added when given. Above the stack the field is
+    ``(i/2α₁)(u↑ + R·d)·e^{iα₁(z − z_top)}``; ``d`` drives everything below.
+    """
+    up = _spectrum(q, -a1, boundaries, z_top)
+    dn = _spectrum(q, a1, boundaries, z_top)
+    if source is not None:
+        s_up, s_dn = _stack_source_spectra(q, a1, z_top, source)
+        up, dn = up + s_up, dn + s_dn
+    return up, dn
+
+
+def _layer_field(
+    x: np.ndarray,
+    z: np.ndarray,
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    pol: int,
+    stack_rel: tuple,
+    source: tuple | None = None,
+) -> np.ndarray:
+    """Field at points inside the layers of a stack (slab-spec §8.2, R19).
+
+    ``u(x, z) = (1/4π)∫_Γ i·(W/α₁)(q, z)·d(q)·e^{iqx} dq`` over the **full**
+    path (``d`` is not even in q), ``d`` the downward spectrum of the boundary
+    data and of ``source``, with α₁ on the path's sheet. The path is sized for
+    ``z_min = min h'`` over the sources: a point just under ``z_top`` adds no
+    decay. Both factors are referred to the centre ``x_c`` of the point set
+    (study trap 3).
+
+    Args:
+        x: (P,) x of points strictly inside the layers (nm).
+        z: (P,) their z.
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle; may be empty.
+        wnum_bg: Background wavenumber.
+        pol: 2 = TE, 1 = TM.
+        stack_rel: The normalised relative stack.
+        source: ``(x_s, z_s, b)`` of a source above the stack, or ``None``.
+
+    Returns:
+        complex (P,) field.
+    """
+    lay, d, e_bot, z_top = stack_rel
+    k = wnum_bg
+    tops = _stack_planes(stack_rel)
+    xs_all = [b[0] for b in boundaries] + ([[source[0]]] if source else [])
+    hs_all = [b[1] - z_top for b in boundaries] + (
+        [[source[1] - z_top]] if source else []
+    )
+    z_min = float(np.concatenate(hs_all).min())
+    fx = np.concatenate([*xs_all, x])
+    x_c = 0.5 * float(fx.max() + fx.min())
+    feats = _stack_poles(complex(k), lay, d, e_bot, pol)[1]
+    path = SommerfeldPath.for_features(k, feats, max(float(np.ptp(fx)), z_min), z_min)
+    q = np.concatenate([path.q, -path.q])
+    w = np.concatenate([path.w, path.w])
+    a1 = alpha(q, k)
+    shifted = [(b[0] - x_c, *b[1:]) for b in boundaries]
+    spec = _spectrum(q, a1, shifted, z_top)
+    if source is not None:
+        spec = (
+            spec
+            + _stack_source_spectra(q, a1, z_top, (source[0] - x_c, *source[1:]))[1]
+        )
+    out = np.zeros(x.size, dtype=complex)
+    for j in range(len(lay)):
+        m = (z < tops[j]) & (z > tops[j + 1])
+        if not m.any():
+            continue
+        # W/α₁ is even in q (it sees q only through the α's): the half path, mirrored.
+        wa = stack_layer_factor(path.q, k, lay, d, e_bot, pol, tops[j] - z[m], j)
+        e = np.exp(1j * np.outer(x[m] - x_c, q))
+        out[m] = (1j / (4.0 * PI)) * (np.concatenate([wa, wa], axis=1) * e) @ (w * spec)
+    return out
+
+
+# P_down over a lossless stack bottom: 16 Gauss–Legendre panels of 200 nodes in s,
+# q = k_bot·sin s on [−π/2, π/2] (S12), split at ±asin(k₁/k_bot) and sine-mapped
+# per panel (an air cover puts a √ kink inside: 1.1e-5 unsplit). The v1.1 flux
+# rule puts one 24-point panel on [0, k_bot] here, because the real guided poles
+# lie beyond it and add no breakpoints: TM dipole balance 9.3e-7 (SOI) against
+# 3.2e-15 with this rule. 200 nodes, not S12's 400: the floor is accumulated
+# round-off (7e-15 at 200, 1.8e-14 at 400).
+DOWN_PANELS = 16
+DOWN_PANEL_POINTS = 200
+
+
+def _stack_down_power(
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    pol: int,
+    stack_rel: tuple,
+    source: tuple | None = None,
+) -> float:
+    """``P_down = (1/2π)∫ Re(Y_b)|τ·d|²/4 dq`` through the bottom of a stack.
+
+    A lossless bottom takes S12's rule, sine-mapped so the √ endpoints at
+    ``±k_bot`` are smooth; a lossy one, which carries power at every q, keeps
+    :func:`_flux_rule` with the stack's features.
+    """
+    lay, d, e_bot, z_top = stack_rel
+    k = wnum_bg
+    tr = Transmission.stack(pol, k, stack_rel)
+    if e_bot.imag == 0.0:
+        kb = float(tr.k_bot.real)
+        x, wx = np.polynomial.legendre.leggauss(DOWN_PANEL_POINTS)
+        edges = set(np.linspace(-0.5 * PI, 0.5 * PI, DOWN_PANELS + 1))
+        if float(np.real(k)) < kb:  # α₁'s √ kink at q = ±k₁ lies inside
+            s_c = float(np.arcsin(np.real(k) / kb))
+            edges |= {-s_c, s_c}
+        e = np.array(sorted(edges))
+        c, h = 0.5 * (e[1:] + e[:-1]), 0.5 * (e[1:] - e[:-1])
+        # Sine map per panel: both endpoints' √ behaviour becomes smooth.
+        sv = (c[:, None] + h[:, None] * np.sin(0.5 * PI * x)).ravel()
+        ws = (h[:, None] * 0.5 * PI * np.cos(0.5 * PI * x) * wx).ravel()
+        q = kb * np.sin(sv)
+        w = ws * kb * np.cos(sv)
+    else:
+        xs = [b[0] for b in boundaries] + ([[source[0]]] if source else [])
+        hs = [b[1] - z_top for b in boundaries]
+        hs += [[source[1] - z_top]] if source else []
+        z_min = 2.0 * float(np.concatenate(hs).min())
+        extent = max(float(np.ptp(np.concatenate(xs))), z_min)
+        q, w = _flux_rule(k, e_bot, pol, extent, z_min, tr=tr)
+    dn = _stack_spectra(q, alpha(q, k), boundaries, z_top, source)[1]
+    return _downward_power(q, w, dn, k, e_bot, pol, tr=tr)
+
+
+def _stack_downward_cross_section(
+    boundaries: list[_Boundary], wnum_bg: complex, stack_rel: tuple, pol: int
+) -> float:
+    """``σ_sca,down = P_down/Re k`` (nm) through the stack, by the bottom flux.
+
+    The scattered spectrum at ``z_top`` carried down by τ
+    (:func:`_stack_down_power`).
+    """
+    p_down = _stack_down_power(boundaries, wnum_bg, pol, stack_rel)
+    return p_down / float(np.real(wnum_bg))
+
+
+def _stack_downward_far_field(
+    n_angles: int,
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    stack_rel: tuple,
+    pol: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """``a_down`` below a stack on ``[π/2, 3π/2]``: the stack's τ and ``k_bot``."""
+    _check_far_field_below(stack_rel[2])
+    angles = np.linspace(0.5 * PI, 1.5 * PI, n_angles)
+    tr = Transmission.stack(pol, wnum_bg, stack_rel)
+    return _amplitude_below(angles, boundaries, tr), angles
+
+
+def _stack_background_field(
+    x: np.ndarray,
+    z: np.ndarray,
+    wnum_bg: complex,
+    pol: int,
+    excitation: str,
+    angle: float,
+    source: tuple[float, float] | None,
+    stack_rel: tuple,
+    b: tuple[complex, complex] | None = None,
+) -> np.ndarray:
+    """Background field over a stack, everywhere off the interfaces.
+
+    :func:`_background_field`'s stack twin (slab-spec §8.3): plane wave
+    ``exp(ik(x sinθ − z cosθ))`` plus ``R`` above, ``W`` in the layers and ``τ``
+    below; dipole ``(i/4)·H₀ + G_ind`` above, ``G_l`` in the layers and ``G_t``
+    below, or ``−(b·∇′)`` of each for an in-plane dipole.
+
+    Raises:
+        ValueError: A custom excitation, a point on an interface plane, or the
+            dipole's own position.
+    """
+    if excitation == "custom":
+        raise ValueError(
+            "incident_field is undefined for a custom incident_rhs: the result "
+            "does not know the field it was driven by"
+        )
+    planes = _stack_planes(stack_rel)
+    if np.any(np.isin(z, planes)):
+        raise ValueError(
+            "observation point exactly on an interface plane of the stack: step "
+            "off it (the field is continuous there)"
+        )
+    k = wnum_bg
+    lay, d, e_bot, z_top = stack_rel
+    z_bot = planes[-1]
+    out = np.zeros(x.size, dtype=complex)
+    above, below = z > z_top, z < z_bot
+    inside = ~above & ~below
+    if excitation == "dipole":
+        assert source is not None
+        xs, zs = source
+        if np.any((x == xs) & (z == zs)):
+            raise ValueError(
+                f"incident_field at the dipole's own position ({xs}, {zs}): "
+                "the line-source field is singular there"
+            )
+        if above.any():
+            xa, za = x[above], z[above]
+            # Z = z + z' − 2·z_top is never below h_obs + h_src: sizing at
+            # 2·min(h) would explode the tail next to the interface.
+            refl = StackReflection.build(
+                pol,
+                k,
+                stack_rel,
+                np.append(xa, xs),
+                np.append(za, zs),
+                z_min=float((za - z_top).min() + (zs - z_top)),
+            )
+            assert refl is not None
+            rho = np.hypot(xa - xs, za - zs)
+            gs = refl.green(xa, za, xs, zs)
+            if b is None:
+                out[above] = 0.25j * hank0(k * rho) + gs[0]
+            else:
+                h1 = 0.25j * k * hank1(k * rho) / rho
+                out[above] = -(
+                    b[0] * (h1 * (xa - xs) + gs[1]) + b[1] * (h1 * (za - zs) + gs[2])
+                )
+        if inside.any():
+            out[inside] = _layer_field(
+                x[inside], z[inside], [], k, pol, stack_rel, (xs, zs, b)
+            )
+        if below.any():
+            xb, zb = x[below], z[below]
+            tr = Transmission.build_stack(pol, k, stack_rel, [xs], [zs], xb, zb)
+            gs = tr.green(xb, zb, xs, zs)
+            out[below] = gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
+        return out
+    theta = np.deg2rad(angle)
+    q, a1 = k * np.sin(theta), k * np.cos(theta)
+    if above.any():
+        xa, za = x[above], z[above]
+        r = stack_r(np.asarray(q), k, lay, d, e_bot, pol)
+        out[above] = np.exp(1j * (q * xa - a1 * za))
+        out[above] += r * np.exp(1j * (q * xa + a1 * (za - 2.0 * z_top)))
+    for j in range(len(lay)):
+        m = (z < planes[j]) & (z > planes[j + 1])
+        if m.any():
+            w = stack_layer_factor(
+                np.array([q]), k, lay, d, e_bot, pol, planes[j] - z[m], j
+            )
+            out[m] = a1 * w[:, 0] * np.exp(1j * (q * x[m] - a1 * z_top))
+    if below.any():
+        tr = Transmission.stack(pol, k, stack_rel)
+        out[below] = tr.plane_wave(angle, x[below], z[below])
+    return out
+
+
+# Gauss–Legendre nodes on [−π/2, π/2] for P_up in the mode power account (split
+# at the bottom's critical angle when Re k_bot < k). Measured in the v1.2 commit:
+# see tests/test_stack.py GW12.
+POWER_ANGLES = 800
+
+
+def _mode_overlap(
+    boundaries: list[_Boundary], modes: tuple, wnum_bg: complex
+) -> tuple[np.ndarray, np.ndarray]:
+    """Guided amplitudes of the scattered field, as amplitudes of ``u_m(z)e^{±iβ_m x}``.
+
+    Slab-spec §2.6 (S12), the guided pole of S9 applied to
+    ``u_s = −(M1φ + M2χ)`` (conventions §15):
+
+        ``c_m^± = −(i/(2β_m N_m)) Σ_j h u_m(z_j) e^{∓iβ_m x_j}
+        [(∓iβ_m dg_j + γ₁ df_j)φ_j + χ_j]``
+
+    summed over every particle; ``u_m′ = −γ₁u_m`` in the cover.
+
+    Args:
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        modes: The :class:`~pysie2d.layered.GuidedMode` tuple.
+        wnum_bg: Background wavenumber (unused: γ₁ and β carry it).
+
+    Returns:
+        ``(c_plus, c_minus)``, complex ``(n_modes,)`` each.
+    """
+    c_p = np.zeros(len(modes), dtype=complex)
+    c_m = np.zeros(len(modes), dtype=complex)
+    for f, g, df, dg, delt, ei in boundaries:
+        nn = f.size
+        phi, chi = ei[:nn], ei[nn:]
+        for i, m in enumerate(modes):
+            b, g1, u = m.beta, m.gamma, m.profile(g)
+            pre = -1j / (2.0 * b * m.norm) * delt
+            c_p[i] += pre * np.sum(
+                u * np.exp(-1j * b * f) * ((-1j * b * dg + g1 * df) * phi + chi)
+            )
+            c_m[i] += pre * np.sum(
+                u * np.exp(1j * b * f) * ((1j * b * dg + g1 * df) * phi + chi)
+            )
+    return c_p, c_m
+
+
+def _stack_powers(
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    pol: int,
+    stack_rel: tuple,
+    source: tuple | None = None,
+    n_angles: int = POWER_ANGLES,
+) -> tuple[float, float, float]:
+    """``(P_up, P_down, P_abs)`` of the total field over a stack (slab-spec §2.7).
+
+    In G14's units, where the free line source emits 1/4:
+
+        ``P_up = (1/2π) ∫ |u↑ + R·d|²/4 dθ``  over ``[−π/2, π/2]``, ``q = k sin θ``
+        ``P_down = (1/2π) ∫ Re(Y_b)|τ·d|²/4 dq``  (:func:`_stack_down_power`)
+        ``P_abs = −Im Σ h·conj(φ)·χ``
+
+    Real ``k`` and a lossless stack: every guided pole lies beyond ``k_out``,
+    off both real-axis integrals.
+
+    Args:
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle; may be empty.
+        wnum_bg: Background wavenumber (real).
+        pol: 2 = TE, 1 = TM.
+        stack_rel: The normalised relative stack.
+        source: ``(x_s, z_s, b)`` of a source, or ``None``.
+        n_angles: Gauss–Legendre nodes for ``P_up``.
+
+    Returns:
+        The three powers.
+    """
+    lay, d, e_bot, z_top = stack_rel
+    k = wnum_bg
+    theta, wt = _upward_rule(n_angles, e_bot)
+    q = k * np.sin(theta)
+    up, dn = _stack_spectra(q, k * np.cos(theta), boundaries, z_top, source)
+    r = stack_r(q + 0j, k, lay, d, e_bot, pol)
+    p_up = float(np.sum(wt * np.abs(up + r * dn) ** 2) / (8.0 * PI))
+    p_down = _stack_down_power(boundaries, k, pol, stack_rel, source)
+    p_abs = -float(
+        sum(
+            np.imag(b[4] * np.sum(np.conj(b[5][: b[0].size]) * b[5][b[0].size :]))
+            for b in boundaries
+        )
+    )
+    return p_up, p_down, p_abs
+
+
+def _representation_gradient_at(
+    ei_p: np.ndarray,
+    nn: int,
+    f: np.ndarray,
+    df: np.ndarray,
+    g: np.ndarray,
+    dg: np.ndarray,
+    delt: float,
+    wnum: complex,
+    x_pts: np.ndarray,
+    z_pts: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Analytic observer gradient ``(∂x u, ∂z u)`` of :func:`_representation_at`.
+
+    The kernel ``k²·arg2·H₁(u)/u·φ − H₀(u)·χ``, ``u = kρ``,
+    ``arg2 = −dg·X + df·Z``, differentiated with ``H₀′ = −H₁`` and
+    ``(H₁(u)/u)′ = −H₂(u)/u``, ``H₂ = 2H₁/u − H₀`` (slab-spec §8.2): the in-plane
+    source power needs ``∇u_s`` at the source, where a finite difference is
+    h⁴-limited (s12b: 2e-11).
+
+    Args:
+        ei_p: complex (2nn,) solution vector of this boundary.
+        nn: Number of boundary points.
+        f: (nn,) boundary x (nm).
+        df: (nn,) df/dt.
+        g: (nn,) boundary z (nm).
+        dg: (nn,) dg/dt.
+        delt: Trapezoid step.
+        wnum: Wavenumber (the exterior k_bg).
+        x_pts: (M,) observation x (nm).
+        z_pts: (M,) observation z (nm).
+
+    Returns:
+        ``(ux, uz)``, complex (M,) each.
+    """
+    X = x_pts[:, None] - f[None, :]
+    Z = z_pts[:, None] - g[None, :]
+    rho = np.sqrt(X**2 + Z**2)
+    u = wnum * rho
+    h0, h1 = hank0(u), hank1(u)
+    h1u = h1 / u
+    h2u = (2.0 * h1u - h0) / u
+    arg2 = -dg[None, :] * X + df[None, :] * Z
+    phi, chi = ei_p[None, :nn], ei_p[None, nn:]
+    k2 = wnum**2
+    ux = k2 * (-dg[None, :] * h1u - arg2 * wnum * h2u * X / rho) * phi
+    ux += wnum * h1 * X / rho * chi
+    uz = k2 * (df[None, :] * h1u - arg2 * wnum * h2u * Z / rho) * phi
+    uz += wnum * h1 * Z / rho * chi
+    return (1j / 4.0) * np.sum(ux * delt, axis=1), (1j / 4.0) * np.sum(
+        uz * delt, axis=1
+    )

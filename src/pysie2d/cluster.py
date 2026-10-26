@@ -25,7 +25,7 @@ from collections.abc import Sequence
 import numpy as np
 
 from . import layered
-from .background import HalfSpace
+from .background import HalfSpace, Stack, _effective, _top
 from .fields import (
     _background_field,
     _check_far_field_below,
@@ -39,9 +39,17 @@ from .fields import (
 )
 from .geometry import Geometry
 from .kernels import _real_if_real, assemble_cross_block, assemble_matrix
+from .layered import GuidedMode
 from .material import Material
 from .solver import wavelength_over_ds
-from .sources import _point_inside, line_dipole_rhs, plane_wave_rhs
+from .sources import (
+    _in_plane_dipole_rhs,
+    _point_inside,
+    in_plane_moment_b,
+    line_dipole_rhs,
+    plane_wave_rhs,
+)
+from .waveguide import _mode_rhs, _resolve_mode, _StackResult
 
 PI = np.pi
 
@@ -253,7 +261,8 @@ class ClusterBIESolver:
         cluster: The arrangement being solved.
         materials: Per-particle optical properties, in DOF order.
         pol: Polarisation: 1 = TM (H_y), 2 = TE (E_y).
-        background: A :class:`~pysie2d.background.HalfSpace` the whole cluster
+        background: A :class:`~pysie2d.background.HalfSpace` or
+            :class:`~pysie2d.background.Stack` the whole cluster
             sits above, or ``None`` (default) for the homogeneous cladding,
             bit-identical to a solver without the argument. Every particle pair
             is coupled through the substrate, including a particle with itself.
@@ -264,7 +273,7 @@ class ClusterBIESolver:
         cluster: Cluster,
         materials: Sequence[Material],
         pol: int = 2,
-        background: HalfSpace | None = None,
+        background: HalfSpace | Stack | None = None,
     ) -> None:
         """Bind materials and a polarisation to an arrangement.
 
@@ -308,14 +317,14 @@ class ClusterBIESolver:
         self.pol = pol
         self.background = background
         if background is not None:
-            layered.check_interface_gap(cluster.geometries, background.z_int, pol)
+            layered.check_interface_gap(cluster.geometries, _top(background), pol)
 
     def _reflection(
         self,
         wavelength: float | complex,
         f: np.ndarray | None = None,
         g: np.ndarray | None = None,
-    ) -> layered.Reflection | None:
+    ) -> layered.Reflection | layered.StackReflection | None:
         """Reflected-field context for the whole cluster, or ``None`` without one.
 
         One path serves every particle pair, so it is sized for the **cluster's**
@@ -326,15 +335,24 @@ class ClusterBIESolver:
             f: x coordinates of every point to serve; every node by default.
             g: Their z coordinates.
         """
-        if self.background is None:
+        mat = self.materials[0]
+        bg = _effective(self.background, mat.n_clad, wavelength)
+        if bg is None:
             return None
         geoms = self.cluster.geometries
-        mat = self.materials[0]
+        if isinstance(bg, Stack):
+            return layered.StackReflection.build(
+                self.pol,
+                mat.wnum_bg(wavelength),
+                bg.eps_rel(mat.n_clad, wavelength),
+                np.concatenate([gp.f for gp in geoms]) if f is None else f,
+                np.concatenate([gp.g for gp in geoms]) if g is None else g,
+            )
         return layered.Reflection.build(
             self.pol,
             mat.wnum_bg(wavelength),
-            self.background.eps_rel(mat.n_clad, wavelength),
-            self.background.z_int,
+            bg.eps_rel(mat.n_clad, wavelength),
+            bg.z_int,
             np.concatenate([gp.f for gp in geoms]) if f is None else f,
             np.concatenate([gp.g for gp in geoms]) if g is None else g,
         )
@@ -448,7 +466,12 @@ class ClusterBIESolver:
         )
 
     def scatter_dipole(
-        self, wavelength: float, x_s: float, z_s: float
+        self,
+        wavelength: float,
+        x_s: float,
+        z_s: float,
+        *,
+        moment: tuple[complex, complex] | None = None,
     ) -> "ClusterScatterResult":
         """Solve the coupled system for a line-dipole source.
 
@@ -456,13 +479,16 @@ class ClusterBIESolver:
             wavelength: Vacuum wavelength λ_vac in nm.
             x_s: Source x-coordinate (nm).
             z_s: Source z-coordinate (nm).
+            moment: ``(p_x, p_z)`` of an in-plane electric dipole, TM only;
+                see :meth:`pysie2d.solver.BIESolver.scatter_dipole`.
 
         Returns:
             The :class:`ClusterScatterResult` carrying the coupled solution.
 
         Raises:
             ValueError: If the source lies inside, or too close to, any
-                particle — raised by :func:`~pysie2d.sources.line_dipole_rhs`.
+                particle — raised by :func:`~pysie2d.sources.line_dipole_rhs`;
+                a ``moment`` at ``pol = 2`` (T7).
 
         Warns:
             ClusterResolutionWarning: If the particles' resolutions differ by
@@ -472,10 +498,21 @@ class ClusterBIESolver:
         """
         self._check_resolution(wavelength)
         self._check_gap(wavelength)
+        if moment is not None and self.pol != 1:
+            raise ValueError(
+                "moment= is accepted at pol = 1 (TM) only: in TE the same source "
+                "would be an in-plane magnetic dipole (slab-spec T7)"
+            )
+        b = None if moment is None else in_plane_moment_b(moment)
         cl = self.cluster
         k_bg = self.materials[0].wnum_bg(wavelength)
         rhs = np.zeros(cl.n_dof, dtype=complex)
         for p, gp in enumerate(cl.geometries):
+            if b is not None:
+                rhs[cl.slice(p)] = _in_plane_dipole_rhs(
+                    gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s, b
+                )
+                continue
             # line_dipole_rhs's own inside/too-close guards run once per
             # particle, which is exactly the cluster condition: the source must
             # lie outside every particle. No extra check is needed here and
@@ -488,9 +525,9 @@ class ClusterBIESolver:
         )
         if refl is not None:
             for p, gp in enumerate(cl.geometries):
-                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += refl.green(
-                    gp.f, gp.g, x_s, z_s
-                )[0]
+                gs = refl.green(gp.f, gp.g, x_s, z_s)
+                term = gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
+                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += term
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
             ei,
@@ -502,6 +539,62 @@ class ClusterBIESolver:
             "dipole",
             self.background,
             source=(x_s, z_s),
+            moment=None if moment is None else (complex(moment[0]), complex(moment[1])),
+        )
+
+    def scatter_mode(
+        self,
+        wavelength: float,
+        mode: GuidedMode | int,
+        direction: int,
+        *,
+        x_ref: float,
+    ) -> "ClusterScatterResult":
+        """Solve for a guided mode of the stack incident on the cluster.
+
+        See :meth:`pysie2d.solver.BIESolver.scatter_mode`: the RHS φ-half is
+        ``ũ_m(z_j)e^{±iβ(x_j − x_ref)}`` on every particle, the χ-half 0.
+
+        Args:
+            wavelength: Real vacuum wavelength λ_vac in nm.
+            mode: A guided mode of this stack, or its index.
+            direction: +1 towards +x, −1 towards −x.
+            x_ref: Phase reference along x (nm), required (R14).
+
+        Returns:
+            The :class:`ClusterScatterResult`, ``excitation = "mode"``.
+
+        Raises:
+            ValueError: Without a stack; complex λ or a lossy stack (T2); a
+                direction other than ±1; a mode foreign to this stack.
+        """
+        self._check_resolution(wavelength)
+        self._check_gap(wavelength)
+        n_clad = self.materials[0].n_clad
+        if not isinstance(_effective(self.background, n_clad, wavelength), Stack):
+            raise ValueError("scatter_mode needs a Stack background that guides")
+        m = _resolve_mode(
+            self.background, wavelength, self.pol, n_clad, mode, direction
+        )
+        cl = self.cluster
+        rhs = np.zeros(cl.n_dof, dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] = _mode_rhs(
+                m, direction, x_ref, gp.f, gp.g
+            )
+        ei = np.linalg.solve(self._assemble(wavelength), rhs)
+        return ClusterScatterResult(
+            ei,
+            cl,
+            self.materials,
+            self.pol,
+            wavelength,
+            0.0,
+            "mode",
+            self.background,
+            mode=m,
+            direction=direction,
+            x_ref=x_ref,
         )
 
     def _check_gap(self, wavelength: float) -> None:
@@ -579,7 +672,7 @@ class ClusterBIESolver:
         )
 
 
-class ClusterScatterResult:
+class ClusterScatterResult(_StackResult):
     """Result of a single-wavelength coupled cluster solve.
 
     Observables are additive over boundaries, which is what makes the façade
@@ -618,9 +711,13 @@ class ClusterScatterResult:
         wavelength: float,
         angle: float,
         excitation: str,
-        background: HalfSpace | None = None,
+        background: HalfSpace | Stack | None = None,
         *,
         source: tuple[float, float] | None = None,
+        mode: GuidedMode | None = None,
+        direction: int | None = None,
+        x_ref: float | None = None,
+        moment: tuple[complex, complex] | None = None,
     ) -> None:
         """Store a coupled solution and the problem that produced it.
 
@@ -634,6 +731,10 @@ class ClusterScatterResult:
             excitation: ``"plane_wave"`` or ``"dipole"``.
             background: The substrate the cluster sits on, or ``None``.
             source: The dipole position ``(x_s, z_s)``, or ``None``.
+            mode: The incident guided mode of a mode excitation, or ``None``.
+            direction: Its direction, +1 or −1, or ``None``.
+            x_ref: Its phase reference along x (nm), or ``None``.
+            moment: In-plane dipole moment ``(p_x, p_z)``, or ``None``.
         """
         self.ei = ei
         self.cluster = cluster
@@ -644,20 +745,39 @@ class ClusterScatterResult:
         self._excitation = excitation
         self.background = background
         self.source = source
+        self.mode = mode
+        self.direction = direction
+        self.x_ref = x_ref
+        self.moment = moment
 
-    def _substrate(self) -> tuple:
-        """Arguments the half-space far-field helpers share."""
-        assert self.background is not None
-        boundaries = [
+    @property
+    def _pol(self) -> int:
+        return self.pol
+
+    @property
+    def _n_clad(self) -> float:
+        return self.materials[0].n_clad
+
+    @property
+    def _excitation_name(self) -> str:
+        return self._excitation
+
+    def _boundaries(self) -> list:
+        return [
             (gp.f, gp.g, gp.df, gp.dg, gp.delt, self.ei_particle(p))
             for p, gp in enumerate(self.cluster.geometries)
         ]
+
+    def _substrate(self) -> tuple:
+        """Arguments the half-space far-field helpers share."""
+        bg = self._bg
+        assert isinstance(bg, HalfSpace)
         return (
-            boundaries,
+            self._boundaries(),
             self.wnum_bg,
-            self.background.eps_rel(self.materials[0].n_clad, self.wavelength),
+            bg.eps_rel(self.materials[0].n_clad, self.wavelength),
             self.pol,
-            self.background.z_int,
+            bg.z_int,
         )
 
     @property
@@ -688,7 +808,10 @@ class ClusterScatterResult:
             observation angles in radians, measured from +z. With a background
             this is the upward amplitude on ``[−π/2, π/2]`` inclusive.
         """
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_far_field(n_angles)
+        if bg is not None:
             return _upward_far_field(n_angles, *self._substrate())
         angles = -PI + np.arange(n_angles) * 2.0 * PI / (n_angles - 1.0)
         return self._amp_at(angles), angles
@@ -716,11 +839,14 @@ class ClusterScatterResult:
             NoFarFieldError: Over PEC, an absorbing substrate (``Im ε ≠ 0``) or
                 ``Re ε ≤ 0``, where no wave reaches infinity below (D2).
         """
-        if self.background is None:
+        bg = self._bg
+        if bg is None:
             raise ValueError(
                 "far_field_down needs a background: without one far_field() "
                 "already covers the full circle"
             )
+        if isinstance(bg, Stack):
+            return self._stack_far_field_down(n_angles)
         args = self._substrate()
         _check_far_field_below(args[2])
         return _downward_far_field(n_angles, *args)
@@ -780,7 +906,10 @@ class ClusterScatterResult:
                 "incident plane wave; this result came from "
                 f"{self._excitation} excitation"
             )
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_cross_sections(n_angles)
+        if bg is not None:
             args = self._substrate()
             c = _upward_cross_sections(n_angles, *args)
             if np.imag(self.wavelength) == 0.0:  # D18: no real-axis flux otherwise
@@ -838,8 +967,11 @@ class ClusterScatterResult:
         """
         x = np.asarray(x, dtype=float).ravel()
         z = np.asarray(z, dtype=float).ravel()
-        if self.background is not None:
-            z_int = self.background.z_int
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_eval_field(x, z)
+        if bg is not None:
+            z_int = bg.z_int
             if np.any(z == z_int):
                 raise ValueError(
                     f"observation point exactly at the interface z_int = {z_int}: "
@@ -856,9 +988,10 @@ class ClusterScatterResult:
 
     def _substrate_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
         """Scattered field at points below the interface."""
-        assert self.background is not None
+        bg = self._bg
+        assert isinstance(bg, HalfSpace)
         geoms = self.cluster.geometries
-        eps_rel = self.background.eps_rel(self.materials[0].n_clad, self.wavelength)
+        eps_rel = bg.eps_rel(self.materials[0].n_clad, self.wavelength)
         if eps_rel is None:
             return np.zeros(x.size, dtype=complex)
         # One path for every particle: sized for the whole cluster's extent.
@@ -866,7 +999,7 @@ class ClusterScatterResult:
             self.pol,
             self.wnum_bg,
             eps_rel,
-            self.background.z_int,
+            bg.z_int,
             np.concatenate([gp.f for gp in geoms]),
             np.concatenate([gp.g for gp in geoms]),
             x,
@@ -886,13 +1019,16 @@ class ClusterScatterResult:
         """Field at points above the interface (the v0.9 path)."""
         k = _real_if_real(self.wnum_bg)
         refl = None
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            refl = self._stack_cover_reflection(x, z)
+        elif bg is not None:
             geoms = self.cluster.geometries
             refl = layered.Reflection.build(
                 self.pol,
                 self.wnum_bg,
-                self.background.eps_rel(self.materials[0].n_clad, self.wavelength),
-                self.background.z_int,
+                bg.eps_rel(self.materials[0].n_clad, self.wavelength),
+                bg.z_int,
                 np.concatenate([gp.f for gp in geoms] + [x]),
                 np.concatenate([gp.g for gp in geoms] + [z]),
             )
@@ -950,7 +1086,9 @@ class ClusterScatterResult:
 
     def _background_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
         """The unmasked background field; see :meth:`incident_field`."""
-        bg = self.background
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_background(x, z)
         n_clad = self.materials[0].n_clad
         return _background_field(
             x,
@@ -962,6 +1100,7 @@ class ClusterScatterResult:
             self.source,
             None if bg is None else bg.eps_rel(n_clad, self.wavelength),
             None if bg is None else bg.z_int,
+            self._b,
         )
 
     def incident_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
@@ -985,7 +1124,7 @@ class ClusterScatterResult:
         x = np.asarray(x, dtype=float).ravel()
         z = np.asarray(z, dtype=float).ravel()
         field = self._background_field(x, z)
-        z_int = -np.inf if self.background is None else self.background.z_int
+        z_int = -np.inf if self.background is None else _top(self.background)
         for j in np.flatnonzero(z > z_int):  # particles lie in the cover
             if any(
                 _point_inside(x[j], z[j], gp.f, gp.g) for gp in self.cluster.geometries

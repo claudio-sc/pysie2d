@@ -13,7 +13,7 @@ from collections.abc import Callable
 import numpy as np
 
 from . import layered
-from .background import HalfSpace
+from .background import HalfSpace, Stack, _effective, _top
 from .fields import (
     _background_field,
     _check_far_field_below,
@@ -29,9 +29,16 @@ from .fields import (
 )
 from .geometry import Geometry
 from .kernels import assemble_matrix, assemble_matrix_dwn
+from .layered import GuidedMode
 from .material import Material
 from .multipole import Multipoles, decompose
-from .sources import line_dipole_rhs, plane_wave_rhs
+from .sources import (
+    _in_plane_dipole_rhs,
+    in_plane_moment_b,
+    line_dipole_rhs,
+    plane_wave_rhs,
+)
+from .waveguide import _mode_rhs, _resolve_mode, _StackResult
 
 PI = np.pi
 
@@ -126,7 +133,7 @@ def wavelength_over_ds(
     return float(np.real(wavelength)) / material.n_core / ds_max
 
 
-class ScatterResult:
+class ScatterResult(_StackResult):
     """Result of a single-wavelength BIE solve.
 
     Attributes:
@@ -136,14 +143,21 @@ class ScatterResult:
         material: The scatterer optical properties.
         wavelength: **Vacuum** wavelength (nm) this was solved at.
         angle: Incident plane-wave angle (degrees).
-        background: The substrate the particle sits on, or ``None`` for the
-            homogeneous cladding. With one, ``far_field`` is the upward
-            amplitude, ``cross_sections`` and ``efficiencies`` carry the
-            ``*_up`` and ``*_down`` keys, and ``multipoles`` raises
-            ``NotImplementedError``.
-        excitation: ``"plane_wave"``, ``"dipole"`` or ``"custom"`` (a
-            user ``incident_rhs``), which :meth:`incident_field` needs.
+        background: The substrate or :class:`~pysie2d.background.Stack` the
+            particle sits on, or ``None`` for the homogeneous cladding. With
+            one, ``far_field`` is the upward amplitude, ``cross_sections`` and
+            ``efficiencies`` carry the ``*_up`` and ``*_down`` keys, and
+            ``multipoles`` raises ``NotImplementedError``.
+        excitation: ``"plane_wave"``, ``"dipole"``, ``"mode"`` or
+            ``"custom"`` (a user ``incident_rhs``), which
+            :meth:`incident_field` needs.
         source: The dipole position ``(x_s, z_s)``, or ``None``.
+        mode: The incident :class:`~pysie2d.layered.GuidedMode` of a mode
+            excitation, or ``None``.
+        direction: Its direction, +1 or −1, or ``None``.
+        x_ref: Its phase reference along x (nm), or ``None``.
+        moment: The in-plane dipole moment ``(p_x, p_z)`` of a dipole
+            excitation, or ``None`` for the scalar line source.
     """
 
     def __init__(
@@ -153,10 +167,14 @@ class ScatterResult:
         material: Material,
         wavelength: float,
         angle: float = 0.0,
-        background: HalfSpace | None = None,
+        background: HalfSpace | Stack | None = None,
         *,
         excitation: str = "plane_wave",
         source: tuple[float, float] | None = None,
+        mode: GuidedMode | None = None,
+        direction: int | None = None,
+        x_ref: float | None = None,
+        moment: tuple[complex, complex] | None = None,
     ) -> None:
         """Store the BIE solution and the problem it was solved for."""
         self.ei = ei
@@ -167,6 +185,26 @@ class ScatterResult:
         self.background = background
         self.excitation = excitation
         self.source = source
+        self.mode = mode
+        self.direction = direction
+        self.x_ref = x_ref
+        self.moment = moment
+
+    @property
+    def _pol(self) -> int:
+        return self.material.pol
+
+    @property
+    def _n_clad(self) -> float:
+        return self.material.n_clad
+
+    @property
+    def _excitation_name(self) -> str:
+        return self.excitation
+
+    def _boundaries(self) -> list:
+        g = self.geometry
+        return [(g.f, g.g, g.df, g.dg, g.delt, self.ei)]
 
     def _upward(self, n_angles: int) -> dict[str, float]:
         """``σ_sca,up``, ``σ_sca,down`` and ``σ_abs`` over the substrate.
@@ -174,6 +212,8 @@ class ScatterResult:
         ``σ_sca,down`` is absent at complex λ: the real-axis flux is undefined
         when ``Im k < 0`` (D18).
         """
+        if isinstance(self._bg, Stack):
+            return self._stack_cross_sections(n_angles)
         args = self._substrate()
         c = _upward_cross_sections(n_angles, *args)
         if np.imag(self.wavelength) == 0.0:
@@ -182,14 +222,14 @@ class ScatterResult:
 
     def _substrate(self) -> tuple:
         """Arguments the half-space far-field helpers share."""
-        g = self.geometry
-        assert self.background is not None
+        bg = self._bg
+        assert isinstance(bg, HalfSpace)
         return (
-            [(g.f, g.g, g.df, g.dg, g.delt, self.ei)],
+            self._boundaries(),
             self.wnum_bg,
-            self.background.eps_rel(self.material.n_clad, self.wavelength),
+            bg.eps_rel(self.material.n_clad, self.wavelength),
             self.material.pol,
-            self.background.z_int,
+            bg.z_int,
         )
 
     @property
@@ -237,8 +277,11 @@ class ScatterResult:
         """
         x = np.asarray(x, dtype=float)
         z = np.asarray(z, dtype=float)
-        if self.background is not None:
-            z_int = self.background.z_int
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_eval_field(x.ravel(), z.ravel()).reshape(x.shape)
+        if bg is not None:
+            z_int = bg.z_int
             zf = z.ravel()
             if np.any(zf == z_int):
                 raise ValueError(
@@ -258,15 +301,16 @@ class ScatterResult:
     def _substrate_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
         """Scattered field at points below the interface (1-D arrays)."""
         g = self.geometry
-        assert self.background is not None
-        eps_rel = self.background.eps_rel(self.material.n_clad, self.wavelength)
+        bg = self._bg
+        assert isinstance(bg, HalfSpace)
+        eps_rel = bg.eps_rel(self.material.n_clad, self.wavelength)
         if eps_rel is None:
             return np.zeros(x.size, dtype=complex)
         tr = layered.Transmission.build(
             self.material.pol,
             self.wnum_bg,
             eps_rel,
-            self.background.z_int,
+            bg.z_int,
             g.f,
             g.g,
             x,
@@ -282,12 +326,15 @@ class ScatterResult:
         """Scattered field at points above the interface (the v0.9 path)."""
         g = self.geometry
         refl = None
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            refl = self._stack_cover_reflection(x.ravel(), z.ravel())
+        elif bg is not None:
             refl = layered.Reflection.build(
                 self.material.pol,
                 self.wnum_bg,
-                self.background.eps_rel(self.material.n_clad, self.wavelength),
-                self.background.z_int,
+                bg.eps_rel(self.material.n_clad, self.wavelength),
+                bg.z_int,
                 np.concatenate([g.f, x.ravel()]),
                 np.concatenate([g.g, z.ravel()]),
             )
@@ -324,7 +371,9 @@ class ScatterResult:
 
     def _background_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
         """The unmasked background field; see :meth:`incident_field`."""
-        bg = self.background
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_background(x, z)
         return _background_field(
             x,
             z,
@@ -335,6 +384,7 @@ class ScatterResult:
             self.source,
             None if bg is None else bg.eps_rel(self.material.n_clad, self.wavelength),
             None if bg is None else bg.z_int,
+            self._b,
         )
 
     def incident_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
@@ -361,7 +411,7 @@ class ScatterResult:
         z = np.asarray(z, dtype=float).ravel()
         field = self._background_field(x, z)
         g = self.geometry
-        z_int = -np.inf if self.background is None else self.background.z_int
+        z_int = -np.inf if self.background is None else _top(self.background)
         for j in np.flatnonzero(z > z_int):  # particles lie in the cover
             if not _is_outside(x[j], z[j], g.f, g.g, g.df, g.dg):
                 field[j] = 0.0
@@ -396,7 +446,7 @@ class ScatterResult:
                 the coefficients are meaningless (measured: 58 % error at
                 0.9 × the circumscribing radius, with nothing else to warn you).
         """
-        if self.background is not None:
+        if self._bg is not None:
             raise NotImplementedError(
                 "multipoles is not available with a background: the expansion "
                 "is of the free-space scattered field"
@@ -443,7 +493,10 @@ class ScatterResult:
             angles: float (n_angles,) observation angles (rad), from −π to π
                 (``−π/2`` to ``π/2`` with a background), measured from +z.
         """
-        if self.background is not None:
+        bg = self._bg
+        if isinstance(bg, Stack):
+            return self._stack_far_field(n_angles)
+        if bg is not None:
             return _upward_far_field(n_angles, *self._substrate())
         g = self.geometry
         return far_field(
@@ -481,11 +534,14 @@ class ScatterResult:
             NoFarFieldError: Over PEC, an absorbing substrate (``Im ε ≠ 0``) or
                 ``Re ε ≤ 0``, where no wave reaches infinity below (D2).
         """
-        if self.background is None:
+        bg = self._bg
+        if bg is None:
             raise ValueError(
                 "far_field_down needs a background: without one far_field() "
                 "already covers the full circle"
             )
+        if isinstance(bg, Stack):
+            return self._stack_far_field_down(n_angles)
         args = self._substrate()
         _check_far_field_below(args[2])
         return _downward_far_field(n_angles, *args)
@@ -512,12 +568,14 @@ class ScatterResult:
             total ``qsca`` are not defined over a substrate,
             since power also goes into it and the incident wave is reflected.
         """
-        if self.background is not None:
+        if self._bg is not None:
             c = self._upward(n_angles)
             norm = 2.0 * self.geometry.rad
             eff = {"qsca_up": c["c_sca_up"] / norm, "qabs": c["c_abs"] / norm}
             if "c_sca_down" in c:
                 eff["qsca_down"] = c["c_sca_down"] / norm
+            if "c_guided" in c:
+                eff["qguided"] = c["c_guided"] / norm
             return eff
         wnum_bg = self.wnum_bg
         norfac = 8.0 * PI * wnum_bg
@@ -584,7 +642,7 @@ class ScatterResult:
             (2.5 % of a dipole's power at ``ε_rel = −4``). Any loss absorbs it
             into ``c_sca_down`` (conventions §16).
         """
-        if self.background is not None:
+        if self._bg is not None:
             return self._upward(n_angles)
         g = self.geometry
         wnum_bg = self.wnum_bg
@@ -609,8 +667,9 @@ class BIESolver:
     Attributes:
         geometry: Discretized particle boundary.
         material: Optical properties of the scatterer.
-        background: A :class:`~pysie2d.background.HalfSpace` the particle sits
-            above, or ``None`` (default) for the homogeneous cladding, which is
+        background: A :class:`~pysie2d.background.HalfSpace` or
+            :class:`~pysie2d.background.Stack` the particle sits above, or
+            ``None`` (default) for the homogeneous cladding, which is
             bit-identical to a solver without the argument.
 
     Examples:
@@ -626,7 +685,7 @@ class BIESolver:
         self,
         geometry: Geometry,
         material: Material,
-        background: HalfSpace | None = None,
+        background: HalfSpace | Stack | None = None,
     ) -> None:
         """Compose a geometry and a material into a reusable solver.
 
@@ -640,30 +699,43 @@ class BIESolver:
         # A path fixed for a whole QNM search box; None builds one per call.
         self._path: layered.SommerfeldPath | None = None
         if background is not None:
-            layered.check_interface_gap([geometry], background.z_int, material.pol)
+            layered.check_interface_gap([geometry], _top(background), material.pol)
 
     def _reflection(
         self,
         wavelength: float | complex,
         f: np.ndarray | None = None,
         g: np.ndarray | None = None,
-    ) -> layered.Reflection | None:
+    ) -> layered.Reflection | layered.StackReflection | None:
         """Reflected-field context at ``wavelength``, or ``None`` without one.
+
+        A :class:`~pysie2d.background.Stack` dispatches to
+        :class:`~pysie2d.layered.StackReflection` after the T6 normalisation;
+        one with no layer left takes the half-space or no-background path.
 
         Args:
             wavelength: **Vacuum** wavelength (nm).
             f: x coordinates of every point to serve; the boundary by default.
             g: Their z coordinates.
         """
-        if self.background is None:
+        mat = self.material
+        bg = _effective(self.background, mat.n_clad, wavelength)
+        if bg is None:
             return None
         geo = self.geometry
-        mat = self.material
+        if isinstance(bg, Stack):
+            return layered.StackReflection.build(
+                mat.pol,
+                mat.wnum_bg(wavelength),
+                bg.eps_rel(mat.n_clad, wavelength),
+                geo.f if f is None else f,
+                geo.g if g is None else g,
+            )
         return layered.Reflection.build(
             mat.pol,
             mat.wnum_bg(wavelength),
-            self.background.eps_rel(mat.n_clad, wavelength),
-            self.background.z_int,
+            bg.eps_rel(mat.n_clad, wavelength),
+            bg.z_int,
             geo.f if f is None else f,
             geo.g if g is None else g,
             path=self._path,
@@ -771,6 +843,11 @@ class BIESolver:
             mat.eps,
         )
         refl = self._reflection(wavelength)
+        if isinstance(refl, layered.StackReflection):
+            raise ValueError(
+                "no wavelength derivative over a Stack: slab QNMs are out of "
+                "scope (slab-spec R2, T5)"
+            )
         if refl is not None:
             # Added before the chain factor, so it is applied exactly once. The
             # path is fixed, so d/dk at fixed nodes is the exact derivative.
@@ -833,6 +910,8 @@ class BIESolver:
         wavelength: float,
         x_s: float,
         z_s: float,
+        *,
+        moment: tuple[complex, complex] | None = None,
     ) -> ScatterResult:
         """Solve the BIE for a line-dipole (2-D point) source at (x_s, z_s).
 
@@ -844,14 +923,23 @@ class BIESolver:
             wavelength: **Vacuum** wavelength (nm).
             x_s: Source x-coordinate (nm).
             z_s: Source z-coordinate (nm).
+            moment: ``(p_x, p_z)`` of an in-plane **electric** dipole, TM
+                (``pol = 1``) only (T7): the source becomes
+                ``u = −(b·∇′)G(r, r_s)`` with ``b = (p_z, −p_x)``, and the field
+                returned is ``H_y/(iω)`` per unit moment in the scalar source's
+                units (slab-spec §2.8). ``None`` is the scalar line source, bit
+                for bit.
 
         Returns:
             ScatterResult carrying the scattered-field solution vector.
 
         Raises:
             ValueError: If the source is inside the particle or too close to
-                its surface (see :func:`pysie2d.sources.line_dipole_rhs`).
+                its surface (see :func:`pysie2d.sources.line_dipole_rhs`); a
+                ``moment`` at ``pol = 2``, where it would be a magnetic dipole.
         """
+        if moment is not None:
+            return self._scatter_in_plane(wavelength, x_s, z_s, moment)
         geo = self.geometry
         refl = self._reflection(
             wavelength, np.append(geo.f, x_s), np.append(geo.g, z_s)
@@ -874,4 +962,90 @@ class BIESolver:
             self.background,
             excitation="dipole",
             source=(x_s, z_s),
+        )
+
+    def scatter_mode(
+        self,
+        wavelength: float,
+        mode: GuidedMode | int,
+        direction: int,
+        *,
+        x_ref: float,
+    ) -> ScatterResult:
+        """Solve for a guided mode of the stack incident on the particle.
+
+        The incident field is the power-normalised mode
+        ``ũ_m(z)·e^{±iβ_m(x − x_ref)}``, ``ũ = u/√(βN)``, which carries unit
+        power; the right-hand side has no reflected term because the mode
+        solves the background problem on its own (slab-spec §8.3).
+        :meth:`ScatterResult.mode_amplitudes` with the same ``x_ref`` then
+        returns the S-matrix column of this mode.
+
+        Args:
+            wavelength: Real **vacuum** wavelength (nm).
+            mode: A :class:`~pysie2d.layered.GuidedMode` of this stack, or its
+                index in :meth:`~pysie2d.background.Stack.guided_modes`.
+            direction: +1 for incidence towards +x, −1 towards −x.
+            x_ref: Phase reference along x (nm), required (R14).
+
+        Returns:
+            ScatterResult with ``excitation = "mode"``.
+
+        Raises:
+            ValueError: Without a stack; at complex λ or over a lossy stack
+                (T2); a direction other than ±1; a mode foreign to this stack.
+        """
+        mat = self.material
+        if not isinstance(_effective(self.background, mat.n_clad, wavelength), Stack):
+            raise ValueError("scatter_mode needs a Stack background that guides")
+        m = _resolve_mode(
+            self.background, wavelength, mat.pol, mat.n_clad, mode, direction
+        )
+        g = self.geometry
+        rhs = np.zeros(2 * g.n_pts, dtype=complex)
+        rhs[: g.n_pts] = _mode_rhs(m, direction, x_ref, g.f, g.g)
+        ei = np.linalg.solve(self.assemble(wavelength), rhs)
+        return ScatterResult(
+            ei,
+            g,
+            mat,
+            wavelength,
+            0.0,
+            self.background,
+            excitation="mode",
+            mode=m,
+            direction=direction,
+            x_ref=x_ref,
+        )
+
+    def _scatter_in_plane(
+        self, wavelength: float, x_s: float, z_s: float, moment: tuple[complex, complex]
+    ) -> ScatterResult:
+        """In-plane :meth:`scatter_dipole`: RHS ``−(b·∇′)(G₀ + G_ind)``."""
+        mat, geo = self.material, self.geometry
+        if mat.pol != 1:
+            raise ValueError(
+                "moment= is accepted at pol = 1 (TM) only: in TE the same source "
+                "would be an in-plane magnetic dipole (slab-spec T7)"
+            )
+        b = in_plane_moment_b(moment)
+        k = mat.wnum_bg(wavelength)
+        rhs = _in_plane_dipole_rhs(geo.n_pts, k, geo.f, geo.g, x_s, z_s, b)
+        refl = self._reflection(
+            wavelength, np.append(geo.f, x_s), np.append(geo.g, z_s)
+        )
+        if refl is not None:
+            _, gx, gz = refl.green(geo.f, geo.g, x_s, z_s)
+            rhs[: geo.n_pts] -= b[0] * gx + b[1] * gz
+        ei = np.linalg.solve(self.assemble(wavelength), rhs)
+        return ScatterResult(
+            ei,
+            geo,
+            mat,
+            wavelength,
+            0.0,
+            self.background,
+            excitation="dipole",
+            source=(x_s, z_s),
+            moment=(complex(moment[0]), complex(moment[1])),
         )

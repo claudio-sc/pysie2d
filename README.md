@@ -19,8 +19,9 @@ quasi-normal-mode extraction from the surface-integral operator (see
 [Quasi-normal modes](#quasi-normal-modes)) and finite clusters of particles
 (see [Clusters of particles](#clusters-of-particles)), validated against an
 independent two-cylinder addition-theorem anchor, and non-circular external
-validation against two independent solvers (MEEP and dolfinx). Potential
-extensions in the mid/long-term include slab waveguide backgrounds.
+validation against two independent solvers (MEEP and dolfinx). Backgrounds
+extend to a half-space substrate and, since v1.2, an N-layer slab waveguide
+with its guided modes (see [A slab waveguide under the particle](#a-slab-waveguide-under-the-particle)).
 
 ## Figures
 
@@ -426,6 +427,43 @@ closed form, a real-axis QUADPACK reference, and Mie. For a **dielectric or loss
 substrate the QNM check is consistency only — the poles do not move when the
 path is deformed differently — until the MEEP comparison of v1.0.
 
+## A slab waveguide under the particle
+
+`background=Stack(layers, eps_bot, z_top)` puts N dielectric layers over a
+bottom half-space; particles and sources stay in the cover, fields are
+evaluated everywhere (cover, inside the layers, below). It is additive:
+`HalfSpace` and no-background results are unchanged, bit for bit.
+
+```python
+from pysie2d import BIESolver, Geometry, Material, Stack
+
+soi = Stack(layers=((3.476**2, 220.0),), eps_bot=1.444**2)       # 220 nm Si in SiO₂
+modes = soi.guided_modes(1550.0, pol=2, n_clad=1.444)            # β, n_eff, N, u(z)
+geom = Geometry.gielis(rad=80, n_pts=160, m=4, z0=110.0)         # 30 nm above the slab
+solver = BIESolver(geom, Material(n_core=3.476, n_clad=1.444, pol=2), soi)
+
+amps = solver.scatter_dipole(1550.0, 150.0, 60.0).mode_amplitudes(x_ref=0.0)
+print(amps.efficiency(0, +1), amps.balance())    # into TE₀ towards +x; power closes to 1e-15
+s_col = solver.scatter_mode(1550.0, 0, +1, x_ref=0.0).mode_amplitudes(0.0)  # S-matrix column
+```
+
+- `mode_amplitudes` gives complex amplitudes of the power-normalised modes,
+  phase-referred to `x_ref`, and the full power account (up, down, absorbed,
+  guided ±x). Under mode incidence they are the S-matrix column.
+- `scatter_dipole(..., moment=(p_x, p_z))` is an in-plane electric dipole (TM);
+  spin-locked moments couple one way.
+- `mode_sensitivity(at, run)` differentiates any of these outputs by a central
+  difference on the frozen node set; `examples/waveguide_antenna.py` uses it to
+  shape a Gielis antenna for one-way coupling.
+- Guided outputs need a lossless stack at real λ; fields and LDOS accept loss
+  and complex λ. `QNMSolver` does not take a stack.
+
+Validation: the three-layer closed form for the modes, independent real-axis
+references for the reflected and transmitted Green functions, power balance and
+reciprocity as equalities, the Born limit, and the exact translation law
+([validation](https://github.com/claudio-sc/pysie2d/blob/main/docs/validation.md),
+rows GW1–GW18).
+
 ## Performance
 
 The system is a dense `2nn × 2nn` complex matrix; at `nn = 300` (a `600 × 600`
@@ -477,6 +515,9 @@ would be an hour-long sweep takes seconds.
   single-particle, cluster and QNM solvers, reflected Green function by
   Sommerfeld integrals on a deformed path (valid at complex wavelength).
   Purely additive.
+- **v1.2.0** — an N-layer slab waveguide background: guided modes, fields in
+  every layer, mode and in-plane-dipole sources, S-parameters with a full power
+  account, and a finite-difference sensitivity helper. Purely additive.
 
 ### Migrating from v0.5
 

@@ -1,0 +1,26 @@
+(a) path vs reference at small Z; (b) M vs the v0.9 half-space path (glass, same D, z_min)
+  gap=10.0 SOI 220       TE: M=  721 (v0.9 glass   675)  naive R finite on path: True   path−ref=3e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap=10.0 SOI 220       TM: M=  694 (v0.9 glass   675)  naive R finite on path: True   path−ref=7e-12  s2−s1=1e-14  δ/2−δ=1e-14
+  gap=10.0 SiN 400 @800  TE: M=  664 (v0.9 glass   675)  naive R finite on path: False  path−ref=1e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap=10.0 SiN 400 @800  TM: M=  663 (v0.9 glass   675)  naive R finite on path: False  path−ref=5e-11  s2−s1=6e-15  δ/2−δ=5e-15
+  gap=10.0 Si/SiO2/Si    TE: M=  721 (v0.9 glass   675)  naive R finite on path: False  path−ref=3e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap=10.0 Si/SiO2/Si    TM: M=  696 (v0.9 glass   675)  naive R finite on path: False  path−ref=1e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap= 5.0 SOI 220       TE: M= 1249 (v0.9 glass  1227)  naive R finite on path: False  path−ref=3e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap= 5.0 SOI 220       TM: M= 1246 (v0.9 glass  1227)  naive R finite on path: False  path−ref=7e-12  s2−s1=1e-14  δ/2−δ=1e-14
+  gap= 5.0 SiN 400 @800  TE: M= 1216 (v0.9 glass  1203)  naive R finite on path: False  path−ref=1e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap= 5.0 SiN 400 @800  TM: M= 1215 (v0.9 glass  1203)  naive R finite on path: False  path−ref=4e-11  s2−s1=8e-15  δ/2−δ=6e-15
+  gap= 5.0 Si/SiO2/Si    TE: M= 1249 (v0.9 glass  1227)  naive R finite on path: False  path−ref=4e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap= 5.0 Si/SiO2/Si    TM: M= 1248 (v0.9 glass  1227)  naive R finite on path: False  path−ref=1e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap= 2.0 SOI 220       TE: M= 2881 (v0.9 glass  2859)  naive R finite on path: False  path−ref=3e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap= 2.0 SOI 220       TM: M= 2878 (v0.9 glass  2859)  naive R finite on path: False  path−ref=6e-12  s2−s1=2e-14  δ/2−δ=1e-14
+  gap= 2.0 SiN 400 @800  TE: M= 2848 (v0.9 glass  2835)  naive R finite on path: False  path−ref=1e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap= 2.0 SiN 400 @800  TM: M= 2847 (v0.9 glass  2835)  naive R finite on path: False  path−ref=4e-11  s2−s1=3e-14  δ/2−δ=6e-15
+  gap= 2.0 Si/SiO2/Si    TE: M= 2881 (v0.9 glass  2859)  naive R finite on path: False  path−ref=4e-11  s2−s1=2e-14  δ/2−δ=2e-14
+  gap= 2.0 Si/SiO2/Si    TM: M= 2880 (v0.9 glass  2859)  naive R finite on path: False  path−ref=1e-11  s2−s1=2e-14  δ/2−δ=2e-14
+
+(c) cost of R(q) on every path node vs N_layers (gap 2 nm, SOI-like layers)
+  N= 0: 0 TE poles, M=2859, R on path   0.05 ms, unbanded GEMM nn=256    3.7 ms  (R/GEMM = 1.5e-02)
+  N= 1: 1 TE poles, M=2882, R on path   0.10 ms, unbanded GEMM nn=256    3.5 ms  (R/GEMM = 2.8e-02)
+  N= 3: 2 TE poles, M=2892, R on path   0.18 ms, unbanded GEMM nn=256    3.5 ms  (R/GEMM = 5.2e-02)
+  N= 9: 4 TE poles, M=2874, R on path   0.40 ms, unbanded GEMM nn=256    3.4 ms  (R/GEMM = 1.2e-01)
+  N=21: 7 TE poles, M=2876, R on path   0.83 ms, unbanded GEMM nn=256    3.5 ms  (R/GEMM = 2.4e-01)

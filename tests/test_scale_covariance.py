@@ -66,6 +66,7 @@ from pysie2d import (
     Material,
     Parametrisation,
     QNMSolver,
+    Stack,
 )
 
 # Taken from the shared fixture rather than restated: the mode counts asserted
@@ -436,3 +437,51 @@ def test_transmitted_field_is_scale_covariant(eps_sub, pol):
     assert abs(c1 - c2) / c1 < RTOL_TRANSMITTED["c_sca_down"]
     if lossless:
         assert np.max(np.abs(a1 - a2)) / np.max(np.abs(a1)) < RTOL_TRANSMITTED["a_down"]
+
+
+# --- GW18: over an N-layer stack (v1.2) -----------------------------------------
+
+
+def _stack_solver(s, pol):
+    """SOI under a circle with every length ×s: thickness, z_top, positions."""
+    stack = Stack(((3.476**2, 220.0 * s),), 1.444**2, z_top=10.0 * s)
+    geom = Geometry.gielis(rad=80.0 * s, n_pts=160, m=4, x0=5.0 * s, z0=120.0 * s)
+    return BIESolver(geom, Material(n_core=3.476, n_clad=1.444, pol=pol), stack)
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+def test_stack_outputs_are_scale_covariant(pol):
+    # The stack's poles, path and recursion see k·d only, so with λ, every
+    # thickness, z_top, x_ref and position scaled by s the S-matrix, the powers
+    # and the fields at scaled points are invariant (§9). An absolute length
+    # anywhere — a pole-grid density, a path floor — breaks this.
+    out = {}
+    for s in (1.0, 1.7):
+        solver, lam = _stack_solver(s, pol), 1550.0 * s
+        mode = solver.scatter_mode(lam, 0, 1, x_ref=37.0 * s).mode_amplitudes(37.0 * s)
+        res = solver.scatter_dipole(lam, 150.0 * s, 70.0 * s)
+        x, z = (
+            np.array([300.0, -40.0, 800.0, 0.0]) * s,
+            np.array([400.0, -100.0, -600.0, 15.0]) * s,
+        )
+        out[s] = (
+            mode,
+            res.mode_amplitudes(-20.0 * s),
+            res.eval_field(x, z),
+            res.incident_field(x, z),
+        )
+    a, b = out[1.0], out[1.7]
+    for i in (0, 1):
+        for key in ("s_plus", "s_minus"):
+            ref = getattr(a[i], key)
+            # Measured 1.1e-15 relative (TE); 10×.
+            assert (
+                np.max(np.abs(ref - getattr(b[i], key))) / np.max(np.abs(ref)) < 1.1e-14
+            )
+        for key in ("p_up", "p_down", "p_abs", "p_source"):
+            # Measured 2.4e-16 of the source power; 10×.
+            assert (
+                abs(getattr(a[i], key) - getattr(b[i], key)) / a[i].p_source < 2.4e-15
+            )
+    for j in (2, 3):
+        assert np.max(np.abs(a[j] - b[j]) / np.abs(a[j])) < 1.4e-14  # measured 1.4e-15

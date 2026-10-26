@@ -12,6 +12,21 @@ Public API:
         ε(λ_vac) for driven solves, or ``HalfSpace.pec``). The reflected Green
         function is a Sommerfeld integral on a deformed path, valid at complex
         wavelength.
+    Stack: an N-layer dielectric stack below ``z = z_top`` (absolute ε per
+        layer, top to bottom, over a bottom half-space). Particles stay in the
+        cover; the reflected Green function uses a stable recursion on the same
+        deformed path, with the guided poles as features.
+        ``Stack.guided_modes(λ, pol, n_clad)`` returns its guided modes.
+    GuidedMode: one guided mode of a lossless stack — β, n_eff, the bilinear
+        norm N and the profile u(z) with u(z_top) = 1.
+    ModeAmplitudes: guided amplitudes s_± (power-normalised modes, phase
+        referred to ``x_ref``) and the full power account of a solve over a
+        stack, from ``ScatterResult.mode_amplitudes(x_ref)``;
+        ``BIESolver.scatter_mode`` drives a solve with one guided mode.
+    mode_sensitivity: central differences of every ``ModeAmplitudes`` output
+        in one parameter, on the frozen node set (slab-spec R16′).
+    NearDegenerateModesError: a ``ValueError`` raised when two guided modes
+        are closer than the mode finder separates (slab-spec R15).
     InterfaceGapWarning, SommerfeldPrecisionWarning: the half-space guards — a
         boundary too coarse for its distance to the interface, and a reflected
         block expected to lose digits.
@@ -67,7 +82,7 @@ take a background wavenumber
 ``wnum_bg = 2π·n_clad/λ_vac`` instead. See ``docs/conventions.md`` §2.
 """
 
-from .background import HalfSpace
+from .background import HalfSpace, NearDegenerateModesError, Stack
 from .cluster import (
     Cluster,
     ClusterBIESolver,
@@ -84,7 +99,12 @@ from .kernels import (
     assemble_matrix,
     assemble_matrix_reference,
 )
-from .layered import InterfaceGapWarning, NoFarFieldError, SommerfeldPrecisionWarning
+from .layered import (
+    GuidedMode,
+    InterfaceGapWarning,
+    NoFarFieldError,
+    SommerfeldPrecisionWarning,
+)
 from .material import Material
 from .multipole import Multipoles
 from .multipole import decompose as multipole_decompose
@@ -97,6 +117,7 @@ from .qnm import (
     QNMSolver,
     richardson_limit,
 )
+from .sensitivity import mode_sensitivity
 from .solver import (
     BIESolver,
     ScatterResult,
@@ -104,6 +125,7 @@ from .solver import (
     wavelength_over_ds,
 )
 from .sources import line_dipole_rhs, plane_wave_rhs
+from .waveguide import ModeAmplitudes
 
 __version__ = "1.1.0"
 
@@ -117,16 +139,20 @@ __all__ = [
     "ClusterScatterResult",
     "DEGENERATE_COND",
     "Geometry",
+    "GuidedMode",
     "HalfSpace",
     "InterfaceGapWarning",
     "Material",
+    "ModeAmplitudes",
     "Multipoles",
+    "NearDegenerateModesError",
     "NoFarFieldError",
     "Parametrisation",
     "QNMResult",
     "QNMSolver",
     "SHAPE_STEP",
     "SommerfeldPrecisionWarning",
+    "Stack",
     "richardson_limit",
     "ScatterResult",
     "assemble_cross_block",
@@ -135,6 +161,7 @@ __all__ = [
     "eval_field",
     "far_field",
     "line_dipole_rhs",
+    "mode_sensitivity",
     "multipole_decompose",
     "multipole_reconstruct",
     "plane_wave_rhs",

@@ -1,0 +1,35 @@
+(a) |G_total − guided sum| / Σ|guided terms| along the stack (source h₀ = 50, observer h = 100 nm)
+  SOI 220 @1550            TE:    2µm 1.6e+00     5µm 5.8e-01 (slope -1.12)    10µm 2.4e-01 (slope -1.30)    20µm 8.9e-02 (slope -1.41)    40µm 3.2e-02 (slope -1.47)
+  SOI 220 @1550            TM:    2µm 8.4e-01     5µm 4.8e-01 (slope -0.61)    10µm 3.0e-01 (slope -0.67)    20µm 1.8e-01 (slope -0.74)    40µm 1.0e-01 (slope -0.84)
+  air|Si 220|SiO2          TE:    2µm 1.2e+00     5µm 3.3e-01 (slope -1.40)    10µm 8.9e-02 (slope -1.87)    20µm 3.1e-02 (slope -1.53)    40µm 1.4e-02 (slope -1.17)
+  air|Si 220|SiO2          TM:    2µm 2.1e+00     5µm 7.1e-01 (slope -1.19)    10µm 2.4e-01 (slope -1.57)    20µm 8.8e-02 (slope -1.45)    40µm 3.2e-02 (slope -1.47)
+  SiN 400 @800 (2 modes)   TE:    2µm 9.4e-02     5µm 2.5e-02 (slope -1.44)    10µm 9.3e-03 (slope -1.44)    20µm 3.3e-03 (slope -1.48)    40µm 1.2e-03 (slope -1.49)
+  SiN 400 @800 (2 modes)   TM:    2µm 2.1e-01     5µm 5.9e-02 (slope -1.38)    10µm 2.3e-02 (slope -1.37)    20µm 8.4e-03 (slope -1.43)    40µm 3.0e-03 (slope -1.48)
+  Si/SiO2/Si coupled       TE:    2µm 1.8e+00     5µm 2.9e-01 (slope -2.02)    10µm 9.7e-02 (slope -1.58)    20µm 3.4e-02 (slope -1.51)    40µm 1.2e-02 (slope -1.50)
+  Si/SiO2/Si coupled       TM:    2µm 7.3e-01     5µm 4.0e-01 (slope -0.65)    10µm 2.2e-01 (slope -0.85)    20µm 1.1e-01 (slope -1.01)    40µm 4.9e-02 (slope -1.18)
+
+(b) dipole power balance: Im G(r₀,r₀) [path] vs P_up + P_down + P_guided [real axis + profiles]
+  SOI 220 @1550            TE h₀=   20: Im G = 0.250404446321  up 0.0999 down 0.0956 guided 0.0549  |Δ|/ImG = 8.9e-16
+  SOI 220 @1550            TE h₀=  100: Im G = 0.234283097649  up 0.1275 down 0.0956 guided 0.0112  |Δ|/ImG = 4.7e-16
+  SOI 220 @1550            TE h₀=  400: Im G = 0.251773662652  up 0.1561 down 0.0956 guided 0.0000  |Δ|/ImG = 2.2e-16
+  SOI 220 @1550            TM h₀=   20: Im G = 0.353683935701  up 0.1185 down 0.1185 guided 0.1167  |Δ|/ImG = 1.9e-15
+  SOI 220 @1550            TM h₀=  100: Im G = 0.275005778538  up 0.1112 down 0.1185 guided 0.0453  |Δ|/ImG = 1.0e-15
+  SOI 220 @1550            TM h₀=  400: Im G = 0.249751640394  up 0.1299 down 0.1185 guided 0.0013  |Δ|/ImG = 2.2e-16
+  air|Si 220|SiO2          TE h₀=   20: Im G = 0.244189476441  up 0.0556 down 0.1384 guided 0.0502  |Δ|/ImG = 1.3e-15
+  air|Si 220|SiO2          TE h₀=  100: Im G = 0.208916068610  up 0.0729 down 0.1270 guided 0.0090  |Δ|/ImG = 1.3e-16
+  air|Si 220|SiO2          TE h₀=  400: Im G = 0.267072126828  up 0.1589 down 0.1082 guided 0.0000  |Δ|/ImG = 1.9e-15
+  air|Si 220|SiO2          TM h₀=   20: Im G = 0.401952539617  up 0.1240 down 0.2212 guided 0.0568  |Δ|/ImG = 4.1e-16
+  air|Si 220|SiO2          TM h₀=  100: Im G = 0.326234240544  up 0.1127 down 0.1935 guided 0.0201  |Δ|/ImG = 1.7e-16
+  air|Si 220|SiO2          TM h₀=  400: Im G = 0.225573787603  up 0.0803 down 0.1449 guided 0.0004  |Δ|/ImG = 2.5e-16
+  SiN 400 @800 (2 modes)   TE h₀=   20: Im G = 0.244323634045  up 0.0722 down 0.0866 guided 0.0855  |Δ|/ImG = 1.1e-16
+  SiN 400 @800 (2 modes)   TE h₀=  100: Im G = 0.245066142782  up 0.1211 down 0.0866 guided 0.0373  |Δ|/ImG = 1.1e-16
+  SiN 400 @800 (2 modes)   TE h₀=  400: Im G = 0.250581717433  up 0.1616 down 0.0866 guided 0.0024  |Δ|/ImG = 2.2e-16
+  SiN 400 @800 (2 modes)   TM h₀=   20: Im G = 0.297766891629  up 0.0955 down 0.1067 guided 0.0956  |Δ|/ImG = 3.7e-16
+  SiN 400 @800 (2 modes)   TM h₀=  100: Im G = 0.248583161090  up 0.0905 down 0.1067 guided 0.0514  |Δ|/ImG = 3.3e-16
+  SiN 400 @800 (2 modes)   TM h₀=  400: Im G = 0.248497066780  up 0.1344 down 0.1067 guided 0.0074  |Δ|/ImG = 2.2e-16
+  Si/SiO2/Si coupled       TE h₀=   20: Im G = 0.254873309144  up 0.1180 down 0.0816 guided 0.0552  |Δ|/ImG = 3.5e-15
+  Si/SiO2/Si coupled       TE h₀=  100: Im G = 0.235510260501  up 0.1426 down 0.0816 guided 0.0113  |Δ|/ImG = 1.2e-15
+  Si/SiO2/Si coupled       TE h₀=  400: Im G = 0.252681916936  up 0.1710 down 0.0816 guided 0.0000  |Δ|/ImG = 0.0e+00
+  Si/SiO2/Si coupled       TM h₀=   20: Im G = 0.348600369576  up 0.1097 down 0.1146 guided 0.1243  |Δ|/ImG = 6.4e-16
+  Si/SiO2/Si coupled       TM h₀=  100: Im G = 0.274363558986  up 0.1103 down 0.1146 guided 0.0495  |Δ|/ImG = 6.1e-16
+  Si/SiO2/Si coupled       TM h₀=  400: Im G = 0.248400569648  up 0.1322 down 0.1146 guided 0.0016  |Δ|/ImG = 3.4e-16

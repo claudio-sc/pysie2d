@@ -1,0 +1,63 @@
+(a) N = 0 recursion vs the package's fresnel_r / _tau_half_space (bitwise)
+  eps_b=2.25 pol=1: R max|Δ| = 0.0e+00, τ max|Δ| = 0.0e+00
+  eps_b=2.25 pol=2: R max|Δ| = 0.0e+00, τ max|Δ| = 0.0e+00
+  eps_b=5.795 pol=1: R max|Δ| = 0.0e+00, τ max|Δ| = 0.0e+00
+  eps_b=5.795 pol=2: R max|Δ| = 0.0e+00, τ max|Δ| = 0.0e+00
+  eps_b=-61.87+1.583j pol=1: R max|Δ| = 0.0e+00, τ max|Δ| = 0.0e+00
+  eps_b=-61.87+1.583j pol=2: R max|Δ| = 0.0e+00, τ max|Δ| = 0.0e+00
+(b) every layer and the bottom equal to the cover → R ≡ 0 exactly
+  pol=1: max|R| = 6.7e-16, max|α₁τ − e^{iα₁·Σd}| = 9.9e-16
+  pol=2: max|R| = 6.7e-16, max|α₁τ − e^{iα₁·Σd}| = 9.9e-16
+(c) lossless energy at propagating q: |R|² + Re(Y_b)/Y₁·|α₁τ|² = 1
+  SOI 220                      pol=1: max err = 1.3e-15
+  SOI 220                      pol=2: max err = 1.3e-15
+  Si/SiO2/Si                   pol=1: max err = 2.0e-15
+  Si/SiO2/Si                   pol=2: max err = 2.0e-15
+  SiO2|Si 500|air              pol=1: max err = 8.9e-16
+  SiO2|Si 500|air              pol=2: max err = 8.9e-16
+(d) stable vs naive transfer matrix, and the large-q asymptote R → r(cover|layer 1)
+  SOI 220      pol=2 q=   0.5k: |Rs−Rn| = 5.2e-17  |Rs − r_top| = 4.6e-01  e^(-2|Imα|d) = 1.0e+00
+  SOI 220      pol=2 q=   2.0k: |Rs−Rn| = 1.4e-14  |Rs − r_top| = 9.7e+00  e^(-2|Imα|d) = 1.0e+00
+  SOI 220      pol=2 q=  10.0k: |Rs−Rn| = 4.2e-17  |Rs − r_top| = 1.7e-13  e^(-2|Imα|d) = 1.4e-11
+  SOI 220      pol=2 q=  50.0k: |Rs−Rn| = 3.7e-17  |Rs − r_top| = 9.7e-17  e^(-2|Imα|d) = 1.4e-56
+  SOI 220      pol=2 q= 200.0k: |Rs−Rn| = 5.1e-18  |Rs − r_top| = 7.4e-17  e^(-2|Imα|d) = 2.0e-224
+  SOI 220      pol=1 q=   0.5k: |Rs−Rn| = 5.6e-17  |Rs − r_top| = 3.6e-01  e^(-2|Imα|d) = 1.0e+00
+  SOI 220      pol=1 q=   2.0k: |Rs−Rn| = 3.2e-17  |Rs − r_top| = 2.9e-01  e^(-2|Imα|d) = 1.0e+00
+  SOI 220      pol=1 q=  10.0k: |Rs−Rn| = 2.5e-32  |Rs − r_top| = 4.9e-12  e^(-2|Imα|d) = 1.4e-11
+  SOI 220      pol=1 q=  50.0k: |Rs−Rn| = 1.1e-16  |Rs − r_top| = 1.0e-17  e^(-2|Imα|d) = 1.4e-56
+  SOI 220      pol=1 q= 200.0k: |Rs−Rn| = 7.7e-34  |Rs − r_top| = 3.7e-17  e^(-2|Imα|d) = 2.0e-224
+  Si 2000      pol=2 q=   0.5k: |Rs−Rn| = 1.5e-15  |Rs − r_top| = 3.7e-01  e^(-2|Imα|d) = 1.0e+00
+  Si 2000      pol=2 q=   2.0k: |Rs−Rn| = 9.1e-18  |Rs − r_top| = 1.0e+00  e^(-2|Imα|d) = 1.0e+00
+  Si 2000      pol=2 q=  10.0k: |Rs−Rn| = 1.1e-16  |Rs − r_top| = 1.0e-18  e^(-2|Imα|d) = 2.0e-99
+  Si 2000      pol=2 q=  50.0k: |Rs−Rn| = 2.9e-17  |Rs − r_top| = 9.7e-17  e^(-2|Imα|d) = 0.0e+00
+  Si 2000      pol=2 q= 200.0k: |Rs−Rn| = nan  |Rs − r_top| = 7.4e-17  e^(-2|Imα|d) = 0.0e+00
+  Si 2000      pol=1 q=   0.5k: |Rs−Rn| = 1.4e-15  |Rs − r_top| = 3.2e-01  e^(-2|Imα|d) = 1.0e+00
+  Si 2000      pol=1 q=   2.0k: |Rs−Rn| = 1.7e-16  |Rs − r_top| = 1.1e+00  e^(-2|Imα|d) = 1.0e+00
+  Si 2000      pol=1 q=  10.0k: |Rs−Rn| = 2.4e-15  |Rs − r_top| = 5.1e-19  e^(-2|Imα|d) = 2.0e-99
+  Si 2000      pol=1 q=  50.0k: |Rs−Rn| = 1.5e-33  |Rs − r_top| = 1.0e-17  e^(-2|Imα|d) = 0.0e+00
+  Si 2000      pol=1 q= 200.0k: |Rs−Rn| = nan  |Rs − r_top| = 3.7e-17  e^(-2|Imα|d) = 0.0e+00
+  Ag 500 film  pol=2 q=   0.5k: |Rs−Rn| = 2.6e-16  |Rs − r_top| = 0.0e+00  e^(-2|Imα|d) = 9.2e-21
+  Ag 500 film  pol=2 q=   2.0k: |Rs−Rn| = 1.1e-16  |Rs − r_top| = 3.0e-18  e^(-2|Imα|d) = 2.3e-21
+  Ag 500 film  pol=2 q=  10.0k: |Rs−Rn| = 2.8e-17  |Rs − r_top| = 8.6e-17  e^(-2|Imα|d) = 4.5e-33
+  Ag 500 film  pol=2 q=  50.0k: |Rs−Rn| = 1.6e-18  |Rs − r_top| = 1.9e-17  e^(-2|Imα|d) = 2.1e-129
+  Ag 500 film  pol=2 q= 200.0k: |Rs−Rn| = 1.1e-17  |Rs − r_top| = 1.0e-16  e^(-2|Imα|d) = 0.0e+00
+  Ag 500 film  pol=1 q=   0.5k: |Rs−Rn| = 0.0e+00  |Rs − r_top| = 0.0e+00  e^(-2|Imα|d) = 9.2e-21
+  Ag 500 film  pol=1 q=   2.0k: |Rs−Rn| = 2.2e-16  |Rs − r_top| = 1.7e-18  e^(-2|Imα|d) = 2.3e-21
+  Ag 500 film  pol=1 q=  10.0k: |Rs−Rn| = 2.2e-16  |Rs − r_top| = 4.6e-18  e^(-2|Imα|d) = 4.5e-33
+  Ag 500 film  pol=1 q=  50.0k: |Rs−Rn| = 0.0e+00  |Rs − r_top| = 1.3e-18  e^(-2|Imα|d) = 2.1e-129
+  Ag 500 film  pol=1 q= 200.0k: |Rs−Rn| = 2.2e-16  |Rs − r_top| = 2.7e-18  e^(-2|Imα|d) = 0.0e+00
+(e) complex q on a hump and complex k (Q = 10): stable vs naive
+  SOI 220      pol=2: max|Rs − Rn| on the hump = 7.9e-16
+  SOI 220      pol=1: max|Rs − Rn| on the hump = 3.2e-15
+  Ag 500 film  pol=2: max|Rs − Rn| on the hump = 7.2e-16
+  Ag 500 film  pol=1: max|Rs − Rn| on the hump = 2.5e-15
+(f) the naive form overflows on a real path: Σ|Im α_j|·d_j > 709 on the tail
+  SOI 220     gap=100.0: q_max·Σd =      46  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 7.0e-14
+  SOI 220     gap= 20.0: q_max·Σd =     214  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 1.5e-12
+  SOI 220     gap=  5.0: q_max·Σd =     841  naive NaN from q·Σd =    709  stable finite: True  max rel Δ where finite = 1.0e+00
+  SiN 400     gap=100.0: q_max·Σd =      81  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 3.5e-13
+  SiN 400     gap= 20.0: q_max·Σd =     385  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 7.2e-12
+  SiN 400     gap=  5.0: q_max·Σd =    1525  naive NaN from q·Σd =    710  stable finite: True  max rel Δ where finite = 1.0e+00
+  Si/SiO2/Si  gap=100.0: q_max·Σd =     156  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 1.6e-13
+  Si/SiO2/Si  gap= 20.0: q_max·Σd =     719  naive NaN from q·Σd =    710  stable finite: True  max rel Δ where finite = 1.0e+00
+  Si/SiO2/Si  gap=  5.0: q_max·Σd =    2828  naive NaN from q·Σd =    710  stable finite: True  max rel Δ where finite = 1.0e+00
