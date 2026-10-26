@@ -207,6 +207,13 @@ downward spectrum is `e^{−iqx_s + iα₁(z_s − z_top)}`, v1.1 §16):
     in-plane source: × i(qb_x + α₁b_z) (↑) and × i(qb_x − α₁b_z) (↓)
     P_up   = (1/2π) ∫_{−π/2}^{π/2} |u↑ + R d|²/4 dθ        (q = k sin θ; split at the critical angle of k_bot if Re k_bot < k)
     P_down = (1/2π) ∫ Re(Y_b)|τ d|²/4 dq                  (v1.1 `_flux_rule` with the stack's features)
+
+**Amended at build (owner, 2026-10-26).** Over a lossless bottom `P_down` uses
+S12's rule — `q = k_bot sin s`, 16 Gauss–Legendre panels of 200 nodes, split at
+`±asin(k₁/k_bot)`, sine-mapped per panel — not `_flux_rule`. The flux rule
+gets no breakpoints from real poles beyond `Re k_bot` and puts one 24-point
+panel on `[0, k_bot]`: the TM dipole balance stalled at 9.3e-7 (SOI) against
+3.2e-15. A lossy bottom keeps `_flux_rule`.
     P_abs  = −Im Σ h conj(φ)χ                              (v0.9)
     P_guided = Σ_m (p_plus[m] + p_minus[m])
 

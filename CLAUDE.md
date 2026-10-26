@@ -253,8 +253,10 @@ roadmap is [waveguide-roadmap.md](docs/design/waveguide-roadmap.md) (owner decis
 R1–R10): v1.2 N-layer `Stack`, guided modes, mode source and S-parameters by
 residue; v1.3 MEEP validation of the waveguide coupling; v1.4 a variational-EIM
 2.5D front end. Code-spec: [slab-spec.md](docs/design/slab-spec.md), study
-[studies/slab/](docs/design/studies/slab/README.md); next step: owner review of
-its T1–T9, then the build.
+[studies/slab/](docs/design/studies/slab/README.md). v1.2 is implemented on the
+branch (gates GW1–GW18, conventions §17). One owner-approved change to the spec
+(2026-10-26): P_down over a stack uses S12's sine-mapped rule, not the v1.1 flux
+rule, which stalls at 1e-6 in TM. Next: merge v1.2, then v1.3.
 
 ## How to work here
 

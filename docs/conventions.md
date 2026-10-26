@@ -810,6 +810,69 @@ and the flux rule are built in units of `k` from point-set lengths, so the
 field below and `a_down` are invariant and `c_sca_down` scales by `s`
 *(measured at s = 1.7: ≤ 1.7e-15, 3.7e-14, 8.8e-15)*.
 
+## 17. An N-layer stack and its guided modes (v1.2)
+
+Particles and sources stay in the cover; a `Stack` puts N layers and a bottom
+half-space below `z = z_top`. The spec is `docs/design/slab-spec.md`; the study
+is `docs/design/studies/slab/`.
+
+**Frame.** Layers run *downward* from `z_top`, `(absolute ε, thickness)` top
+first; the bottom starts at `z_bot = z_top − Σd`. Internally every value is
+relative to the cover (`ε_rel = ε/n_clad²`, cover = 1) and `k` is the
+background wavenumber, as in §2. **T6 normalisation**, at every evaluation:
+adjacent equal layers merge, trailing layers equal to the bottom merge into it,
+leading layers equal to the cover are dropped (moving `z_top` down). A stack
+with nothing left *is* a `HalfSpace` of its bottom, or no background, and takes
+that code path bit for bit. Constants need `Im ε ≥ 0` and `Re ε > 0`: a bare
+metal substrate stays a `HalfSpace`.
+
+**Sheets and the recursion.** Outer α (cover, bottom) on the vertical-cut sheet
+of §15; **interior α_j on Im α_j ≥ 0**, which bounds every `e^{2iα_j d_j}` by 1
+(R and τ are even in each interior α_j, so the choice is free). Admittance
+`Y = α` (TE) or `α/ε` (TM). R is the bottom-up recursion in the division-free
+form `G_a = ((Y_a−Y_b) + (Y_a+Y_b)Γ_b)/((Y_a+Y_b) + (Y_a−Y_b)Γ_b)`; it never
+forms `e^{+|Im α|d}`. The naive transfer matrix overflows (NaN from
+`q·Σd ≈ 709`, SOI at a 5 nm gap) rather than losing digits. τ = T/α₁ as in §16.
+The path's features are `+k₁`, `+k_bot` and the guided poles β_m.
+
+**Guided modes.** Real roots of the transfer-matrix denominator, bracketed on
+a uniform grid in `γ = √(q² − k_out²)` from γ = 0 (a q-grid misses near-cutoff
+roots), and counted by the argument principle on a *thin* γ-box. A shortfall
+refines the grid ×10 twice and then raises `NearDegenerateModesError` (a
+`ValueError`) from `guided_modes`, naming the cell and the beat-length bound;
+the field path still runs, with the cell as a feature. The count may
+*undercount* a mode within ~1e-8 of cutoff; only a shortfall is an error.
+`u(z)` solves `∇·(p∇u) + k²w u = 0`, `p = 1, w = ε` (TE) or `p = 1/ε, w = 1`
+(TM), with **`u(z_top) = 1`** and the **bilinear** norm `N = ∫ p u² dz`, which is
+the 1-D Green function's pole weight: `Res_β R = γ₁/(βN)` (the TM `1/ε` is
+load-bearing). The **power-normalised** mode is `ũ = u/√(βN)`.
+
+**Mode amplitudes.** `s_plus[n]` is the amplitude of `ũ_n(z)e^{+iβ_n(x − x_ref)}`
+and `s_minus[n]` of `ũ_n(z)e^{−iβ_n(x − x_ref)}`: the outgoing waves at
+`x → ±∞`. `x_ref` is required. Under mode incidence the incident mode is in its
+own channel and carries power 1, so `s_±` are the S-matrix column (δ_nm
+included); a dipole's own emission is in them too. **Powers** are in G14's units
+(the free line source emits 1/4): `p_± = |s_±|²`, `p_up` and `p_down` real-axis
+fluxes of the total spectra, `p_abs` the boundary flux; for a plane wave
+`p/Re k` is a cross-section in nm (`c_guided`, scattered field only).
+`p_down` over a lossless bottom uses a sine-mapped 16 × 200-point rule in
+`q = k_bot sin s`, split at `±asin(k₁/k_bot)`: the v1.1 flux rule, given only the
+poles beyond its range as breakpoints, stalls at 1e-6 in TM.
+
+**Guided outputs need a lossless stack at real λ** (`guided_modes`,
+`scatter_mode`, `mode_amplitudes` raise otherwise; `c_guided` is absent). Fields,
+LDOS and the other cross-sections accept loss and complex λ, with the poles
+continued from the lossless real ones. `QNMSolver` refuses a `Stack`.
+
+**In-plane dipoles** (TM only). `moment = (p_x, p_z)` maps to `b = (p_z, −p_x)`
+and the source `u = −(b·∇′)G(r, r_s)`; the field returned is `H_y/(iω)` per unit
+moment in the scalar source's units (`∇·(p∇H_y) + k²H_y = −[∇×J]_y`,
+`J = −iωp`). It couples one way into mode m when `b_z = iβ_m b_x/γ₁`. In TE the
+same source would be a magnetic dipole and is refused.
+
+**Polarisation naming in cross-section.** `pol = 2` (`E_y`) is slab **TE**,
+`pol = 1` (`H_y`) slab **TM**, consistent with §1.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,

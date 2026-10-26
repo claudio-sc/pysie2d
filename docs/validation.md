@@ -46,6 +46,24 @@ package is checked against it directly, in the test suite, every run.
 | Scale covariance below the interface (GT10) | an exact structural identity at s = 1.7: ≤ 3.7e-14 | `tests/test_scale_covariance.py` |
 | v0.9 outputs above the interface (GT11) | themselves, bit for bit, with substrate points added | `tests/test_transmitted.py` |
 | Banded transmitted GEMM (GT12) | the pointwise Green-function sum: 2.8e-16 | `tests/test_transmitted.py` |
+| Stack: HalfSpace and free outputs unchanged (GW1) | themselves, bit for bit; the feature-list path with v0.9's features | the full suite, `tests/test_stack.py` |
+| Stack reductions (GW2) | `HalfSpace` / no background, bit for bit at the solve level | `tests/test_stack.py` |
+| Stack recursion (GW3) | a scaled transfer matrix: 4.3e-14 absolute; energy 2.2e-15; finite where the naive form is NaN | `tests/test_stack.py` |
+| Reflected G over a stack (GW4) | real-axis QUADPACK with PV + iπ·Res (`g_ref_stack`): 2.6e-10; near cutoff (γ-reference) 6.6e-10; lossy 6.1e-14 | `tests/test_stack.py` |
+| Transmitted G below a stack (GW5) | upward shooting (`gt_ref_stack`): 1.8e-11 | `tests/test_stack.py` |
+| Guided modes (GW6) | the three-layer closed form: 2.8e-16; three counts on a double core; `NearDegenerateModesError` | `tests/test_stack.py` |
+| Mode normalisation (GW7) | `Res_β R = γ₁/(βN)`: 4.2e-14 | `tests/test_stack.py` |
+| Complex k and loss (GW8) | continued poles are zeros of D: 3.7e-16; path depth independence 4.3e-13 (consistency) | `tests/test_stack.py` |
+| Dipole power over a bare stack (GW9) | energy conservation, scalar and in-plane: 7.0e-15 | `tests/test_stack.py` |
+| Far field along the stack (GW10) | the closed-form guided sum, both directions: ≤ 4.9e-2 at 40 µm, decaying | `tests/test_stack.py` |
+| Layer field (GW11) | interface conditions: 2.6e-13; cover match 6e-16; core field at 30 µm vs the guided sum 1.6e-2 | `tests/test_stack.py` |
+| Dipole + particle (GW12) | energy conservation, scalar 4.0e-15, in-plane 1.3e-15 | `tests/test_stack.py` |
+| Mode incidence (GW13) | `Σ|S|² + P_rad + P_abs = 1`: 2.4e-15 | `tests/test_stack.py` |
+| Reciprocity (GW14) | `t_{n←m}(L→R) = t_{m←n}(R→L)`, lossy asymmetric particle: 1.1e-16 | `tests/test_stack.py` |
+| Born limit (GW15) | first Born with the stack G: 5.0e-4 at a = 2 nm, ratio 3.4–3.7 per halving | `tests/test_stack.py` |
+| In-plane dipole (GW16) | the electric-dipole pattern: 2.4e-15; ∇u_s vs a 5-point FD: 3e-10 (FD floor) | `tests/test_stack.py` |
+| Mode sensitivity (GW17) | the exact translation law `i(β_m ∓ β_n)S`: 3.2e-9 | `tests/test_stack.py` |
+| Scale covariance over a stack (GW18) | an exact structural identity at s = 1.7: 1.4e-15 | `tests/test_scale_covariance.py` |
 
 These are strong but they share one limitation: **they are all circular.** The
 superformula reduces to a circle at `m = 0`, and that is the only boundary for
