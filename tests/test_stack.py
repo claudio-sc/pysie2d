@@ -10,6 +10,7 @@ equality with every term from its own integral (GW9, GW12, GW13), reciprocity
 
 import numpy as np
 import pytest
+from scipy.special import hankel1
 
 from pysie2d import (
     BIESolver,
@@ -728,3 +729,143 @@ def test_mode_outputs_refuse_what_is_not_a_channel():
     assert "c_guided" not in res.cross_sections()  # T8: absent, not raising
     with pytest.raises(ValueError, match="lossless"):
         res.mode_amplitudes(0.0)
+
+
+# --- in-plane dipoles (R18, T7) ----------------------------------------------------
+
+
+def _in_plane_source_power(k, rel, b, h):
+    """k²|b|²/8 + Im[(b*·∇)(b·∇′)G_refl] at a source h above a bare stack (S11)."""
+    refl = layered.StackReflection.build(1, k, rel, np.array([0.0]), np.array([h]))
+    p = refl.path
+    a1 = layered.alpha(p.q, k)
+    wt = p.q**2 * abs(b[0]) ** 2 - a1**2 * abs(b[1]) ** 2
+    self_r = np.sum(p.w * 0.5j * refl.r(p.q) / a1 * wt * np.exp(2j * a1 * h)) / PI
+    return k * k * (abs(b[0]) ** 2 + abs(b[1]) ** 2) / 8 + self_r.imag
+
+
+IN_PLANE_STACKS = {k: GW9_STACKS[k] for k in ("SOI", "air|Si|SiO2", "SiN@800")}
+
+
+def _b_cases(mode):
+    # b = (p_z, −p_x): x-, z-directed, elliptical, and spin-locked to mode 0,
+    # b_z = iβb_x/γ₁, which couples one way only (S11).
+    return [
+        (1.0, 0.0),
+        (0.0, 1.0),
+        (1.0, 0.7 - 0.4j),
+        (1.0, 1j * mode.beta / mode.gamma),
+    ]
+
+
+@pytest.mark.parametrize("case", IN_PLANE_STACKS, ids=str)
+def test_in_plane_dipole_power_balance_over_a_bare_stack(case):
+    # The full-range spectra are not even in q once b_x·b_z ≠ 0, so a folded
+    # integral or a wrong cross term breaks the equality; the spin-locked
+    # source must put all its guided power into +x.
+    stack, n_clad, lam = IN_PLANE_STACKS[case]
+    k = 2 * PI * n_clad / lam
+    rel = stack.eps_rel(n_clad, lam)
+    modes = stack.guided_modes(lam, 1, n_clad)
+    for b in _b_cases(modes[0]):
+        for h in (20.0, 150.0):
+            p_src = _in_plane_source_power(k, rel, b, h)
+            a = _amplitudes([], k, 1, rel, modes, 0.0, "dipole", (0.0, h, b), p_src)
+            assert a.balance() < 5e-14  # measured 6.4e-15
+    if len(modes) == 1:
+        assert a.p_minus[0] / a.p_plus[0] < 1e-28  # one-way: c⁻ = 0 exactly
+
+
+@pytest.mark.parametrize("case", IN_PLANE_STACKS, ids=str)
+def test_in_plane_far_field_along_the_stack_is_the_guided_sum(case):
+    # GW10 for −(b·∇′)G: the amplitudes (i/2βN)u(z_s)(±iβb_x + γ₁b_z) must be
+    # the field's own far-x content in both directions, for every b.
+    stack, n_clad, lam = IN_PLANE_STACKS[case]
+    k = 2 * PI * n_clad / lam
+    rel = stack.eps_rel(n_clad, lam)
+    modes = stack.guided_modes(lam, 1, n_clad)
+    for b in _b_cases(modes[0])[::-1][:3]:
+        a = _amplitudes([], k, 1, rel, modes, 0.0, "dipole", (0.0, 50.0, b), 1.0)
+        prof = np.array([m.profile(100.0) / np.sqrt(m.beta * m.norm) for m in modes])
+        scale = np.sum((np.abs(a.s_plus) + np.abs(a.s_minus)) * np.abs(prof))
+        for sign in (1, -1):
+            s = a.s_plus if sign > 0 else a.s_minus
+            rem = []
+            for x_far in (1e4, 4e4):
+                u = _stack_background_field(
+                    np.array([sign * x_far]),
+                    np.array([100.0]),
+                    k,
+                    1,
+                    "dipole",
+                    0.0,
+                    (0.0, 50.0),
+                    rel,
+                    b,
+                )[0]
+                beta = np.array([m.beta for m in modes])
+                rem.append(
+                    abs(u - np.sum(s * prof * np.exp(1j * beta * x_far))) / scale
+                )
+            assert rem[1] < 0.1 and rem[1] < rem[0]  # measured ≤ 3.8e-2 at 40 µm
+
+
+IN_PLANE_PARTICLES = {k: PARTICLES[k] for k in ("SOI circle", "SOI lossy triangle")}
+
+
+@pytest.mark.parametrize("case", IN_PLANE_PARTICLES, ids=str)
+def test_in_plane_dipole_and_particle_power_balance(case):
+    # The source power needs the analytic ∇u_s at the source; a finite
+    # difference would cap this at its h⁴ floor (s12b: 2e-11).
+    stack, lam, geom, _, epsi, src = PARTICLES[case]
+    solver = BIESolver(
+        geom, Material(n_core=N_SI, n_clad=N_CLAD, pol=1, epsi=epsi), stack
+    )
+    m0 = stack.guided_modes(lam, 1, N_CLAD)[0]
+    for b in _b_cases(m0)[:2] + _b_cases(m0)[3:]:
+        res = solver.scatter_dipole(lam, *src, moment=(-b[1], b[0]))
+        assert res.mode_amplitudes(0.0).balance() < 1.3e-14  # measured 1.3e-15
+
+
+def test_analytic_scattered_gradient_matches_finite_differences():
+    stack, lam, geom, _, epsi, (xs, zs) = PARTICLES["SOI lossy triangle"]
+    solver = BIESolver(
+        geom, Material(n_core=N_SI, n_clad=N_CLAD, pol=1, epsi=epsi), stack
+    )
+    res = solver.scatter_dipole(lam, xs, zs, moment=(0.3, 1.0 - 0.2j))
+    ux, uz = res._scattered_gradient(xs, zs)
+    h, c = 0.25, np.array([1, -8, 8, -1]) / 3.0
+    off = np.array([-2, -1, 1, 2]) * h
+    fx = sum(
+        ci * res.eval_field(np.array([xs + o]), np.array([zs]))[0]
+        for ci, o in zip(c, off, strict=True)
+    ) / (4 * h)
+    fz = sum(
+        ci * res.eval_field(np.array([xs]), np.array([zs + o]))[0]
+        for ci, o in zip(c, off, strict=True)
+    ) / (4 * h)
+    # 5-point FD at h = 0.25 nm: measured ≤ 3.0e-10 from the analytic value,
+    # the FD's own h⁴ floor; 10× that.
+    assert abs(ux - fx) / abs(ux) < 3e-9 and abs(uz - fz) / abs(uz) < 3e-9
+
+
+@pytest.mark.parametrize("moment", [(1.0, 0.0), (0.0, 1.0), (1.0, 0.5 - 0.3j)])
+def test_in_plane_free_space_pattern_is_that_of_an_electric_dipole(moment):
+    # −(b·∇′)(i/4)H₀ = −(i/4)k·H₁(kρ)·b·r̂ exactly, so |u|²·16/(k²|H₁|²) is the
+    # pattern |p_x cos θ − p_z sin θ|² at any radius, θ from +z: this pins the
+    # b = (p_z, −p_x) map and its sign.
+    geom = Geometry.gielis(rad=20.0, n_pts=64, m=4, x0=-5000.0, z0=0.0)
+    mat = Material(n_core=1.5, n_clad=N_CLAD, pol=1)
+    res = BIESolver(geom, mat).scatter_dipole(1550.0, 0.0, 0.0, moment=moment)
+    th, rho = np.linspace(0, 2 * PI, 64, endpoint=False), 3000.0
+    u = res.incident_field(rho * np.sin(th), rho * np.cos(th))
+    k = res.wnum_bg
+    pattern = np.abs(u) ** 2 * 16 / (k * k * np.abs(hankel1(1, k * rho)) ** 2)
+    ref = np.abs(moment[0] * np.cos(th) - moment[1] * np.sin(th)) ** 2
+    assert np.max(np.abs(pattern - ref)) / ref.max() < 2.4e-14  # measured 2.4e-15
+
+
+def test_moment_is_tm_only():
+    solver, lam, src = _solver("SOI circle", 2)
+    with pytest.raises(ValueError, match="pol = 1"):
+        solver.scatter_dipole(lam, *src, moment=(1.0, 0.0))

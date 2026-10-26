@@ -536,6 +536,7 @@ def _background_field(
     source: tuple[float, float] | None,
     eps_rel: complex | None,
     z_int: float | None,
+    b: tuple[complex, complex] | None = None,
 ) -> np.ndarray:
     """Background (unscattered) field at every point, with no particle mask.
 
@@ -556,6 +557,9 @@ def _background_field(
         eps_rel: Substrate permittivity relative to the cover, or ``None`` for
             PEC; ignored without a substrate.
         z_int: Interface height, or ``None`` for no substrate.
+        b: ``b = (p_z, −p_x)`` of an in-plane dipole, whose field is
+            ``−(b·∇′)`` of the line source's (slab-spec §2.8); ``None`` for the
+            scalar line source.
 
     Returns:
         complex (M,) field.
@@ -586,9 +590,17 @@ def _background_field(
             "step off it (the field is continuous there)"
         )
 
+    def deriv(gs: tuple) -> np.ndarray:
+        """``G`` itself, or ``−(b·∇′)G`` from ``(G, ∂x′G, ∂z′G)``."""
+        return gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
+
     def free(xp: np.ndarray, zp: np.ndarray) -> np.ndarray:
         if dipole:
-            return 0.25j * hank0(k * np.hypot(xp - xs, zp - zs))
+            rho = np.hypot(xp - xs, zp - zs)
+            if b is None:
+                return 0.25j * hank0(k * rho)
+            h1 = 0.25j * k * hank1(k * rho) / rho
+            return -(b[0] * h1 * (xp - xs) + b[1] * h1 * (zp - zs))
         theta = np.deg2rad(angle)
         return np.exp(1j * k * (xp * np.sin(theta) - zp * np.cos(theta)))
 
@@ -612,7 +624,7 @@ def _background_field(
                     extent = max(float(np.ptp(np.append(xa, xs))), z_min)
                     path = SommerfeldPath.for_wavenumber(k, eps_rel, pol, extent, z_min)
                 refl = Reflection(pol, k, eps_rel, z_int, path, 0.0)
-                out[above] += refl.green(xa, za, xs, zs)[0]
+                out[above] += deriv(refl.green(xa, za, xs, zs))
             else:  # one real q: no path
                 refl = Reflection(pol, k, eps_rel, z_int, None, 0.0)
                 out[above] += refl.plane_wave(angle, xa, za)
@@ -622,7 +634,7 @@ def _background_field(
         elif dipole:
             tr = Transmission.build(pol, k, eps_rel, z_int, [xs], [zs], xb, zb)
             assert tr is not None
-            out[~above] = tr.green(xb, zb, xs, zs)[0]
+            out[~above] = deriv(tr.green(xb, zb, xs, zs))
         else:
             tr = Transmission.half_space(pol, k, eps_rel, z_int)
             out[~above] = tr.plane_wave(angle, xb, zb)
@@ -1010,13 +1022,14 @@ def _stack_background_field(
     angle: float,
     source: tuple[float, float] | None,
     stack_rel: tuple,
+    b: tuple[complex, complex] | None = None,
 ) -> np.ndarray:
     """Background field over a stack, everywhere off the interfaces.
 
     :func:`_background_field`'s stack twin (slab-spec §8.3): plane wave
     ``exp(ik(x sinθ − z cosθ))`` plus ``R`` above, ``W`` in the layers and ``τ``
     below; dipole ``(i/4)·H₀ + G_ind`` above, ``G_l`` in the layers and ``G_t``
-    below.
+    below, or ``−(b·∇′)`` of each for an in-plane dipole.
 
     Raises:
         ValueError: A custom excitation, a point on an interface plane, or the
@@ -1060,16 +1073,24 @@ def _stack_background_field(
                 z_min=float((za - z_top).min() + (zs - z_top)),
             )
             assert refl is not None
-            out[above] = 0.25j * hank0(k * np.hypot(xa - xs, za - zs))
-            out[above] += refl.green(xa, za, xs, zs)[0]
+            rho = np.hypot(xa - xs, za - zs)
+            gs = refl.green(xa, za, xs, zs)
+            if b is None:
+                out[above] = 0.25j * hank0(k * rho) + gs[0]
+            else:
+                h1 = 0.25j * k * hank1(k * rho) / rho
+                out[above] = -(
+                    b[0] * (h1 * (xa - xs) + gs[1]) + b[1] * (h1 * (za - zs) + gs[2])
+                )
         if inside.any():
             out[inside] = _layer_field(
-                x[inside], z[inside], [], k, pol, stack_rel, (xs, zs, None)
+                x[inside], z[inside], [], k, pol, stack_rel, (xs, zs, b)
             )
         if below.any():
             xb, zb = x[below], z[below]
             tr = Transmission.build_stack(pol, k, stack_rel, [xs], [zs], xb, zb)
-            out[below] = tr.green(xb, zb, xs, zs)[0]
+            gs = tr.green(xb, zb, xs, zs)
+            out[below] = gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
         return out
     theta = np.deg2rad(angle)
     q, a1 = k * np.sin(theta), k * np.cos(theta)
@@ -1180,3 +1201,57 @@ def _stack_powers(
         )
     )
     return p_up, p_down, p_abs
+
+
+def _representation_gradient_at(
+    ei_p: np.ndarray,
+    nn: int,
+    f: np.ndarray,
+    df: np.ndarray,
+    g: np.ndarray,
+    dg: np.ndarray,
+    delt: float,
+    wnum: complex,
+    x_pts: np.ndarray,
+    z_pts: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Analytic observer gradient ``(∂x u, ∂z u)`` of :func:`_representation_at`.
+
+    The kernel ``k²·arg2·H₁(u)/u·φ − H₀(u)·χ``, ``u = kρ``,
+    ``arg2 = −dg·X + df·Z``, differentiated with ``H₀′ = −H₁`` and
+    ``(H₁(u)/u)′ = −H₂(u)/u``, ``H₂ = 2H₁/u − H₀`` (slab-spec §8.2): the in-plane
+    source power needs ``∇u_s`` at the source, where a finite difference is
+    h⁴-limited (s12b: 2e-11).
+
+    Args:
+        ei_p: complex (2nn,) solution vector of this boundary.
+        nn: Number of boundary points.
+        f: (nn,) boundary x (nm).
+        df: (nn,) df/dt.
+        g: (nn,) boundary z (nm).
+        dg: (nn,) dg/dt.
+        delt: Trapezoid step.
+        wnum: Wavenumber (the exterior k_bg).
+        x_pts: (M,) observation x (nm).
+        z_pts: (M,) observation z (nm).
+
+    Returns:
+        ``(ux, uz)``, complex (M,) each.
+    """
+    X = x_pts[:, None] - f[None, :]
+    Z = z_pts[:, None] - g[None, :]
+    rho = np.sqrt(X**2 + Z**2)
+    u = wnum * rho
+    h0, h1 = hank0(u), hank1(u)
+    h1u = h1 / u
+    h2u = (2.0 * h1u - h0) / u
+    arg2 = -dg[None, :] * X + df[None, :] * Z
+    phi, chi = ei_p[None, :nn], ei_p[None, nn:]
+    k2 = wnum**2
+    ux = k2 * (-dg[None, :] * h1u - arg2 * wnum * h2u * X / rho) * phi
+    ux += wnum * h1 * X / rho * chi
+    uz = k2 * (df[None, :] * h1u - arg2 * wnum * h2u * Z / rho) * phi
+    uz += wnum * h1 * Z / rho * chi
+    return (1j / 4.0) * np.sum(ux * delt, axis=1), (1j / 4.0) * np.sum(
+        uz * delt, axis=1
+    )

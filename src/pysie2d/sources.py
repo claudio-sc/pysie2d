@@ -8,7 +8,7 @@ share this layout.
 
 import numpy as np
 
-from .kernels import hank0
+from .kernels import hank0, hank1
 
 # ---------------------------------------------------------------------------
 # Incident plane-wave RHS  (subroutine ein)
@@ -131,4 +131,39 @@ def line_dipole_rhs(
 
     ei = np.zeros(2 * nn, dtype=complex)
     ei[:nn] = 0.25j * hank0(wnum_bg * dist)
+    return ei
+
+
+def in_plane_moment_b(moment: tuple[complex, complex]) -> tuple[complex, complex]:
+    """``b = (p_z, −p_x)`` of an in-plane electric dipole ``moment = (p_x, p_z)``.
+
+    From ``∇·(p∇H_y) + k²H_y = −[∇×J]_y`` with ``J = −iωp`` and ``exp(−iωt)``,
+    the TM source is the derivative source ``u = −(b·∇′)G(r, r_s)`` with this
+    ``b``, and the field returned is ``H_y/(iω)`` per unit moment in the scalar
+    source's units (slab-spec §2.8, S11).
+    """
+    p_x, p_z = moment
+    return complex(p_z), complex(-p_x)
+
+
+def _in_plane_dipole_rhs(
+    nn: int,
+    wnum_bg: complex,
+    f: np.ndarray,
+    g: np.ndarray,
+    x_s: float,
+    z_s: float,
+    b: tuple[complex, complex],
+) -> np.ndarray:
+    """φ-half ``−(b·∇′)G₀`` of an in-plane dipole at ``(x_s, z_s)``; χ-half 0.
+
+    ``∂x′G₀ = (i/4)·k·H₁(kρ)·(x − x′)/ρ`` and likewise in z. The guards of
+    :func:`line_dipole_rhs` apply unchanged.
+    """
+    line_dipole_rhs(nn, wnum_bg, f, g, x_s, z_s)  # inside / too-close guards
+    dx, dz = f - x_s, g - z_s
+    rho = np.hypot(dx, dz)
+    h1 = 0.25j * wnum_bg * hank1(wnum_bg * rho) / rho
+    ei = np.zeros(2 * nn, dtype=complex)
+    ei[:nn] = -(b[0] * h1 * dx + b[1] * h1 * dz)
     return ei

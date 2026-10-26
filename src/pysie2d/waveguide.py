@@ -19,6 +19,7 @@ from .background import HalfSpace, Stack, _effective
 from .fields import (
     _layer_field,
     _mode_overlap,
+    _representation_gradient_at,
     _stack_background_field,
     _stack_downward_cross_section,
     _stack_downward_far_field,
@@ -27,6 +28,7 @@ from .fields import (
     _upward_cross_sections,
     _upward_far_field,
 )
+from .sources import in_plane_moment_b
 
 
 @dataclass(frozen=True, eq=False)
@@ -230,6 +232,12 @@ class _StackResult:
     mode: layered.GuidedMode | None
     direction: int | None
     x_ref: float | None
+    moment: tuple[complex, complex] | None
+
+    @property
+    def _b(self) -> tuple[complex, complex] | None:
+        """``b = (p_z, −p_x)`` of an in-plane dipole, ``None`` otherwise."""
+        return None if self.moment is None else in_plane_moment_b(self.moment)
 
     @property
     def _bg(self) -> HalfSpace | Stack | None:
@@ -289,17 +297,53 @@ class _StackResult:
         if self._excitation_name != "dipole":
             return None
         assert self.source is not None
-        return (*self.source, None)
+        return (*self.source, self._b)
 
     def _source_power(self) -> float:
-        """Dipole power ``1/4 + Im G_refl(r_s, r_s) + Im u_s(r_s)`` (slab-spec §2.7)."""
+        """Power the dipole emits (slab-spec §2.7).
+
+        Scalar: ``1/4 + Im G_refl(r_s, r_s) + Im u_s(r_s)``. In-plane:
+        ``k²|b|²/8 + Im[(b*·∇)(b·∇′)G_refl] + Im[−(b*·∇)u_s](r_s)``, the
+        reflected self term the path sum with weight ``q²|b_x|² − α₁²|b_z|²``
+        (the odd cross terms vanish on the symmetric path) and ``∇u_s`` the
+        analytic observer gradient of the representation.
+        """
         xs, zs = self.source
+        k = self.wnum_bg
         refl = layered.StackReflection.build(
-            self._pol, self.wnum_bg, self._stack_rel(), np.array([xs]), np.array([zs])
+            self._pol, k, self._stack_rel(), np.array([xs]), np.array([zs])
         )
-        g_refl = refl.green(xs, zs, xs, zs)[0]
-        u_s = self.eval_field(np.array([xs]), np.array([zs])).ravel()[0]
-        return float(0.25 + np.imag(g_refl) + np.imag(u_s))
+        b = self._b
+        if b is None:
+            g_refl = refl.green(xs, zs, xs, zs)[0]
+            u_s = self.eval_field(np.array([xs]), np.array([zs])).ravel()[0]
+            return float(0.25 + np.imag(g_refl) + np.imag(u_s))
+        p = refl.path
+        a1 = layered.alpha(p.q, k)
+        weight = p.q**2 * abs(b[0]) ** 2 - a1**2 * abs(b[1]) ** 2
+        h2 = 2.0 * (zs - refl.z_top)
+        self_r = np.sum(p.w * 0.5j * refl.r(p.q) / a1 * weight * np.exp(1j * a1 * h2))
+        ux, uz = self._scattered_gradient(xs, zs)
+        free = float(np.real(k)) ** 2 * (abs(b[0]) ** 2 + abs(b[1]) ** 2) / 8.0
+        grad = -(np.conj(b[0]) * ux + np.conj(b[1]) * uz)
+        return float(free + np.imag(self_r) / np.pi + np.imag(grad))
+
+    def _scattered_gradient(self, x: float, z: float) -> tuple[complex, complex]:
+        """Analytic ``∇u_s`` at one cover point outside every particle."""
+        xp, zp = np.array([x]), np.array([z])
+        refl = self._stack_cover_reflection(xp, zp)
+        pts = layered.Points(xp, zp)
+        ux, uz = 0j, 0j
+        for bi in self._boundaries():
+            f, g, df, dg, delt, ei = bi
+            nn = f.size
+            gx, gz = _representation_gradient_at(
+                ei, nn, f, df, g, dg, delt, self.wnum_bg, xp, zp
+            )
+            (m1x, m2x), (m1z, m2z) = refl.blocks_grad(pts, _Source(bi))
+            ux += gx[0] - (m1x @ ei[:nn] + m2x @ ei[nn:])[0]
+            uz += gz[0] - (m1z @ ei[:nn] + m2z @ ei[nn:])[0]
+        return complex(ux), complex(uz)
 
     def mode_amplitudes(self, x_ref: float) -> ModeAmplitudes:
         """Guided amplitudes ``s_±`` referred to ``x_ref``, and the power account.
@@ -445,4 +489,5 @@ class _StackResult:
             self.angle,
             self.source,
             self._stack_rel(),
+            self._b,
         )

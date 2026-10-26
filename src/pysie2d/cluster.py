@@ -42,7 +42,13 @@ from .kernels import _real_if_real, assemble_cross_block, assemble_matrix
 from .layered import GuidedMode
 from .material import Material
 from .solver import wavelength_over_ds
-from .sources import _point_inside, line_dipole_rhs, plane_wave_rhs
+from .sources import (
+    _in_plane_dipole_rhs,
+    _point_inside,
+    in_plane_moment_b,
+    line_dipole_rhs,
+    plane_wave_rhs,
+)
 from .waveguide import _mode_rhs, _resolve_mode, _StackResult
 
 PI = np.pi
@@ -460,7 +466,12 @@ class ClusterBIESolver:
         )
 
     def scatter_dipole(
-        self, wavelength: float, x_s: float, z_s: float
+        self,
+        wavelength: float,
+        x_s: float,
+        z_s: float,
+        *,
+        moment: tuple[complex, complex] | None = None,
     ) -> "ClusterScatterResult":
         """Solve the coupled system for a line-dipole source.
 
@@ -468,13 +479,16 @@ class ClusterBIESolver:
             wavelength: Vacuum wavelength λ_vac in nm.
             x_s: Source x-coordinate (nm).
             z_s: Source z-coordinate (nm).
+            moment: ``(p_x, p_z)`` of an in-plane electric dipole, TM only;
+                see :meth:`pysie2d.solver.BIESolver.scatter_dipole`.
 
         Returns:
             The :class:`ClusterScatterResult` carrying the coupled solution.
 
         Raises:
             ValueError: If the source lies inside, or too close to, any
-                particle — raised by :func:`~pysie2d.sources.line_dipole_rhs`.
+                particle — raised by :func:`~pysie2d.sources.line_dipole_rhs`;
+                a ``moment`` at ``pol = 2`` (T7).
 
         Warns:
             ClusterResolutionWarning: If the particles' resolutions differ by
@@ -484,10 +498,21 @@ class ClusterBIESolver:
         """
         self._check_resolution(wavelength)
         self._check_gap(wavelength)
+        if moment is not None and self.pol != 1:
+            raise ValueError(
+                "moment= is accepted at pol = 1 (TM) only: in TE the same source "
+                "would be an in-plane magnetic dipole (slab-spec T7)"
+            )
+        b = None if moment is None else in_plane_moment_b(moment)
         cl = self.cluster
         k_bg = self.materials[0].wnum_bg(wavelength)
         rhs = np.zeros(cl.n_dof, dtype=complex)
         for p, gp in enumerate(cl.geometries):
+            if b is not None:
+                rhs[cl.slice(p)] = _in_plane_dipole_rhs(
+                    gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s, b
+                )
+                continue
             # line_dipole_rhs's own inside/too-close guards run once per
             # particle, which is exactly the cluster condition: the source must
             # lie outside every particle. No extra check is needed here and
@@ -500,9 +525,9 @@ class ClusterBIESolver:
         )
         if refl is not None:
             for p, gp in enumerate(cl.geometries):
-                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += refl.green(
-                    gp.f, gp.g, x_s, z_s
-                )[0]
+                gs = refl.green(gp.f, gp.g, x_s, z_s)
+                term = gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
+                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += term
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
             ei,
@@ -514,6 +539,7 @@ class ClusterBIESolver:
             "dipole",
             self.background,
             source=(x_s, z_s),
+            moment=None if moment is None else (complex(moment[0]), complex(moment[1])),
         )
 
     def scatter_mode(
@@ -691,6 +717,7 @@ class ClusterScatterResult(_StackResult):
         mode: GuidedMode | None = None,
         direction: int | None = None,
         x_ref: float | None = None,
+        moment: tuple[complex, complex] | None = None,
     ) -> None:
         """Store a coupled solution and the problem that produced it.
 
@@ -707,6 +734,7 @@ class ClusterScatterResult(_StackResult):
             mode: The incident guided mode of a mode excitation, or ``None``.
             direction: Its direction, +1 or −1, or ``None``.
             x_ref: Its phase reference along x (nm), or ``None``.
+            moment: In-plane dipole moment ``(p_x, p_z)``, or ``None``.
         """
         self.ei = ei
         self.cluster = cluster
@@ -720,6 +748,7 @@ class ClusterScatterResult(_StackResult):
         self.mode = mode
         self.direction = direction
         self.x_ref = x_ref
+        self.moment = moment
 
     @property
     def _pol(self) -> int:
@@ -1071,6 +1100,7 @@ class ClusterScatterResult(_StackResult):
             self.source,
             None if bg is None else bg.eps_rel(n_clad, self.wavelength),
             None if bg is None else bg.z_int,
+            self._b,
         )
 
     def incident_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:

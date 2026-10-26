@@ -3,7 +3,7 @@ BIESolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.
 BIESolver.assemble(self, wavelength: float | complex) -> numpy.ndarray
 BIESolver.assemble_derivative(self, wavelength: float | complex) -> numpy.ndarray
 BIESolver.scatter(self, wavelength: float, angle: float = 0.0, incident_rhs: collections.abc.Callable[[int, complex, numpy.ndarray, numpy.ndarray], numpy.ndarray] | None = None) -> pysie2d.solver.ScatterResult
-BIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float) -> pysie2d.solver.ScatterResult
+BIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float, *, moment: tuple[complex, complex] | None = None) -> pysie2d.solver.ScatterResult
 BIESolver.scatter_mode(self, wavelength: float, mode: pysie2d.layered.GuidedMode | int, direction: int, *, x_ref: float) -> pysie2d.solver.ScatterResult
 class Cluster
 Cluster.__init__(self, geometries: collections.abc.Sequence[pysie2d.geometry.Geometry]) -> None
@@ -11,7 +11,7 @@ Cluster.slice(self, p: int) -> slice
 class ClusterBIESolver
 ClusterBIESolver.__init__(self, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int = 2, background: pysie2d.background.HalfSpace | pysie2d.background.Stack | None = None) -> None
 ClusterBIESolver.scatter(self, wavelength: float, angle: float = 0.0) -> 'ClusterScatterResult'
-ClusterBIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float) -> 'ClusterScatterResult'
+ClusterBIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float, *, moment: tuple[complex, complex] | None = None) -> 'ClusterScatterResult'
 ClusterBIESolver.scatter_mode(self, wavelength: float, mode: pysie2d.layered.GuidedMode | int, direction: int, *, x_ref: float) -> 'ClusterScatterResult'
 class ClusterGapWarning
 ClusterGapWarning.__init__(self, /, *args, **kwargs)
@@ -20,7 +20,7 @@ ClusterOverlapError.__init__(self, /, *args, **kwargs)
 class ClusterResolutionWarning
 ClusterResolutionWarning.__init__(self, /, *args, **kwargs)
 class ClusterScatterResult
-ClusterScatterResult.__init__(self, ei: numpy.ndarray, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int, wavelength: float, angle: float, excitation: str, background: pysie2d.background.HalfSpace | pysie2d.background.Stack | None = None, *, source: tuple[float, float] | None = None, mode: pysie2d.layered.GuidedMode | None = None, direction: int | None = None, x_ref: float | None = None) -> None
+ClusterScatterResult.__init__(self, ei: numpy.ndarray, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int, wavelength: float, angle: float, excitation: str, background: pysie2d.background.HalfSpace | pysie2d.background.Stack | None = None, *, source: tuple[float, float] | None = None, mode: pysie2d.layered.GuidedMode | None = None, direction: int | None = None, x_ref: float | None = None, moment: tuple[complex, complex] | None = None) -> None
 ClusterScatterResult.cross_sections(self, n_angles: int = 500) -> dict[str, float]
 ClusterScatterResult.ei_particle(self, p: int) -> numpy.ndarray
 ClusterScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray
@@ -87,7 +87,7 @@ QNMSolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.
 QNMSolver.modes(self, z_lo: complex, z_hi: complex, *, n_quad_per_side: int = 12, n_probe: int = 12, rank_tol: float = 1e-08, rng_seed: int = 0) -> pysie2d.qnm.QNMResult
 SHAPE_STEP: float = 1e-05
 class ScatterResult
-ScatterResult.__init__(self, ei: numpy.ndarray, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float, angle: float = 0.0, background: pysie2d.background.HalfSpace | pysie2d.background.Stack | None = None, *, excitation: str = 'plane_wave', source: tuple[float, float] | None = None, mode: pysie2d.layered.GuidedMode | None = None, direction: int | None = None, x_ref: float | None = None) -> None
+ScatterResult.__init__(self, ei: numpy.ndarray, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float, angle: float = 0.0, background: pysie2d.background.HalfSpace | pysie2d.background.Stack | None = None, *, excitation: str = 'plane_wave', source: tuple[float, float] | None = None, mode: pysie2d.layered.GuidedMode | None = None, direction: int | None = None, x_ref: float | None = None, moment: tuple[complex, complex] | None = None) -> None
 ScatterResult.cross_sections(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.efficiencies(self, n_angles: int = 500) -> dict[str, float]
 ScatterResult.eval_field(self, x: numpy.ndarray, z: numpy.ndarray) -> numpy.ndarray

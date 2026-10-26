@@ -32,7 +32,12 @@ from .kernels import assemble_matrix, assemble_matrix_dwn
 from .layered import GuidedMode
 from .material import Material
 from .multipole import Multipoles, decompose
-from .sources import line_dipole_rhs, plane_wave_rhs
+from .sources import (
+    _in_plane_dipole_rhs,
+    in_plane_moment_b,
+    line_dipole_rhs,
+    plane_wave_rhs,
+)
 from .waveguide import _mode_rhs, _resolve_mode, _StackResult
 
 PI = np.pi
@@ -151,6 +156,8 @@ class ScatterResult(_StackResult):
             excitation, or ``None``.
         direction: Its direction, +1 or −1, or ``None``.
         x_ref: Its phase reference along x (nm), or ``None``.
+        moment: The in-plane dipole moment ``(p_x, p_z)`` of a dipole
+            excitation, or ``None`` for the scalar line source.
     """
 
     def __init__(
@@ -167,6 +174,7 @@ class ScatterResult(_StackResult):
         mode: GuidedMode | None = None,
         direction: int | None = None,
         x_ref: float | None = None,
+        moment: tuple[complex, complex] | None = None,
     ) -> None:
         """Store the BIE solution and the problem it was solved for."""
         self.ei = ei
@@ -180,6 +188,7 @@ class ScatterResult(_StackResult):
         self.mode = mode
         self.direction = direction
         self.x_ref = x_ref
+        self.moment = moment
 
     @property
     def _pol(self) -> int:
@@ -375,6 +384,7 @@ class ScatterResult(_StackResult):
             self.source,
             None if bg is None else bg.eps_rel(self.material.n_clad, self.wavelength),
             None if bg is None else bg.z_int,
+            self._b,
         )
 
     def incident_field(self, x: np.ndarray, z: np.ndarray) -> np.ndarray:
@@ -900,6 +910,8 @@ class BIESolver:
         wavelength: float,
         x_s: float,
         z_s: float,
+        *,
+        moment: tuple[complex, complex] | None = None,
     ) -> ScatterResult:
         """Solve the BIE for a line-dipole (2-D point) source at (x_s, z_s).
 
@@ -911,14 +923,23 @@ class BIESolver:
             wavelength: **Vacuum** wavelength (nm).
             x_s: Source x-coordinate (nm).
             z_s: Source z-coordinate (nm).
+            moment: ``(p_x, p_z)`` of an in-plane **electric** dipole, TM
+                (``pol = 1``) only (T7): the source becomes
+                ``u = −(b·∇′)G(r, r_s)`` with ``b = (p_z, −p_x)``, and the field
+                returned is ``H_y/(iω)`` per unit moment in the scalar source's
+                units (slab-spec §2.8). ``None`` is the scalar line source, bit
+                for bit.
 
         Returns:
             ScatterResult carrying the scattered-field solution vector.
 
         Raises:
             ValueError: If the source is inside the particle or too close to
-                its surface (see :func:`pysie2d.sources.line_dipole_rhs`).
+                its surface (see :func:`pysie2d.sources.line_dipole_rhs`); a
+                ``moment`` at ``pol = 2``, where it would be a magnetic dipole.
         """
+        if moment is not None:
+            return self._scatter_in_plane(wavelength, x_s, z_s, moment)
         geo = self.geometry
         refl = self._reflection(
             wavelength, np.append(geo.f, x_s), np.append(geo.g, z_s)
@@ -995,4 +1016,36 @@ class BIESolver:
             mode=m,
             direction=direction,
             x_ref=x_ref,
+        )
+
+    def _scatter_in_plane(
+        self, wavelength: float, x_s: float, z_s: float, moment: tuple[complex, complex]
+    ) -> ScatterResult:
+        """In-plane :meth:`scatter_dipole`: RHS ``−(b·∇′)(G₀ + G_ind)``."""
+        mat, geo = self.material, self.geometry
+        if mat.pol != 1:
+            raise ValueError(
+                "moment= is accepted at pol = 1 (TM) only: in TE the same source "
+                "would be an in-plane magnetic dipole (slab-spec T7)"
+            )
+        b = in_plane_moment_b(moment)
+        k = mat.wnum_bg(wavelength)
+        rhs = _in_plane_dipole_rhs(geo.n_pts, k, geo.f, geo.g, x_s, z_s, b)
+        refl = self._reflection(
+            wavelength, np.append(geo.f, x_s), np.append(geo.g, z_s)
+        )
+        if refl is not None:
+            _, gx, gz = refl.green(geo.f, geo.g, x_s, z_s)
+            rhs[: geo.n_pts] -= b[0] * gx + b[1] * gz
+        ei = np.linalg.solve(self.assemble(wavelength), rhs)
+        return ScatterResult(
+            ei,
+            geo,
+            mat,
+            wavelength,
+            0.0,
+            self.background,
+            excitation="dipole",
+            source=(x_s, z_s),
+            moment=(complex(moment[0]), complex(moment[1])),
         )

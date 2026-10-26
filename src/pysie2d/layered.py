@@ -1880,6 +1880,36 @@ class StackReflection:
             self.r,
         )
 
+    def blocks_grad(
+        self, tgt: Geometry | Points, src: Geometry
+    ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
+        """Blocks of the observer gradient ``(∂x, ∂z)`` of the reflected field.
+
+        The target factor ``e^{iq(x−x_c) + iα₁h}`` differentiates to ``iq`` and
+        ``iα₁`` (§8.2), folded into R so the banded GEMM is reused as is.
+
+        Returns:
+            ``((m1_x, m2_x), (m1_z, m2_z))``.
+        """
+        k, r = self.k, self.r
+        out = []
+        for fac in (lambda q: 1j * q, lambda q: 1j * alpha(q, k)):
+            out.append(
+                _reflected_blocks(
+                    self.path,
+                    self.pol,
+                    k,
+                    None,
+                    tgt,
+                    src,
+                    self.z_top,
+                    self.x_c,
+                    False,
+                    lambda q, fac=fac: fac(q) * r(q),
+                )
+            )
+        return out[0], out[1]
+
     def green(
         self,
         x: np.ndarray | float,
