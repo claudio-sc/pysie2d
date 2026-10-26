@@ -21,6 +21,7 @@ from pysie2d import (
     layered,
 )
 from pysie2d.background import NearDegenerateModesError, Stack
+from pysie2d.fields import _stack_background_field
 from pysie2d.layered import SommerfeldPath, _singularities
 from pysie2d.reference.sommerfeld import (
     g_ref_stack,
@@ -29,6 +30,7 @@ from pysie2d.reference.sommerfeld import (
     slab3_roots,
     stack_r_ref,
 )
+from pysie2d.waveguide import _amplitudes
 
 PI = np.pi
 N_CLAD = 1.444
@@ -509,3 +511,220 @@ def test_fields_refuse_interface_planes_and_lossy_far_field_below():
     with pytest.raises(NoFarFieldError):
         res.far_field_down()
     assert {"c_sca_up", "c_sca_down", "c_abs"} <= res.cross_sections().keys()
+
+
+# --- shared particle cases (s12) ---------------------------------------------------
+
+
+def _shifted(geom, dz, rot_deg=0.0):
+    """Rotate about the origin, then lift by dz: an x-asymmetric shape (s12)."""
+    c, s = np.cos(np.deg2rad(rot_deg)), np.sin(np.deg2rad(rot_deg))
+
+    def rot(x, z):
+        return c * x - s * z, s * x + c * z
+
+    f, g = rot(geom.f, geom.g)
+    df, dg = rot(geom.df, geom.dg)
+    ddf, ddg = rot(geom.ddf, geom.ddg)
+    return Geometry(f=f, g=g + dz, df=df, dg=dg, ddf=ddf, ddg=ddg, rad=geom.rad, z0=dz)
+
+
+SOI = Stack(((N_SI**2, 220.0),), N_CLAD**2)
+SIN = Stack(((N_SIN**2, 400.0),), N_CLAD**2)
+CIRC = Geometry.gielis(rad=80.0, n_pts=160, m=4)
+TRI = Geometry.gielis(rad=90.0, n_pts=200, m=3, n1=4.0, n2=6.0, n3=6.0)
+PARTICLES = {
+    # (stack, λ, geometry, n_core, epsi, dipole position)
+    "SOI circle": (SOI, 1550.0, _shifted(CIRC, 110.0), N_SI, 0.0, (150.0, 60.0)),
+    "SOI lossy circle": (SOI, 1550.0, _shifted(CIRC, 110.0), N_SI, 0.8, (150.0, 60.0)),
+    "SOI lossy triangle": (
+        SOI,
+        1550.0,
+        _shifted(TRI, 140.0, 17.0),
+        2.0,
+        0.3,
+        (-170.0, 50.0),
+    ),
+    "SiN triangle, 2 modes": (
+        SIN,
+        800.0,
+        _shifted(TRI, 140.0, 17.0),
+        N_SI,
+        0.0,
+        (-170.0, 50.0),
+    ),
+}
+
+
+def _solver(case, pol):
+    stack, lam, geom, n, epsi, src = PARTICLES[case]
+    mat = Material(n_core=n, n_clad=N_CLAD, pol=pol, epsi=epsi)
+    return BIESolver(geom, mat, stack), lam, src
+
+
+# --- GW9: dipole power balance with no particle --------------------------------------
+
+GW9_STACKS = {
+    "SOI": (SOI, N_CLAD, 1550.0),
+    "air|Si|SiO2": (SOI, 1.0, 1550.0),
+    "SiN@800": (SIN, N_CLAD, 800.0),
+    "double": (
+        Stack(((N_SI**2, 220.0), (N_CLAD**2, 300.0), (N_SI**2, 220.0)), N_CLAD**2),
+        N_CLAD,
+        1550.0,
+    ),
+}
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("case", GW9_STACKS, ids=str)
+def test_line_source_power_balance_over_a_bare_stack(case, pol):
+    # 1/4 + Im G_refl(r₀, r₀) on the deformed path must equal P_up + P_down +
+    # Σ P_guided, each from its own integral: the real-axis cover and bottom
+    # fluxes and the mode profiles' norms. An equality, not a bound (G14).
+    stack, n_clad, lam = GW9_STACKS[case]
+    k = 2 * PI * n_clad / lam
+    rel = stack.eps_rel(n_clad, lam)
+    modes = stack.guided_modes(lam, pol, n_clad)
+    for h0 in (20.0, 100.0, 400.0):
+        refl = layered.StackReflection.build(
+            pol, k, rel, np.array([0.0]), np.array([h0])
+        )
+        p_src = 0.25 + refl.green(0.0, h0, 0.0, h0)[0].imag
+        amps = _amplitudes(
+            [], k, pol, rel, modes, 0.0, "dipole", (0.0, h0, None), p_src
+        )
+        assert amps.balance() < 5e-14  # measured 7.0e-15
+
+
+# --- GW10: the far field along the stack is the guided closed form ------------------
+
+# SOI TM is left out: the symmetric slab's TM remainder decays as X^{-0.84}, not
+# the X^{-3/2} radiation tail (S9: 1.0e-1 at 40 µm), so 40 µm is not far enough.
+GW10_CASES = [("SOI", 2), ("air|Si|SiO2", 2), ("air|Si|SiO2", 1)]
+GW10_CASES += [("SiN@800", 2), ("SiN@800", 1), ("double", 2), ("double", 1)]
+
+
+@pytest.mark.parametrize("case, pol", GW10_CASES, ids=str)
+def test_far_field_along_the_stack_is_the_guided_sum(case, pol):
+    # The total line-source field at ±x on the path must tend to
+    # Σ s_±·ũ(z)e^{±iβ(x − x_ref)}, with s_± as mode_amplitudes reports them:
+    # this pins the amplitude, its normalisation and the phase reference.
+    stack, n_clad, lam = GW9_STACKS[case]
+    k = 2 * PI * n_clad / lam
+    rel = stack.eps_rel(n_clad, lam)
+    modes = stack.guided_modes(lam, pol, n_clad)
+    amps = _amplitudes([], k, pol, rel, modes, 0.0, "dipole", (0.0, 50.0, None), 1.0)
+    for sign in (1, -1):
+        rem = []
+        for x_far in (1e4, 4e4):
+            u = _stack_background_field(
+                np.array([sign * x_far]),
+                np.array([100.0]),
+                k,
+                pol,
+                "dipole",
+                0.0,
+                (0.0, 50.0),
+                rel,
+            )[0]
+            s = amps.s_plus if sign > 0 else amps.s_minus
+            terms = [
+                s[i]
+                * m.profile(100.0)
+                / np.sqrt(m.beta * m.norm)
+                * np.exp(1j * m.beta * x_far)
+                for i, m in enumerate(modes)
+            ]
+            scale = sum(abs(t) for t in terms)
+            rem.append(abs(u - sum(terms)) / scale)
+            assert abs(u + sum(terms)) / scale > 1.0  # a sign error cannot pass
+        assert rem[1] < 0.1 and rem[1] < rem[0]  # measured ≤ 4.9e-2 at 40 µm
+
+
+# --- GW12–GW14: a particle over the stack ---------------------------------------------
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("case", PARTICLES, ids=str)
+def test_dipole_and_particle_power_balance(case, pol):
+    # P_source = 1/4 + Im G_refl + Im u_s at the source, against cover, bottom,
+    # absorption and both guided directions — each from its own integral, with
+    # loss in the particle and an x-asymmetric shape.
+    solver, lam, src = _solver(case, pol)
+    amps = solver.scatter_dipole(lam, *src).mode_amplitudes(0.0)
+    assert amps.balance() < 1e-14  # measured 4.0e-15 (SiN triangle TE)
+
+
+@pytest.mark.parametrize("pol", [2, 1])
+@pytest.mark.parametrize("case", PARTICLES, ids=str)
+def test_mode_incidence_conserves_power_and_is_reciprocal(case, pol):
+    # Σ|S|² + P_rad + P_abs = 1 for every incident mode and direction (GW13), and
+    # t_{n←m}(L→R) = t_{m←n}(R→L) (GW14): reciprocity holds for a lossy,
+    # x-asymmetric particle, where no symmetry could make it pass by accident.
+    solver, lam, _ = _solver(case, pol)
+    n_modes = len(solver.background.guided_modes(lam, pol, N_CLAD))
+    s = {}
+    for m in range(n_modes):
+        for d in (1, -1):
+            s[m, d] = solver.scatter_mode(lam, m, d, x_ref=37.0).mode_amplitudes(37.0)
+            assert s[m, d].balance() < 5e-15  # measured 2.4e-15
+    for m in range(n_modes):
+        for n in range(n_modes):
+            assert abs(s[m, 1].s_plus[n] - s[n, -1].s_minus[m]) < 2e-15  # 1.1e-16
+
+
+# --- GW15: the Born limit -------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "stack, lam, bar", [(SOI, 1550.0, 1e-3), (SIN, 800.0, 2.4e-3)], ids=["SOI", "SiN"]
+)
+def test_small_circle_s_matrix_tends_to_first_born(stack, lam, bar):
+    # u_s ≈ k²(ε − 1)πa²·G(r, r_p)·u_inc(r_p) with the full stack G; its guided
+    # part fixes S − δ in closed form. The error must fall like a² (ratio ≈ 4
+    # per halving): a wrong formula would have to share both law and constant.
+    k, eps, (xp, zp) = 2 * PI * N_CLAD / lam, (2.0 / N_CLAD) ** 2, (23.0, 60.0)
+    modes = stack.guided_modes(lam, 2, N_CLAD)
+    errs = []
+    for a in (4.0, 2.0):
+        geom = Geometry.gielis(rad=a, n_pts=64, m=4, x0=xp, z0=zp)
+        solver = BIESolver(geom, Material(n_core=2.0, n_clad=N_CLAD, pol=2), stack)
+        err = 0.0
+        for m in modes:
+            amps = solver.scatter_mode(lam, m.order, 1, x_ref=0.0).mode_amplitudes(0.0)
+            for n, mn in enumerate(modes):
+                pre = k * k * (eps - 1) * PI * a * a * 1j / (2 * mn.beta * mn.norm)
+                pre *= mn.profile(zp) * m.profile(zp) * np.exp(1j * m.beta * xp)
+                pre *= np.sqrt(mn.beta * mn.norm / (m.beta * m.norm))
+                fwd = amps.s_plus[n] - (n == m.order)
+                err = max(err, abs(fwd - pre * np.exp(-1j * mn.beta * xp)) / abs(pre))
+                err = max(
+                    err,
+                    abs(amps.s_minus[n] - pre * np.exp(1j * mn.beta * xp)) / abs(pre),
+                )
+        errs.append(err)
+    assert errs[1] < bar  # measured 5.0e-4 (SOI), 1.2e-3 (SiN)
+    assert 3.2 < errs[0] / errs[1] < 4.2  # measured 3.43–3.66
+
+
+# --- façade behaviour ---------------------------------------------------------------
+
+
+def test_mode_outputs_refuse_what_is_not_a_channel():
+    solver, lam, src = _solver("SOI circle", 2)
+    with pytest.raises(ValueError, match="direction"):
+        solver.scatter_mode(lam, 0, 0, x_ref=0.0)
+    res = solver.scatter_mode(lam, 0, 1, x_ref=5.0)
+    with pytest.raises(ValueError, match="x_ref"):
+        res.mode_amplitudes(0.0)
+    plane = solver.scatter(lam)
+    assert plane.mode_amplitudes(0.0).p_source is None
+    assert "c_guided" in plane.cross_sections() and "qguided" in plane.efficiencies()
+    with pytest.raises(ValueError, match="plane wave"):
+        plane.mode_amplitudes(0.0).balance()
+    lossy = Stack((((N_SI + 1e-3j) ** 2, 220.0),), N_CLAD**2)
+    res = BIESolver(solver.geometry, solver.material, lossy).scatter(lam)
+    assert "c_guided" not in res.cross_sections()  # T8: absent, not raising
+    with pytest.raises(ValueError, match="lossless"):
+        res.mode_amplitudes(0.0)

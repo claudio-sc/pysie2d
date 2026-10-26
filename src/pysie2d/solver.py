@@ -29,10 +29,11 @@ from .fields import (
 )
 from .geometry import Geometry
 from .kernels import assemble_matrix, assemble_matrix_dwn
+from .layered import GuidedMode
 from .material import Material
 from .multipole import Multipoles, decompose
 from .sources import line_dipole_rhs, plane_wave_rhs
-from .waveguide import _StackResult
+from .waveguide import _mode_rhs, _resolve_mode, _StackResult
 
 PI = np.pi
 
@@ -142,9 +143,14 @@ class ScatterResult(_StackResult):
             one, ``far_field`` is the upward amplitude, ``cross_sections`` and
             ``efficiencies`` carry the ``*_up`` and ``*_down`` keys, and
             ``multipoles`` raises ``NotImplementedError``.
-        excitation: ``"plane_wave"``, ``"dipole"`` or ``"custom"`` (a
-            user ``incident_rhs``), which :meth:`incident_field` needs.
+        excitation: ``"plane_wave"``, ``"dipole"``, ``"mode"`` or
+            ``"custom"`` (a user ``incident_rhs``), which
+            :meth:`incident_field` needs.
         source: The dipole position ``(x_s, z_s)``, or ``None``.
+        mode: The incident :class:`~pysie2d.layered.GuidedMode` of a mode
+            excitation, or ``None``.
+        direction: Its direction, +1 or −1, or ``None``.
+        x_ref: Its phase reference along x (nm), or ``None``.
     """
 
     def __init__(
@@ -158,6 +164,9 @@ class ScatterResult(_StackResult):
         *,
         excitation: str = "plane_wave",
         source: tuple[float, float] | None = None,
+        mode: GuidedMode | None = None,
+        direction: int | None = None,
+        x_ref: float | None = None,
     ) -> None:
         """Store the BIE solution and the problem it was solved for."""
         self.ei = ei
@@ -168,6 +177,9 @@ class ScatterResult(_StackResult):
         self.background = background
         self.excitation = excitation
         self.source = source
+        self.mode = mode
+        self.direction = direction
+        self.x_ref = x_ref
 
     @property
     def _pol(self) -> int:
@@ -552,6 +564,8 @@ class ScatterResult(_StackResult):
             eff = {"qsca_up": c["c_sca_up"] / norm, "qabs": c["c_abs"] / norm}
             if "c_sca_down" in c:
                 eff["qsca_down"] = c["c_sca_down"] / norm
+            if "c_guided" in c:
+                eff["qguided"] = c["c_guided"] / norm
             return eff
         wnum_bg = self.wnum_bg
         norfac = 8.0 * PI * wnum_bg
@@ -927,4 +941,58 @@ class BIESolver:
             self.background,
             excitation="dipole",
             source=(x_s, z_s),
+        )
+
+    def scatter_mode(
+        self,
+        wavelength: float,
+        mode: GuidedMode | int,
+        direction: int,
+        *,
+        x_ref: float,
+    ) -> ScatterResult:
+        """Solve for a guided mode of the stack incident on the particle.
+
+        The incident field is the power-normalised mode
+        ``ũ_m(z)·e^{±iβ_m(x − x_ref)}``, ``ũ = u/√(βN)``, which carries unit
+        power; the right-hand side has no reflected term because the mode
+        solves the background problem on its own (slab-spec §8.3).
+        :meth:`ScatterResult.mode_amplitudes` with the same ``x_ref`` then
+        returns the S-matrix column of this mode.
+
+        Args:
+            wavelength: Real **vacuum** wavelength (nm).
+            mode: A :class:`~pysie2d.layered.GuidedMode` of this stack, or its
+                index in :meth:`~pysie2d.background.Stack.guided_modes`.
+            direction: +1 for incidence towards +x, −1 towards −x.
+            x_ref: Phase reference along x (nm), required (R14).
+
+        Returns:
+            ScatterResult with ``excitation = "mode"``.
+
+        Raises:
+            ValueError: Without a stack; at complex λ or over a lossy stack
+                (T2); a direction other than ±1; a mode foreign to this stack.
+        """
+        mat = self.material
+        if not isinstance(_effective(self.background, mat.n_clad, wavelength), Stack):
+            raise ValueError("scatter_mode needs a Stack background that guides")
+        m = _resolve_mode(
+            self.background, wavelength, mat.pol, mat.n_clad, mode, direction
+        )
+        g = self.geometry
+        rhs = np.zeros(2 * g.n_pts, dtype=complex)
+        rhs[: g.n_pts] = _mode_rhs(m, direction, x_ref, g.f, g.g)
+        ei = np.linalg.solve(self.assemble(wavelength), rhs)
+        return ScatterResult(
+            ei,
+            g,
+            mat,
+            wavelength,
+            0.0,
+            self.background,
+            excitation="mode",
+            mode=m,
+            direction=direction,
+            x_ref=x_ref,
         )

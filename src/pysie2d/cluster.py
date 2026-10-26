@@ -39,10 +39,11 @@ from .fields import (
 )
 from .geometry import Geometry
 from .kernels import _real_if_real, assemble_cross_block, assemble_matrix
+from .layered import GuidedMode
 from .material import Material
 from .solver import wavelength_over_ds
 from .sources import _point_inside, line_dipole_rhs, plane_wave_rhs
-from .waveguide import _StackResult
+from .waveguide import _mode_rhs, _resolve_mode, _StackResult
 
 PI = np.pi
 
@@ -515,6 +516,61 @@ class ClusterBIESolver:
             source=(x_s, z_s),
         )
 
+    def scatter_mode(
+        self,
+        wavelength: float,
+        mode: GuidedMode | int,
+        direction: int,
+        *,
+        x_ref: float,
+    ) -> "ClusterScatterResult":
+        """Solve for a guided mode of the stack incident on the cluster.
+
+        See :meth:`pysie2d.solver.BIESolver.scatter_mode`: the RHS φ-half is
+        ``ũ_m(z_j)e^{±iβ(x_j − x_ref)}`` on every particle, the χ-half 0.
+
+        Args:
+            wavelength: Real vacuum wavelength λ_vac in nm.
+            mode: A guided mode of this stack, or its index.
+            direction: +1 towards +x, −1 towards −x.
+            x_ref: Phase reference along x (nm), required (R14).
+
+        Returns:
+            The :class:`ClusterScatterResult`, ``excitation = "mode"``.
+
+        Raises:
+            ValueError: Without a stack; complex λ or a lossy stack (T2); a
+                direction other than ±1; a mode foreign to this stack.
+        """
+        self._check_resolution(wavelength)
+        self._check_gap(wavelength)
+        n_clad = self.materials[0].n_clad
+        if not isinstance(_effective(self.background, n_clad, wavelength), Stack):
+            raise ValueError("scatter_mode needs a Stack background that guides")
+        m = _resolve_mode(
+            self.background, wavelength, self.pol, n_clad, mode, direction
+        )
+        cl = self.cluster
+        rhs = np.zeros(cl.n_dof, dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] = _mode_rhs(
+                m, direction, x_ref, gp.f, gp.g
+            )
+        ei = np.linalg.solve(self._assemble(wavelength), rhs)
+        return ClusterScatterResult(
+            ei,
+            cl,
+            self.materials,
+            self.pol,
+            wavelength,
+            0.0,
+            "mode",
+            self.background,
+            mode=m,
+            direction=direction,
+            x_ref=x_ref,
+        )
+
     def _check_gap(self, wavelength: float) -> None:
         """Warn when the closest gap is finer than the quadrature can resolve.
 
@@ -632,6 +688,9 @@ class ClusterScatterResult(_StackResult):
         background: HalfSpace | Stack | None = None,
         *,
         source: tuple[float, float] | None = None,
+        mode: GuidedMode | None = None,
+        direction: int | None = None,
+        x_ref: float | None = None,
     ) -> None:
         """Store a coupled solution and the problem that produced it.
 
@@ -645,6 +704,9 @@ class ClusterScatterResult(_StackResult):
             excitation: ``"plane_wave"`` or ``"dipole"``.
             background: The substrate the cluster sits on, or ``None``.
             source: The dipole position ``(x_s, z_s)``, or ``None``.
+            mode: The incident guided mode of a mode excitation, or ``None``.
+            direction: Its direction, +1 or −1, or ``None``.
+            x_ref: Its phase reference along x (nm), or ``None``.
         """
         self.ei = ei
         self.cluster = cluster
@@ -655,6 +717,9 @@ class ClusterScatterResult(_StackResult):
         self._excitation = excitation
         self.background = background
         self.source = source
+        self.mode = mode
+        self.direction = direction
+        self.x_ref = x_ref
 
     @property
     def _pol(self) -> int:

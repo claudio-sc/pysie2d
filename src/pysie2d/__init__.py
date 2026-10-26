@@ -19,6 +19,10 @@ Public API:
         ``Stack.guided_modes(λ, pol, n_clad)`` returns its guided modes.
     GuidedMode: one guided mode of a lossless stack — β, n_eff, the bilinear
         norm N and the profile u(z) with u(z_top) = 1.
+    ModeAmplitudes: guided amplitudes s_± (power-normalised modes, phase
+        referred to ``x_ref``) and the full power account of a solve over a
+        stack, from ``ScatterResult.mode_amplitudes(x_ref)``;
+        ``BIESolver.scatter_mode`` drives a solve with one guided mode.
     NearDegenerateModesError: a ``ValueError`` raised when two guided modes
         are closer than the mode finder separates (slab-spec R15).
     InterfaceGapWarning, SommerfeldPrecisionWarning: the half-space guards — a
@@ -118,6 +122,7 @@ from .solver import (
     wavelength_over_ds,
 )
 from .sources import line_dipole_rhs, plane_wave_rhs
+from .waveguide import ModeAmplitudes
 
 __version__ = "1.1.0"
 
@@ -135,6 +140,7 @@ __all__ = [
     "HalfSpace",
     "InterfaceGapWarning",
     "Material",
+    "ModeAmplitudes",
     "Multipoles",
     "NearDegenerateModesError",
     "NoFarFieldError",

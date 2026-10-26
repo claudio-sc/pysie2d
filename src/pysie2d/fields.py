@@ -923,23 +923,67 @@ def _layer_field(
     return out
 
 
+# P_down over a lossless stack bottom: 16 Gauss–Legendre panels of 200 nodes in s,
+# q = k_bot·sin s on [−π/2, π/2] (S12), split at ±asin(k₁/k_bot) and sine-mapped
+# per panel (an air cover puts a √ kink inside: 1.1e-5 unsplit). The v1.1 flux
+# rule puts one 24-point panel on [0, k_bot] here, because the real guided poles
+# lie beyond it and add no breakpoints: TM dipole balance 9.3e-7 (SOI) against
+# 3.2e-15 with this rule. 200 nodes, not S12's 400: the floor is accumulated
+# round-off (7e-15 at 200, 1.8e-14 at 400).
+DOWN_PANELS = 16
+DOWN_PANEL_POINTS = 200
+
+
+def _stack_down_power(
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    pol: int,
+    stack_rel: tuple,
+    source: tuple | None = None,
+) -> float:
+    """``P_down = (1/2π)∫ Re(Y_b)|τ·d|²/4 dq`` through the bottom of a stack.
+
+    A lossless bottom takes S12's rule, sine-mapped so the √ endpoints at
+    ``±k_bot`` are smooth; a lossy one, which carries power at every q, keeps
+    :func:`_flux_rule` with the stack's features.
+    """
+    lay, d, e_bot, z_top = stack_rel
+    k = wnum_bg
+    tr = Transmission.stack(pol, k, stack_rel)
+    if e_bot.imag == 0.0:
+        kb = float(tr.k_bot.real)
+        x, wx = np.polynomial.legendre.leggauss(DOWN_PANEL_POINTS)
+        edges = set(np.linspace(-0.5 * PI, 0.5 * PI, DOWN_PANELS + 1))
+        if float(np.real(k)) < kb:  # α₁'s √ kink at q = ±k₁ lies inside
+            s_c = float(np.arcsin(np.real(k) / kb))
+            edges |= {-s_c, s_c}
+        e = np.array(sorted(edges))
+        c, h = 0.5 * (e[1:] + e[:-1]), 0.5 * (e[1:] - e[:-1])
+        # Sine map per panel: both endpoints' √ behaviour becomes smooth.
+        sv = (c[:, None] + h[:, None] * np.sin(0.5 * PI * x)).ravel()
+        ws = (h[:, None] * 0.5 * PI * np.cos(0.5 * PI * x) * wx).ravel()
+        q = kb * np.sin(sv)
+        w = ws * kb * np.cos(sv)
+    else:
+        xs = [b[0] for b in boundaries] + ([[source[0]]] if source else [])
+        hs = [b[1] - z_top for b in boundaries]
+        hs += [[source[1] - z_top]] if source else []
+        z_min = 2.0 * float(np.concatenate(hs).min())
+        extent = max(float(np.ptp(np.concatenate(xs))), z_min)
+        q, w = _flux_rule(k, e_bot, pol, extent, z_min, tr=tr)
+    dn = _stack_spectra(q, alpha(q, k), boundaries, z_top, source)[1]
+    return _downward_power(q, w, dn, k, e_bot, pol, tr=tr)
+
+
 def _stack_downward_cross_section(
     boundaries: list[_Boundary], wnum_bg: complex, stack_rel: tuple, pol: int
 ) -> float:
     """``σ_sca,down = P_down/Re k`` (nm) through the stack, by the bottom flux.
 
-    :func:`_downward_cross_section` with the stack's τ and features (slab-spec
-    §2.7): the scattered spectrum at ``z_top`` carried down by τ.
+    The scattered spectrum at ``z_top`` carried down by τ
+    (:func:`_stack_down_power`).
     """
-    _, _, e_bot, z_top = stack_rel
-    tr = Transmission.stack(pol, wnum_bg, stack_rel)
-    z_min = 2.0 * (min(float(g.min()) for _, g, *_ in boundaries) - z_top)
-    f_all = np.concatenate([b[0] for b in boundaries])
-    q, w = _flux_rule(
-        wnum_bg, e_bot, pol, max(float(np.ptp(f_all)), z_min), z_min, tr=tr
-    )
-    A = _spectrum(q, alpha(q, wnum_bg), boundaries, z_top)
-    p_down = _downward_power(q, w, A, wnum_bg, e_bot, pol, tr=tr)
+    p_down = _stack_down_power(boundaries, wnum_bg, pol, stack_rel)
     return p_down / float(np.real(wnum_bg))
 
 
@@ -1045,3 +1089,94 @@ def _stack_background_field(
         tr = Transmission.stack(pol, k, stack_rel)
         out[below] = tr.plane_wave(angle, x[below], z[below])
     return out
+
+
+# Gauss–Legendre nodes on [−π/2, π/2] for P_up in the mode power account (split
+# at the bottom's critical angle when Re k_bot < k). Measured in the v1.2 commit:
+# see tests/test_stack.py GW12.
+POWER_ANGLES = 800
+
+
+def _mode_overlap(
+    boundaries: list[_Boundary], modes: tuple, wnum_bg: complex
+) -> tuple[np.ndarray, np.ndarray]:
+    """Guided amplitudes of the scattered field, as amplitudes of ``u_m(z)e^{±iβ_m x}``.
+
+    Slab-spec §2.6 (S12), the guided pole of S9 applied to
+    ``u_s = −(M1φ + M2χ)`` (conventions §15):
+
+        ``c_m^± = −(i/(2β_m N_m)) Σ_j h u_m(z_j) e^{∓iβ_m x_j}
+        [(∓iβ_m dg_j + γ₁ df_j)φ_j + χ_j]``
+
+    summed over every particle; ``u_m′ = −γ₁u_m`` in the cover.
+
+    Args:
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle.
+        modes: The :class:`~pysie2d.layered.GuidedMode` tuple.
+        wnum_bg: Background wavenumber (unused: γ₁ and β carry it).
+
+    Returns:
+        ``(c_plus, c_minus)``, complex ``(n_modes,)`` each.
+    """
+    c_p = np.zeros(len(modes), dtype=complex)
+    c_m = np.zeros(len(modes), dtype=complex)
+    for f, g, df, dg, delt, ei in boundaries:
+        nn = f.size
+        phi, chi = ei[:nn], ei[nn:]
+        for i, m in enumerate(modes):
+            b, g1, u = m.beta, m.gamma, m.profile(g)
+            pre = -1j / (2.0 * b * m.norm) * delt
+            c_p[i] += pre * np.sum(
+                u * np.exp(-1j * b * f) * ((-1j * b * dg + g1 * df) * phi + chi)
+            )
+            c_m[i] += pre * np.sum(
+                u * np.exp(1j * b * f) * ((1j * b * dg + g1 * df) * phi + chi)
+            )
+    return c_p, c_m
+
+
+def _stack_powers(
+    boundaries: list[_Boundary],
+    wnum_bg: complex,
+    pol: int,
+    stack_rel: tuple,
+    source: tuple | None = None,
+    n_angles: int = POWER_ANGLES,
+) -> tuple[float, float, float]:
+    """``(P_up, P_down, P_abs)`` of the total field over a stack (slab-spec §2.7).
+
+    In G14's units, where the free line source emits 1/4:
+
+        ``P_up = (1/2π) ∫ |u↑ + R·d|²/4 dθ``  over ``[−π/2, π/2]``, ``q = k sin θ``
+        ``P_down = (1/2π) ∫ Re(Y_b)|τ·d|²/4 dq``  (:func:`_stack_down_power`)
+        ``P_abs = −Im Σ h·conj(φ)·χ``
+
+    Real ``k`` and a lossless stack: every guided pole lies beyond ``k_out``,
+    off both real-axis integrals.
+
+    Args:
+        boundaries: ``(f, g, df, dg, delt, ei)`` per particle; may be empty.
+        wnum_bg: Background wavenumber (real).
+        pol: 2 = TE, 1 = TM.
+        stack_rel: The normalised relative stack.
+        source: ``(x_s, z_s, b)`` of a source, or ``None``.
+        n_angles: Gauss–Legendre nodes for ``P_up``.
+
+    Returns:
+        The three powers.
+    """
+    lay, d, e_bot, z_top = stack_rel
+    k = wnum_bg
+    theta, wt = _upward_rule(n_angles, e_bot)
+    q = k * np.sin(theta)
+    up, dn = _stack_spectra(q, k * np.cos(theta), boundaries, z_top, source)
+    r = stack_r(q + 0j, k, lay, d, e_bot, pol)
+    p_up = float(np.sum(wt * np.abs(up + r * dn) ** 2) / (8.0 * PI))
+    p_down = _stack_down_power(boundaries, k, pol, stack_rel, source)
+    p_abs = -float(
+        sum(
+            np.imag(b[4] * np.sum(np.conj(b[5][: b[0].size]) * b[5][b[0].size :]))
+            for b in boundaries
+        )
+    )
+    return p_up, p_down, p_abs
