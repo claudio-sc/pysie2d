@@ -19,6 +19,7 @@ from pysie2d import (
     Material,
     NoFarFieldError,
     QNMSolver,
+    fields,
     layered,
 )
 from pysie2d.background import NearDegenerateModesError, Stack
@@ -944,3 +945,30 @@ def test_mode_sensitivity_refuses_a_foreign_node_set():
 
     with pytest.raises(ValueError, match="no node set"):
         mode_sensitivity(bare, lambda g, m: None)
+
+
+def test_stack_real_axis_rules_never_put_a_node_on_a_branch_point(monkeypatch):
+    # v1.2.0 CI (Linux libm) rounded sin(s) to 1 next to s = π/2, putting q
+    # exactly on k₁ = k_bot; over the double core, whose middle layer has the
+    # cover's ε, the recursion was num = den = 0 there and P_down NaN (macOS
+    # rounds the same den to 2e-19, so the NaN itself is platform-bound). Force
+    # the rounding everywhere and require every node strictly inside.
+    real_sin = np.sin
+    seen = []
+
+    def rounding_sin(x):
+        return np.where(np.abs(np.abs(x) - PI / 2) < 1e-6, np.sign(x), real_sin(x))
+
+    real_spectra = fields._stack_spectra
+
+    def spy(q, *args, **kw):
+        seen.append(np.max(np.abs(np.real(q))))
+        return real_spectra(q, *args, **kw)
+
+    monkeypatch.setattr(fields.np, "sin", rounding_sin)
+    monkeypatch.setattr(fields, "_stack_spectra", spy)
+    stack, n_clad, lam = GW9_STACKS["double"]
+    k = 2 * PI * n_clad / lam
+    rel = stack.eps_rel(n_clad, lam)
+    p = fields._stack_powers([], k, 2, rel, (0.0, 20.0, None))
+    assert all(np.isfinite(p)) and max(seen) < k  # k_bot = k₁ here
