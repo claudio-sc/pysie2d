@@ -137,13 +137,25 @@ SiN slab (n = 2.0, 400 nm) on SiO₂, air cover, TE₀ (pol 2, n_eff = 1.715),
    resonance limit with an even/odd pair (shape or a two-particle cluster).
 6. **Robustness:** ±10 nm bias and λ detuning, as in README §3.
 
-## 5. Owner decisions needed
+## 5. Owner decisions
 
-1. **Stack:** SiN (as probed), SOI (220 nm Si on SiO₂) or another; and λ.
-2. **Particle material and loss:** which absorber, which Im ε range.
-3. **Placement:** gap above the slab (R1 keeps particles outside the core).
-4. **Figure of merit:** P_abs alone, or 1 − T with P_rad and R limits.
-5. **Single particle or clusters** for the two-parity route.
+Round 1 (2026-10-26):
+
+| # | Decision |
+| --- | --- |
+| E1 | **Stack:** SiN (n = 2.0, 400 nm) on SiO₂, air cover, λ = 1550 nm — the probed stack. |
+| E2 | **Loss:** Si real index with **Im ε swept**; the absorber material is chosen after the critical-coupling optimum is known. |
+| E3 | **Figure of merit: maximise P_abs and minimise scattered power** together. |
+| E4 | **Single particle first;** clusters (two-parity route) only after the single-particle ceiling is mapped. |
+
+Round 2 (2026-10-26):
+
+| # | Decision |
+| --- | --- |
+| E5 | **P_scatt = P_up + P_down** (radiation only); reflection back into the mode is allowed and reported. |
+| E6 | **Pareto front:** maximise P_abs under a ladder of P_scatt caps, rather than one weighted objective. |
+| E7 | **R_eq = 500 nm, gap 100 nm**, starting from the CD-compliant free-space design (README §3). |
+| E8 | **CD 200 nm rules from the start** (radius of curvature ≥ 100 nm, width/gap ≥ 200 nm, in the optimiser). |
 
 ## 6. Where things are
 
