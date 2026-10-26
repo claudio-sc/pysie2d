@@ -172,3 +172,78 @@ Fabrication bias: `shapes._offset` moves the boundary δ along the normal
   fabricated part, the nominal design keeps ×190–316 across the whole ±10 nm.
 - Multipoles at 1550 nm: the nominal design holds every order ≤ 7e-6 (n = 1, 3
   at ~2e-8); the tolerant one leaves n = 0, 1 at ~1.5e-4.
+
+## 4. Over the SiN slab: guided-drive anapoles and absorption (2026-10-27)
+
+Stack and decisions: `../../anapole-extinction-handoff.md` §5 (E1–E8). TE0 of SiN
+400 nm on SiO₂, air cover, pol 2, 1550 nm, n_eff = 1.715. All P are fractions of
+the incident mode power; `balance()` ≤ 5e-15 on every solve; nn 384 moves every
+quoted optimum by ≤ 7e-4.
+
+**Anchors.**
+- `wg_abs_check.py`: P_abs from the boundary densities equals k0²·Im ε·∫|u|² from a
+  Bessel fit of the interior field, ratio 1 to 9e-15 (circle, 3 radii × 3 Im ε). This is
+  the term the anapole note's reality proof isolates: absorption *is* the imaginary
+  part of the interior condition.
+- `wg_dark.py` (ε sweeps): the disk's exact TM channel anapoles (note, Eq. twopoints)
+  at X = k0·500 nm: n = 0: 5.54, 14.32; n = 1: 7.05, 17.87; n = 2: 10.29, 23.56;
+  n = 3: 14.29; n = 4: 18.94.
+
+**Circle baseline** (`wg_baseline.py`, R 150–650, gap 50/100/200, Im ε 0.01–1). Best
+P_abs 0.455 (R 450, gap 50, Im ε 0.3), with R ≈ 0 everywhere: a travelling-wave
+absorber, consistent with the circle's degenerate even/odd pair, so the 50 %
+single-resonance ceiling of handoff §3.1.2 does not bind it (not yet proved).
+
+**The drive is a plane wave at complex angle** (`wg_evanescent.py`). e^{iβx−γz} has
+cos α = n_eff, so order m gains ≈ (n_eff + √(n_eff²−1))^{|m|} = 3.1^{|m|}: on the circle
+|m| = 2 grows ×47, |m| = 4 ×4000. The free-space dark design (§3) is dark only for its
+own drive: along x it is 0.75 × the circle, not 1/316. Under the evanescent drive in
+free space it is 1.5 × the circle; over the stack 3.55 ×. The drive explains part,
+slab feedback the rest.
+
+**Guided-drive anapole** (`wg_dark.py` phase 1, lossless, CD rules, 40 starts, 63 min
+on one core). 30 of 40 starts reach the same floor, **P_scatt = 2.87e-3**, ×27 below
+the circle (0.079), T = 0.997, R < 1e-4; the rest stall at 1.4–2.8e-2. A floor, not a zero.
+- **Its Re ε sweep dips at ε = 12.10 ± 0.05, the Si value 12.08**, at the same 2.9e-3:
+  the optimiser moved an anapole permittivity of the shape onto the material, which is
+  the note's picture (shape sets the anapole ε; darkness = material ε on it). The
+  next dips are an order shallower (1.5e-2 at 7.85, 17.75).
+- The circle's sweep dips (4.35, 8.35, 10.80, 13.30, 15.25, 18.40, 21.60, 23.80) are
+  shallow (2–5e-2) and sit 0.5–1.2 off the channel anapoles: under guided drive every
+  channel is lit, and the dominant |m| = 2 zero (10.29) shows up at 10.80.
+
+**Anapoles do not store field, so they do not absorb.** Field-energy enhancement
+P_abs / (k0²·Im ε·∫|u_inc|²) over the particle:
+
+| design | Im ε 0.01 | Im ε 1 |
+| --- | --- | --- |
+| R_eq 500 circle | 0.82 | 0.47 |
+| guided-drive anapole | 0.91 | 0.51 |
+| free-space dark design | 1.40 | 0.61 |
+
+At an anapole the interior field has the incident field's boundary data (note §2: an
+interior problem, no outgoing wave, no resonance), so ∫|u|² is the incident energy times
+an O(1) energy ratio, the same kind of ratio as the note's c0. P_abs is Born-like:
+slope 0.998 in Im ε, at most 0.068 at Im ε = 1. ΔP_scatt does not follow the (Im ε)² law
+(slopes −0.3 to −1.7): the 2.9e-3 residual dominates, and loss first *lowers* it.
+
+**Pareto front, Im ε free** (`wg_dark.py` phase 3; `wg_opt.py` had Im ε = 0.3):
+
+| P_scatt cap | P_abs, Im ε 0.3 | P_abs, Im ε free | Im ε | enhancement |
+| --- | --- | --- | --- | --- |
+| 0.05 | 0.139 | 0.366 | 1.39 | 0.53 |
+| 0.02 | 0.114 | 0.199 | 2.10 | 0.32 |
+| 0.01 | 0.089 | 0.114 | 0.58 | — |
+| 0.005 | — | 0.053 | 0.37 | — |
+| 0.002 | — | infeasible: below the 2.87e-3 floor | | |
+
+The gains come from raising Im ε (brute loss), not from field storage: enhancement
+falls below 1 as loss screens the interior. Uncapped, P_abs 0.391 with P_scatt 0.27.
+
+**Reading.** Under these rules (R_eq 500, gap 100, CD 200 nm, Si real part) "dark" and
+"absorbing" pull apart: darkness is an interior matching condition that caps the stored
+energy at O(1) × the incident energy, and absorption beyond Born needs a resonance, an
+exterior problem that radiates. A dark absorber needs both at once, e.g. a resonance
+of the interior (high Q, weakly coupled) with the anapole cancelling its radiation —
+a hybrid anapole / bound-state route — or the two-parity route (handoff §4 step 5).
+pysie2d only, not externally validated.
