@@ -2,6 +2,72 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-10-26)
+
+### Documentation
+
+- Mark v1.1 shipped, index milestone specs, fix stale limits
+  ([`64455db`](https://github.com/claudio-sc/pysie2d/commit/64455db4db66cff551e5c27bceefb318b0dacd2a))
+
+- Owner decisions R11–R18 for v1.2, shape-optimisation goal
+  ([`2a7ad6f`](https://github.com/claudio-sc/pysie2d/commit/2a7ad6fc2dd115cd6714d5c3f0948afbb2c8a0f8))
+
+- Roadmap after v1.1.0, v1.2 next steps
+  ([`3d6e92a`](https://github.com/claudio-sc/pysie2d/commit/3d6e92a53c231d9541a54cc8822b77aa821c7a37))
+
+- Roadmap marks slab study S5, S8, S9 done
+  ([`2718642`](https://github.com/claudio-sc/pysie2d/commit/27186420e9fd1e863a790cf1955ad2f6e3e6998c))
+
+- Slab study near-field maps and showcase data
+  ([`d9e1447`](https://github.com/claudio-sc/pysie2d/commit/d9e14476dd20f244cfb672f1639637af4e6ed1e5))
+
+- Slab study S11, in-plane dipoles and spin-locked coupling
+  ([`debb1f4`](https://github.com/claudio-sc/pysie2d/commit/debb1f40e076fd988f82ddb7f145cdeaf6a82d9e))
+
+- Slab study S4, near-cutoff and near-degenerate guided poles
+  ([`937bc8f`](https://github.com/claudio-sc/pysie2d/commit/937bc8f00640869f5b12de8a2c6041eaecc6e800))
+
+- Slab study S5, S8, S9, small gaps, mode normalisation, dipole power balance
+  ([`6d1576e`](https://github.com/claudio-sc/pysie2d/commit/6d1576e64d002a1f32f42f6b92d69e8ac246765c))
+
+- Slab study S6, S7, S10, S12, particle wiring and Born limit
+  ([`5df64a9`](https://github.com/claudio-sc/pysie2d/commit/5df64a9d86efe5fdbae658d84d77d0f0679d5825))
+
+- Slab waveguide
+  ([`8135fd4`](https://github.com/claudio-sc/pysie2d/commit/8135fd4d85ad4739144ca10f105221469d6f92dc))
+
+- V1.2 slab code-spec with builder contract
+  ([`8bb15a8`](https://github.com/claudio-sc/pysie2d/commit/8bb15a80a7ff7cdae7367327ce9d21abaa167dfc))
+
+- V1.2 slab study S1–S3, stack recursion and guided-pole path
+  ([`bd41470`](https://github.com/claudio-sc/pysie2d/commit/bd4147042ee7cb618d7323584dea76ef7b3fa2f8))
+
+### Features
+
+- Field below and inside the stack
+  ([`29de390`](https://github.com/claudio-sc/pysie2d/commit/29de390c906b173d542db4ca73b7102829d0eafb))
+
+- Guided modes of a stack
+  ([`75ea86b`](https://github.com/claudio-sc/pysie2d/commit/75ea86bed75e7caaa9bf2147753f59ca88193755))
+
+- In-plane dipole sources
+  ([`57b8940`](https://github.com/claudio-sc/pysie2d/commit/57b89401e6d076f17903ee35618ff461544a993e))
+
+- Mode sensitivity helper
+  ([`113f3a9`](https://github.com/claudio-sc/pysie2d/commit/113f3a9cbf4ba86676e991cb87d2e28d5c61c55c))
+
+- Mode source and mode amplitudes
+  ([`2196c4f`](https://github.com/claudio-sc/pysie2d/commit/2196c4f8e5af5a5b1aa1ca9ea7f0d43adb82469c))
+
+- Stack background with a stable recursion
+  ([`a418bac`](https://github.com/claudio-sc/pysie2d/commit/a418bac7eba1942f020e5b88b02831dccd313fea))
+
+### Refactoring
+
+- Feature-list Sommerfeld path
+  ([`824f580`](https://github.com/claudio-sc/pysie2d/commit/824f580523a57c1e1dc17e0b2a8040905244a3bb))
+
+
 ## v1.1.0 (2026-10-24)
 
 ### Documentation
