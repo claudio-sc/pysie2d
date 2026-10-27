@@ -177,8 +177,9 @@ def _upward_amplitude(
         image += _far_field_at(
             PI - angles, nn, wnum_bg, f, g - 2.0 * z_int, df, dg, delt, ei
         )
-    if r is not None:
-        return direct + r(wnum_bg * np.sin(angles)) * image
+    if r is not None:  # a stack: R would be 0/0 on a node at exactly q = ±k₁
+        q = _inside(wnum_bg * np.sin(angles), float(np.real(wnum_bg)))
+        return direct + r(q) * image
     if eps_rel is not None and eps_rel == 1.0:
         return direct  # no interface: r ≡ 0, and 0/0 at grazing is avoided
     rr = fresnel_r(wnum_bg * np.sin(angles), wnum_bg, eps_rel, pol)
@@ -946,6 +947,18 @@ DOWN_PANELS = 16
 DOWN_PANEL_POINTS = 200
 
 
+def _inside(q: np.ndarray, edge: float) -> np.ndarray:
+    """Move nodes at ``|q| ≥ edge`` one ulp inside, for the stack's real-axis rules.
+
+    Gauss–Legendre nodes ~1e-8 from ±π/2 make ``sin`` round to exactly 1, so
+    ``q = edge·sin`` lands on a branch point. An interior layer with the cover's
+    ε then has ``α_j = 0`` exactly, the recursion gives ``G = −1`` and the next
+    interface ``num = den = 0``: NaN on Linux, 2e-19 on macOS (v1.2.0 CI). The
+    integrand's weight vanishes there, so the shift changes nothing else.
+    """
+    return np.where(np.abs(q) >= edge, np.nextafter(np.sign(q) * edge, 0.0), q)
+
+
 def _stack_down_power(
     boundaries: list[_Boundary],
     wnum_bg: complex,
@@ -974,7 +987,7 @@ def _stack_down_power(
         # Sine map per panel: both endpoints' √ behaviour becomes smooth.
         sv = (c[:, None] + h[:, None] * np.sin(0.5 * PI * x)).ravel()
         ws = (h[:, None] * 0.5 * PI * np.cos(0.5 * PI * x) * wx).ravel()
-        q = kb * np.sin(sv)
+        q = _inside(kb * np.sin(sv), kb)
         w = ws * kb * np.cos(sv)
     else:
         xs = [b[0] for b in boundaries] + ([[source[0]]] if source else [])
@@ -1189,7 +1202,7 @@ def _stack_powers(
     lay, d, e_bot, z_top = stack_rel
     k = wnum_bg
     theta, wt = _upward_rule(n_angles, e_bot)
-    q = k * np.sin(theta)
+    q = _inside(k * np.sin(theta), float(np.real(k)))
     up, dn = _stack_spectra(q, k * np.cos(theta), boundaries, z_top, source)
     r = stack_r(q + 0j, k, lay, d, e_bot, pol)
     p_up = float(np.sum(wt * np.abs(up + r * dn) ** 2) / (8.0 * PI))
