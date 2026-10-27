@@ -1,0 +1,145 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1.7cm]{geometry}
+\usepackage[compact]{titlesec}\titlespacing*{\section}{0pt}{6pt}{2pt}
+\usepackage{enumitem}\setlist{nosep,leftmargin=1.3em}
+\usepackage{amsmath,amssymb,booktabs}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\setlength{\parskip}{3pt}\setlength{\parindent}{0pt}
+\title{\vspace{-1.2cm}Finding anapoles from the scattering matrix}
+\author{Technical note, anapole study (pysie2d), 27 October 2026}
+\date{\vspace{-0.8cm}}
+\begin{document}
+\maketitle
+
+\section*{1. The question}
+A particle is \emph{dark} for a given illumination when it does not scatter it: all the light that
+comes in leaves exactly as if the particle were not there. Such a state is called an \emph{anapole}.
+We want to know, for a particle of a given shape and size, at which material permittivity
+$\varepsilon$ this can happen. The method below answers this using only a standard scattering solver.
+
+\section*{2. Describing the light around the particle}
+Outside the particle, any field can be written as a sum of simple wave patterns, one for each
+integer order $n = 0, \pm1, \pm2,\dots$ Order $n$ varies around the particle as $e^{in\theta}$
+($\theta$ is the angle around the particle centre), so $n$ counts how many times the pattern
+oscillates around one turn. Each pattern comes in two versions:
+\begin{itemize}
+\item an \textbf{incoming} wave, travelling towards the particle, with amplitude $a_n$;
+\item an \textbf{outgoing} wave, travelling away from it, with amplitude $b_n$.
+\end{itemize}
+We keep orders $|n|\le N$ (here $N=9$). Higher orders barely touch a particle of this size,
+so they can be dropped. The amplitudes then form two vectors, $\mathbf a$ and $\mathbf b$, each
+of length $2N+1$.
+
+\section*{3. The scattering matrix $S$}
+The particle is linear, so the outgoing waves depend linearly on the incoming ones:
+\[
+\mathbf b = S\,\mathbf a .
+\]
+$S$ is a square matrix, here $19\times19$. Entry $S_{mn}$ is how much outgoing order $m$ is
+produced by a unit incoming wave of order $n$. If the particle were absent, every incoming wave
+would simply pass through and come out unchanged, so $S$ would be the identity matrix $I$.
+
+\textbf{How we compute it.} A solver gives the \emph{scattered} field (total minus incident)
+for any illumination. We illuminate with one standing-wave pattern of order $n$ at a time and
+record the scattered amplitudes of every order $m$. Those numbers form column $n$ of the
+\emph{scattered-wave matrix} $T$. Because a standing wave is half incoming and half outgoing,
+\[
+S = I + 2T .
+\]
+$2N+1 = 19$ solver runs give the full matrix for one value of $\varepsilon$.
+
+\section*{4. Why $S$ is unitary}
+For a lossless particle (real $\varepsilon$), energy is conserved: the power going out equals
+the power coming in, for \emph{every} incoming vector $\mathbf a$. In matrix terms
+$\|\mathbf b\|^2 = \|\mathbf a\|^2$, which holds for every $\mathbf a$ only if
+\[
+S^{\mathsf H} S = I \qquad (S^{\mathsf H}\text{ is the conjugate transpose}),
+\]
+i.e.\ $S$ is \emph{unitary}. This gives a built-in check: we compute $\max|S^{\mathsf H}S - I|$
+and require it to be at round-off level. Measured: $2\times10^{-13}$ for a circle,
+$\le 10^{-9}$ for the non-circular shapes.
+
+\section*{5. Channels and phase shifts}
+A unitary matrix has a complete set of orthogonal eigenvectors $\mathbf v_j$, and every eigenvalue
+has magnitude one, so it can be written as a pure phase:
+\[
+S\,\mathbf v_j = e^{2i\delta_j}\,\mathbf v_j .
+\]
+\begin{itemize}
+\item $\mathbf v_j$ is a \textbf{channel}: a particular mix of incoming orders that comes back out
+as the same mix. The particle can only delay it.
+\item $\delta_j$ is the channel's \textbf{phase shift}, the delay the particle imposes on it.
+\end{itemize}
+The scattered part of channel $j$ is $(e^{2i\delta_j}-1)/2$, whose size is $|\sin\delta_j|$. So:
+\begin{itemize}
+\item $\delta_j = 0$ (or a multiple of $180^\circ$): the channel passes untouched. \textbf{This is an anapole}
+for that channel.
+\item $\delta_j = \pm 90^\circ$: the channel scatters as strongly as possible. This is a \textbf{resonance}.
+\end{itemize}
+
+\section*{6. Sweeping the permittivity}
+As $\varepsilon$ increases, the particle stores more energy, and each phase shift moves steadily
+in one direction (it never turns back). An anapole is therefore a point where one channel's
+$\delta_j$ crosses zero. Between two anapoles of the same channel, its phase passes through
+$\pm90^\circ$, a resonance. So anapoles and resonances alternate.
+
+The procedure is:
+\begin{enumerate}
+\item Compute $S(\varepsilon)$ on a fine grid (step $0.02$ from $\varepsilon = 1.5$ to $25$).
+\item Find the eigenvalues and eigenvectors at each step.
+\item Follow each channel from one step to the next by picking the eigenvector most similar to the
+previous one. Sorting by phase alone fails: the dropped high orders all sit at $\delta\approx0$
+and get confused with a real crossing.
+\item Record where a followed $\delta_j$ changes sign. Check it by solving again at the
+interpolated point. A very sharp resonance can jump from $+90^\circ$ to $-90^\circ$ within one step
+and look like a sign change. At a true anapole, $\delta_j$ stays small there.
+\end{enumerate}
+
+\textbf{Symmetry.} Our shapes are mirror-symmetric (left--right). Every channel is then either
+even or odd under the mirror, and the two families never mix. We split $S$ into an even block and
+an odd block and treat each separately, which keeps the eigenvectors clean.
+
+\section*{7. A given illumination}
+Real illumination (a plane wave, or the evanescent tail of a waveguide mode) is a fixed incoming
+vector $\mathbf a$. Writing it in channels, the scattered power is
+\[
+P_{\mathrm{sca}} \;\propto\; \sum_j \bigl|\mathbf v_j^{\mathsf H}\mathbf a\bigr|^2 \,\sin^2\delta_j .
+\]
+\begin{itemize}
+\item $|\mathbf v_j^{\mathsf H}\mathbf a|^2$ is how much of the illumination enters channel $j$.
+\item $\sin^2\delta_j$ is how strongly that channel scatters.
+\end{itemize}
+The particle is dark for $\mathbf a$ only if every channel that $\mathbf a$ feeds has a small
+phase shift. On a circle each order is its own channel, so one exact anapole can make one order
+exactly dark. A non-circular shape mixes orders, so a fixed illumination generally feeds several
+channels. It is then only \emph{nearly} dark: the sum is small but not zero.
+
+\section*{8. Checks and results}
+\begin{tabular}{@{}ll@{}}
+\toprule
+check & result \\
+\midrule
+Unitarity, $\max|S^{\mathsf H}S-I|$ & $2\times10^{-13}$ (circle), $\le10^{-9}$ (shapes) \\
+Circle anapoles vs.\ exact formula & all 9 recovered: 5.535, 7.053, 10.287, 14.288, 14.320,\\
+ & \quad 17.869, 18.941, 23.564, 24.206 \\
+Dark design vs.\ direct simulation & $\times316$ darker than the circle, both ways \\
+\bottomrule
+\end{tabular}
+
+\smallskip
+\textbf{Findings} (silicon, $\varepsilon = 12.08$, equivalent radius 500\,nm, $\lambda = 1550$\,nm):
+\begin{itemize}
+\item Neither optimised dark shape has an exact channel anapole at $\varepsilon = 12.08$. The
+nearest are at 11.85 and 13.20. Both are nearly dark: the illumination mostly feeds channels with
+small but non-zero $\delta_j$.
+\item The design that is dark above the waveguide is only $1.7\times$ darker than a circle when
+the same evanescent wave hits it in free space, against $27\times$ above the slab. Light
+reflected by the slab is part of the cancellation.
+\end{itemize}
+
+\textbf{Limits.} The method needs a lossless particle (otherwise $S$ is not unitary and the
+phases are not pure). It describes the particle alone in free space. Results are from one solver
+(pysie2d) and are not externally validated.
+\end{document}
