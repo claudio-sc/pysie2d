@@ -247,3 +247,36 @@ exterior problem that radiates. A dark absorber needs both at once, e.g. a reson
 of the interior (high Q, weakly coupled) with the anapole cancelling its radiation —
 a hybrid anapole / bound-state route — or the two-parity route (handoff §4 step 5).
 pysie2d only, not externally validated.
+
+## 5. Option (a): resonances bright to the guide, dark to radiation (2026-10-27)
+
+Coupled-mode theory, one resonance with decay rates γ_wg (guide), γ_r (radiation), γ_a
+(absorption). At critical coupling γ_a = γ_wg + γ_r: **P_abs = η** for the disk's degenerate
+±m pair (travelling wave, R ≈ 0; η/2 for a standing wave), **P_scatt = η(1 − η), T = (1 − η)²**,
+η = γ_wg/(γ_wg + γ_r). A dark absorber is η → 1. Because the guided drive weights order m by
+≈ 3.1^|m| over radiation (§4), η should rise with m without any shaping.
+
+`wg_wgm.py`: circle, 1550 nm, gap 100, lossless radius scan 400–1000 nm, then Im ε sweep at each
+extinction peak. Order from the interior field (Fourier on r = 0.5R, 0.85R); the own-radiation
+multipole misreads high-m modes (non-resonant background dominates it).
+
+| R (nm) | mode | Im ε opt | P_abs = η | P_scatt | η(1−η) | T | (1−η)² |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 445.3 | m 4 | 0.13 | 0.575 | 0.238 | 0.244 | 0.187 | 0.181 |
+| 531.8 | m 5 | 0.063 | 0.751 | 0.201 | 0.187 | 0.048 | 0.062 |
+| 616.3 | m 6 | 0.040 | 0.848 | 0.138 | 0.129 | 0.014 | 0.023 |
+| 699.4 | m 7 | 0.025 | 0.876 | 0.108 | 0.108 | 0.016 | 0.015 |
+| 942.5 | m 10 | 0.010 | **0.969** | **0.028** | 0.030 | 0.003 | 0.001 |
+| 956.5 | m 7, 2nd radial | 0.050 | 0.674 | 0.210 | 0.220 | 0.116 | 0.106 |
+
+- **η rises monotonically with m on the fundamental WGM ladder**, as predicted. m = 10: 96.9 %
+  of the mode absorbed, 2.8 % radiated, at Im ε = 0.01. nn 565 vs 1130 agree to 1e-6,
+  balance 6e-15.
+- The one-parameter CMT predicts P_scatt and T to ~10 % on every sharp line. It fails on the
+  broad features (optimum Im ε ≥ 1.5, P_abs < 0.2), which are not single resonances: the
+  discriminator is the law itself.
+- P_abs > 0.5 with R ≈ 0: the 50 % standing-wave ceiling of handoff §3.1.2 does not bind a
+  degenerate pair, as the travelling-wave form says.
+- None of this uses an anapole: the darkness is the evanescent drive's order selectivity. At
+  R_eq 500 (E7) only m ≤ 5 is available (η ≈ 0.75); an anapole-type cancellation of γ_r would
+  have to lift that, or E7 relaxed.
