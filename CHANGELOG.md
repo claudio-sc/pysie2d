@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.1 (2026-10-27)
+
+### Bug Fixes
+
+- Keep stack real-axis nodes off the branch points
+  ([`9c63199`](https://github.com/claudio-sc/pysie2d/commit/9c6319954d66c0c2b85f7815c77d071b03206883))
+
+
 ## v1.2.0 (2026-10-26)
 
 ### Documentation
