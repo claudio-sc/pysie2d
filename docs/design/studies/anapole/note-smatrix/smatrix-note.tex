@@ -131,9 +131,11 @@ Dark design vs.\ direct simulation & $\times316$ darker than the circle, both wa
 \smallskip
 \textbf{Findings} (silicon, $\varepsilon = 12.08$, equivalent radius 500\,nm, $\lambda = 1550$\,nm):
 \begin{itemize}
-\item Neither optimised dark shape has an exact channel anapole at $\varepsilon = 12.08$. The
-nearest are at 11.85 and 13.20. Both are nearly dark: the illumination mostly feeds channels with
-small but non-zero $\delta_j$.
+\item Neither optimised dark shape has an anapole at $\varepsilon = 12.08$. An interior
+calculation puts the nearest at 11.95 and 14.15. Off the circle, these are points where a
+channel's $\delta_j$ comes close to zero (0.05, 0.015) without reaching it.
+Following channels through near-crossings is fragile: on these shapes it produced false
+crossings, so non-circular roots must be confirmed by an interior calculation.
 \item The design that is dark above the waveguide is only $1.7\times$ darker than a circle when
 the same evanescent wave hits it in free space, against $27\times$ above the slab. Light
 reflected by the slab is part of the cancellation.

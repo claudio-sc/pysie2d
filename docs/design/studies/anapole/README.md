@@ -295,16 +295,24 @@ recovered, 5.535, 7.053, 10.287, 14.288, 14.320, 17.869, 18.941, 23.564, 24.206;
 Plane-wave z darkness of the free-space design from Σ_j |⟨v_j,a⟩|² sin²δ_j: 4.772 / 1.509e-2 =
 **×316**, the campaign's number by an independent route.
 
-| shape | even-block anapoles ε | odd-block anapoles ε |
-| --- | --- | --- |
-| disk | 5.535 7.053 10.287 14.288 14.320 17.869 18.941 23.564 24.206 | same without n = 0 |
-| guided-drive anapole (§4) | 5.878 7.237 10.411 **13.203** 15.873 17.084 22.476 24.097 | 8.318 **11.092** 15.277 18.298 20.882 22.682 |
-| free-space dark (§3) | 7.114 7.202 9.579 **11.854** 14.981 15.139 15.160 22.540 23.192 23.318 | 6.686 **11.893** **12.275** 18.359 19.571 21.217 |
+**Correction (interior cross-check, `wg_interior_check.py`).** The interior method (anapole
+note §5: DtN(√ε X) − DtN(X) singular, eigen-eps `pysie2d_crosscheck.dtn`, interior rows only)
+agrees with the S sweep on the disk to ≤ 6e-5 at all nine roots. On the two shapes the S-sweep
+roots were **tracking artefacts** (channel swaps at near-crossings): at them no strongly coupled
+channel (≥ 30 % weight in |n| ≤ 3) is near δ = 0 (|δ| ≈ 0.1–0.2). At the interior roots the
+strong channels come closest to zero but do not reach it (min |δ| 0.05 at 11.947, 0.015 at
+14.149): off the circle an interior transmission eigenvalue is a near-zero of S, not a zero,
+because its background field v does not extend to an incident wave (note §7).
 
-- **Neither dark design has an eigenchannel anapole at Si (12.08).** Both are near-zeros of a
+| shape | interior eigenvalues ε, even | odd |
+| --- | --- | --- |
+| guided-drive anapole (§4) | 5.966 7.374 10.866 14.149 16.157 17.940 24.225 | 8.501 11.423 16.483 20.068 21.513 |
+| free-space dark (§3) | 7.289 9.874 **11.947** 15.428 23.357 23.673 | 7.185 **12.584** 18.927 20.572 |
+
+- **Neither dark design has an interior eigenvalue at Si (12.08).** Both are near-zeros of a
   projection, the note's "what not to fit": the drive lands on channels with small δ.
-  Free-space design, z drive: weight 5.4 on an even channel at δ = +0.018 (it crosses 0 at
-  11.854) and 0.47 at δ = +0.145; x drive lights a δ = −0.945 channel, hence not dark.
+  Free-space design, z drive: weight 5.4 on an even channel at δ = +0.018 (nearest interior
+  eigenvalue 11.947, 1 % below Si) and 0.47 at δ = +0.145; x drive lights a δ = −0.945 channel, hence not dark.
 - **The guided-drive dark state is a stack effect.** Free-space evanescent drive (same
   complex-angle wave, no slab): 64.8 vs disk 107.9, only ×1.7 (direct BIE, confirmed by the
   T-matrix sum). Over the stack: ×27. The slab's reflected field is part of the cancellation,
