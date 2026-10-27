@@ -280,3 +280,32 @@ multipole misreads high-m modes (non-resonant background dominates it).
 - None of this uses an anapole: the darkness is the evanescent drive's order selectivity. At
   R_eq 500 (E7) only m ≤ 5 is available (η ≈ 0.75); an anapole-type cancellation of γ_r would
   have to lift that, or E7 relaxed.
+
+## 6. Method (C) of the anapole note: eigenchannel anapoles from S (2026-10-27)
+
+`wg_reactance.py`, free space, pol 2 (note TM), 1550 nm, R_eq 500. T-matrix in the
+`pysie2d.multipole` basis (column n = drive by i^n J_n e^{inθ}), S = I + 2T, |n| ≤ 9, mirror
+x → −x splits even/odd blocks. Eigenchannels followed in ε by eigenvector overlap (nearest-δ
+matching hands crossings to the truncation channels at δ ~ 1e-8); a crossing is kept only if the
+same channel's δ is small when re-solved at the interpolated root (a high-Q line wraps ±π/2
+inside one 0.02 step and fakes a sign change: n = 5 at 18.51, n = 6 at 23.85 on the disk).
+
+**Anchors.** |S†S − I| ≤ 2e-13 (disk), ≤ 1e-9 (shapes). Disk: all exact channel anapoles
+recovered, 5.535, 7.053, 10.287, 14.288, 14.320, 17.869, 18.941, 23.564, 24.206; n = 0 only even.
+Plane-wave z darkness of the free-space design from Σ_j |⟨v_j,a⟩|² sin²δ_j: 4.772 / 1.509e-2 =
+**×316**, the campaign's number by an independent route.
+
+| shape | even-block anapoles ε | odd-block anapoles ε |
+| --- | --- | --- |
+| disk | 5.535 7.053 10.287 14.288 14.320 17.869 18.941 23.564 24.206 | same without n = 0 |
+| guided-drive anapole (§4) | 5.878 7.237 10.411 **13.203** 15.873 17.084 22.476 24.097 | 8.318 **11.092** 15.277 18.298 20.882 22.682 |
+| free-space dark (§3) | 7.114 7.202 9.579 **11.854** 14.981 15.139 15.160 22.540 23.192 23.318 | 6.686 **11.893** **12.275** 18.359 19.571 21.217 |
+
+- **Neither dark design has an eigenchannel anapole at Si (12.08).** Both are near-zeros of a
+  projection, the note's "what not to fit": the drive lands on channels with small δ.
+  Free-space design, z drive: weight 5.4 on an even channel at δ = +0.018 (it crosses 0 at
+  11.854) and 0.47 at δ = +0.145; x drive lights a δ = −0.945 channel, hence not dark.
+- **The guided-drive dark state is a stack effect.** Free-space evanescent drive (same
+  complex-angle wave, no slab): 64.8 vs disk 107.9, only ×1.7 (direct BIE, confirmed by the
+  T-matrix sum). Over the stack: ×27. The slab's reflected field is part of the cancellation,
+  so the anapole note's interior picture (particle alone) does not describe it.
