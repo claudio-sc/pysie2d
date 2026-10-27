@@ -317,3 +317,14 @@ because its background field v does not extend to an incident wave (note §7).
   complex-angle wave, no slab): 64.8 vs disk 107.9, only ×1.7 (direct BIE, confirmed by the
   T-matrix sum). Over the stack: ×27. The slab's reflected field is part of the cancellation,
   so the anapole note's interior picture (particle alone) does not describe it.
+
+## 7. All-direction darkness: minimise ‖T‖² = Σ sin²δ (2026-10-27)
+
+`wg_alldir.py` (16 starts, 4 cores), `wg_alldir_page_data.py`. Free space, Si, 1550 nm, R_eq 500,
+CD rules. Mean over incidence angle of ‖T a(α)‖² equals ‖T‖² for every design (check).
+Circle 4.772 (a stationary point: first-order deformations cancel in the angle average).
+Best 0.858, ×5.6, reached by 4 starts; nn 384 agrees to 4 digits. Free-space z-dark design 2.17,
+guided-dark design 3.74. Over the slab the all-direction optimum scatters P_scatt 0.136 of the
+TE0 mode (circle 0.079): all-direction darkness in free space does not transfer to the guided
+drive. Interior eigenvalues of the optimum: even 7.456 8.524 10.052 13.805 18.680; odd 12.546
+12.896 16.032 18.413 (none at 12.08).

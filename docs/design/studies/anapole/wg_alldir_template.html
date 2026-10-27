@@ -1,0 +1,140 @@
+<title>All-Direction Darkness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: one reading column of figure panels, each a caption-led lab-notebook plate */
+:root {
+  --bg: #f7f8f9; --panel: #ffffff; --fg: #15191d; --muted: #5a636c; --rule: #dde2e6; --accent: #2a78d6;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --display: "Source Serif 4", Georgia, serif; --body: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121519; --panel: #1a1e23; --fg: #eceff1; --muted: #a3acb5; --rule: #2c3238; --accent: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121519; --panel: #1a1e23; --fg: #eceff1; --muted: #a3acb5; --rule: #2c3238; --accent: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); }
+main { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 48px; display: grid; gap: 28px; }
+h1 { font: 600 2rem/1.15 var(--display); margin: 0; text-wrap: balance; }
+h2 { font: 600 1.25rem/1.2 var(--display); margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 6px 0 0; max-width: 70ch; }
+.plate { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: grid; gap: 10px; min-width: 0; }
+.cap { color: var(--muted); font-size: .9rem; margin: 0; max-width: 75ch; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
+.seg button { font: 500 .85rem var(--body); background: transparent; color: var(--muted); border: 0; padding: 6px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tw { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: .9rem; }
+th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 500; color: var(--muted); font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; }
+td.n { font-family: var(--mono); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; vertical-align: -1px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px; }
+.fig { width: 100%; min-height: 320px; }
+.fig.tall { min-height: 560px; }
+.kpis { display: flex; flex-wrap: wrap; gap: 28px; }
+.kpi b { display: block; font: 600 1.6rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.kpi span { color: var(--muted); font-size: .82rem; }
+</style>
+<main>
+  <header>
+    <h1>All-Direction Darkness</h1>
+    <p class="sub">Minimise ‖T‖² = Σ sin²δ, the scattering averaged over every incidence direction. Si (ε 12.08), 1550 nm, pol 2, R<sub>eq</sub> 500 nm, CD 200 nm, free space. pysie2d only.</p>
+  </header>
+  <section class="plate"><div class="kpis" id="kpis"></div></section>
+  <section class="plate"><h2>Shapes</h2><div id="shapes" class="fig"></div></section>
+  <section class="plate"><h2>Scattering vs incidence angle</h2><div id="ang" class="fig tall"></div>
+    <p class="cap">‖T a(α)‖²; its mean over α equals ‖T‖² (checked).</p></section>
+  <section class="plate"><h2>Eigenchannels at Si</h2><div id="ch" class="fig"></div>
+    <p class="cap">sin²δ per channel, strongest ten; label: dominant order |n|.</p></section>
+  <section class="plate"><h2>Spectra</h2><div class="grid2"><div id="lam" class="fig"></div><div id="eps" class="fig"></div></div>
+    <p class="cap">Right: dashed, interior eigenvalues of the all-direction optimum (even, odd); solid, Si.</p></section>
+  <section class="plate"><h2>Near field |E<sub>y</sub>|</h2>
+    <div class="row"><div class="seg" id="inc"><button aria-pressed="true" data-v="0">incidence 0°</button><button aria-pressed="false" data-v="90">incidence 90°</button></div></div>
+    <div id="fld" class="fig tall"></div></section>
+  <section class="plate"><h2>Campaign</h2><div id="camp" class="fig"></div><p class="cap">16 starts, final ‖T‖²; hollow: infeasible.</p></section>
+</main>
+<script type="application/json" id="data">__DATA__</script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<script>
+(function () {
+  const D = JSON.parse(document.getElementById("data").textContent);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const SC = ["--s1", "--s2", "--s3", "--s4"];
+  const cfg = { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["lasso2d", "select2d"] };
+  let inc = "0";
+  function ax(t) { return { gridcolor: css("--rule"), zerolinecolor: css("--rule"), linecolor: css("--rule"), tickfont: { color: css("--muted"), size: 11 }, title: { text: t || "", font: { color: css("--muted"), size: 12 } } }; }
+  function base(o) {
+    return Object.assign({ paper_bgcolor: css("--panel"), plot_bgcolor: css("--panel"), font: { family: "IBM Plex Sans, system-ui, sans-serif", color: css("--fg"), size: 12 },
+      margin: { l: 60, r: 16, t: 28, b: 48 }, legend: { orientation: "h", y: 1.14, font: { color: css("--muted") } }, xaxis: ax(), yaxis: ax() }, o || {});
+  }
+  const ds = D.designs, c = ds[0];
+  function kpis() {
+    const a = ds[1];
+    const k = [[a.T2.toFixed(3), "‖T‖², all-direction optimum"], [c.T2.toFixed(2), "‖T‖², circle"], ["×" + (c.T2 / a.T2).toFixed(1), "below circle"],
+               [a.guided_scatt.toFixed(3), "P_scatt over slab (circle " + c.guided_scatt.toFixed(3) + ")"]];
+    document.getElementById("kpis").innerHTML = k.map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("");
+  }
+  function shapes() {
+    const L = base({ showlegend: true }); L.xaxis = Object.assign(ax("x (nm)"), {}); L.yaxis = Object.assign(ax("z (nm)"), { scaleanchor: "x" });
+    Plotly.react("shapes", ds.map((d, i) => ({ type: "scatter", mode: "lines", name: d.label, x: d.outline[0], y: d.outline[1], line: { color: css(SC[i]), width: 2 }, hoverinfo: "name" })), L, cfg);
+  }
+  function ang() {
+    const L = base({ polar: { bgcolor: css("--panel"), angularaxis: { rotation: 90, direction: "clockwise", gridcolor: css("--rule"), linecolor: css("--rule"), tickfont: { color: css("--muted") } },
+      radialaxis: { gridcolor: css("--rule"), linecolor: css("--rule"), tickfont: { color: css("--muted"), size: 10 } } } });
+    Plotly.react("ang", ds.map((d, i) => ({ type: "scatterpolar", mode: "lines", name: d.label, theta: d.alpha, r: d.ang, line: { color: css(SC[i]), width: 2 },
+      hovertemplate: "α %{theta:.0f}°: %{r:.3f}<extra>" + d.label + "</extra>" })), L, cfg);
+  }
+  function ch() {
+    const L = base({ barmode: "group" }); L.yaxis = ax("sin²δ"); L.xaxis = ax("channel rank");
+    Plotly.react("ch", ds.map((d, i) => ({ type: "bar", name: d.label, x: d.chans.map((_, k) => k + 1), y: d.chans.map((q) => q.s2), marker: { color: css(SC[i]) },
+      text: d.chans.map((q) => q.n), textposition: "outside", textfont: { color: css("--muted"), size: 9 },
+      customdata: d.chans.map((q) => [q.block, q.delta, q.n]), hovertemplate: "%{customdata[0]} |n|≈%{customdata[2]}, δ %{customdata[1]:.3f}<br>sin²δ %{y:.3f}<extra>" + d.label + "</extra>" })), L, cfg);
+  }
+  function vl(x, col, dash) { return { type: "line", x0: x, x1: x, yref: "paper", y0: 0, y1: 1, line: { color: col, width: 1, dash: dash } }; }
+  function spectra() {
+    let L = base(); L.xaxis = ax("λ (nm)"); L.yaxis = Object.assign(ax("‖T‖²"), { type: "log" }); L.shapes = [vl(1550, css("--muted"), "dot")];
+    Plotly.react("lam", ds.map((d, i) => ({ type: "scatter", mode: "lines", name: d.label, x: d.lam, y: d.t2_lam, line: { color: css(SC[i]), width: 2 }, hovertemplate: "%{x:.0f} nm: %{y:.3f}<extra>" + d.label + "</extra>" })), L, cfg);
+    L = base(); L.xaxis = ax("ε (lossless)"); L.yaxis = Object.assign(ax("‖T‖²"), { type: "log" });
+    L.shapes = [vl(D.eps_si, css("--fg"), "solid")].concat(D.interior_best.even.map((e) => vl(e, css("--s2"), "dash")), D.interior_best.odd.map((e) => vl(e, css("--s2"), "dot")));
+    Plotly.react("eps", ds.map((d, i) => ({ type: "scatter", mode: "lines", name: d.label, x: d.eps, y: d.t2_eps, line: { color: css(SC[i]), width: 2 }, hovertemplate: "ε %{x:.2f}: %{y:.3f}<extra>" + d.label + "</extra>" })), L, cfg);
+  }
+  function fld() {
+    const dark = css("--bg") < "#5";
+    const seq = dark ? [[0, "#1a1e23"], [0.3, "#1d4f8f"], [0.6, "#3987e5"], [0.85, "#9cc3f2"], [1, "#ffffff"]] : [[0, "#ffffff"], [0.3, "#c9ddf6"], [0.6, "#5f9ee6"], [0.85, "#1d5aa8"], [1, "#0b2547"]];
+    const L = base({ showlegend: false, annotations: [], margin: { l: 50, r: 16, t: 30, b: 40 } }), tr = [];
+    ds.forEach((d, i) => {
+      const k = i + 1, xa = "x" + (k > 1 ? k : ""), ya = "y" + (k > 1 ? k : ""), col = i % 2, row = Math.floor(i / 2);
+      const xd = [col * 0.52, col * 0.52 + 0.46], yd = [row ? 0 : 0.54, row ? 0.44 : 0.98];
+      tr.push({ type: "heatmap", x: D.x, y: D.x, z: d.fields[inc], xaxis: xa, yaxis: ya, colorscale: seq, zmin: 0, zmax: 2.5, zsmooth: "best", showscale: k === 1,
+        colorbar: { thickness: 10, len: 0.9, tickfont: { color: css("--muted"), size: 10 }, outlinewidth: 0 }, hovertemplate: "%{z:.2f}<extra>" + d.label + "</extra>" });
+      tr.push({ type: "scatter", mode: "lines", x: d.outline[0], y: d.outline[1], xaxis: xa, yaxis: ya, line: { color: css("--fg"), width: 1.5 }, hoverinfo: "skip" });
+      L["xaxis" + (k > 1 ? k : "")] = Object.assign(ax(row ? "x (nm)" : ""), { domain: xd, anchor: ya });
+      L["yaxis" + (k > 1 ? k : "")] = Object.assign(ax(col ? "" : "z (nm)"), { domain: yd, anchor: xa, scaleanchor: xa });
+      L.annotations.push({ text: d.label, x: xd[0], y: yd[1] + 0.035, xref: "paper", yref: "paper", xanchor: "left", showarrow: false, font: { color: css("--fg"), size: 12 } });
+    });
+    Plotly.react("fld", tr, L, cfg);
+  }
+  function camp() {
+    const r = D.runs.slice().sort((a, b) => a.T2 - b.T2), ok = (q) => q.feasible && q.width_gap_ok;
+    const L = base({ showlegend: false }); L.xaxis = ax("start"); L.yaxis = ax("‖T‖²");
+    L.shapes = [{ type: "line", xref: "paper", x0: 0, x1: 1, y0: c.T2, y1: c.T2, line: { color: css("--s1"), dash: "dot", width: 1 } }];
+    L.annotations = [{ xref: "paper", x: 1, y: c.T2, xanchor: "right", yanchor: "bottom", text: "circle", showarrow: false, font: { color: css("--muted"), size: 11 } }];
+    Plotly.react("camp", [{ type: "scatter", mode: "markers", x: r.map((q) => q.start), y: r.map((q) => q.T2),
+      marker: { size: 10, color: r.map((q) => ok(q) ? css("--s2") : css("--panel")), line: { color: css("--s2"), width: 2 } }, hovertemplate: "%{x}: %{y:.4f}<extra></extra>" }], L, cfg);
+  }
+  document.getElementById("inc").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button"); if (!b) return;
+    document.querySelectorAll("#inc button").forEach((x) => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+    inc = b.dataset.v; fld();
+  });
+  function all() { kpis(); shapes(); ang(); ch(); spectra(); fld(); camp(); }
+  all();
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", all);
+  new MutationObserver(all).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>
