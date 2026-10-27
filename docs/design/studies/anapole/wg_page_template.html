@@ -84,7 +84,7 @@ td.n { font-family: var(--mono); }
   </section>
 </main>
 <script type="application/json" id="data">__DATA__</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
 <script>
 (function () {
   const D = JSON.parse(document.getElementById("data").textContent);
@@ -105,11 +105,12 @@ td.n { font-family: var(--mono); }
 
   function base(extra) {
     const fg = css("--fg"), mu = css("--muted"), ru = css("--rule");
-    const ax = { gridcolor: ru, zerolinecolor: ru, linecolor: ru, tickfont: { color: mu, size: 11 }, title: { font: { color: mu, size: 12 } } };
+    const mk = () => ({ gridcolor: ru, zerolinecolor: ru, linecolor: ru, tickfont: { color: mu, size: 11 }, title: { text: "", font: { color: mu, size: 12 } } });
+    const ax = mk();
     return Object.assign({
       paper_bgcolor: css("--panel"), plot_bgcolor: css("--panel"), font: { family: "IBM Plex Sans, system-ui, sans-serif", color: fg, size: 12 },
       margin: { l: 60, r: 16, t: 28, b: 48 }, legend: { orientation: "h", y: 1.12, font: { color: mu } }, hoverlabel: { font: { family: "IBM Plex Mono, monospace" } },
-      xaxis: Object.assign({}, ax), yaxis: Object.assign({}, ax), _ax: ax,
+      xaxis: mk(), yaxis: mk(), _ax: ax,
     }, extra || {});
   }
   const cfg = { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["lasso2d", "select2d"] };
