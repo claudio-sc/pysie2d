@@ -36,6 +36,9 @@ td.n { font-family: var(--mono); }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px; }
 .fig { width: 100%; min-height: 320px; }
 .fig.tall { min-height: 560px; }
+.ani { width: 100%; max-width: 804px; height: auto; aspect-ratio: 804 / 563; border-radius: 4px; }
+.pbtn { font: 500 .85rem var(--body); background: var(--accent); color: #fff; border: 0; border-radius: 5px; padding: 6px 14px; cursor: pointer; }
+.pbtn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 .kpis { display: flex; flex-wrap: wrap; gap: 28px; }
 .kpi b { display: block; font: 600 1.6rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
 .kpi span { color: var(--muted); font-size: .82rem; }
@@ -53,7 +56,14 @@ td.n { font-family: var(--mono); }
     <p class="cap">sin²δ per channel, strongest ten; label: dominant order |n|.</p></section>
   <section class="plate"><h2>Spectra</h2><div class="grid2"><div id="lam" class="fig"></div><div id="eps" class="fig"></div></div>
     <p class="cap">Right: dashed, interior eigenvalues of the all-direction optimum (even, odd); solid, Si.</p></section>
-  <section class="plate"><h2>Near field |E<sub>y</sub>|</h2>
+  <section class="plate"><h2>Above the waveguide</h2>
+    <div class="row"><div class="seg" id="loss"><button aria-pressed="true" data-v="0.0">Im ε 0</button><button aria-pressed="false" data-v="0.3">Im ε 0.3</button></div></div>
+    <div id="wgs" class="fig"></div>
+    <p class="cap">SiN slab TE₀, 100 nm gap. Dotted: lossless P<sub>scatt</sub> minimum (dark point).</p>
+    <div class="row"><button id="play" class="pbtn" type="button">Pause</button><span class="cap" id="anicap"></span></div>
+    <canvas id="ani" class="ani" width="804" height="563" aria-label="Animated field Re E_y at the dark point"></canvas>
+    <p class="cap">Re[E<sub>y</sub> e<sup>−iωt</sup>] over one optical cycle; lines: particle and slab faces.</p></section>
+  <section class="plate"><h2>Near field |E<sub>y</sub>| (free space)</h2>
     <div class="row"><div class="seg" id="inc"><button aria-pressed="true" data-v="0">incidence 0°</button><button aria-pressed="false" data-v="90">incidence 90°</button></div></div>
     <div id="fld" class="fig tall"></div></section>
   <section class="plate"><h2>Campaign</h2><div id="camp" class="fig"></div><p class="cap">16 starts, final ‖T‖²; hollow: infeasible.</p></section>
@@ -132,7 +142,55 @@ td.n { font-family: var(--mono); }
     document.querySelectorAll("#inc button").forEach((x) => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
     inc = b.dataset.v; fld();
   });
-  function all() { kpis(); shapes(); ang(); ch(); spectra(); fld(); camp(); }
+
+  let loss = "0.0";
+  function wgs() {
+    const W = D.slab, sp = W.spec[loss], L = base(); L.xaxis = ax("λ (nm)"); L.yaxis = Object.assign(ax("fraction of mode power"), { range: [0, 1] });
+    L.shapes = [vl(W.lam_dark, css("--muted"), "dot")];
+    const Q = [["T", "T", "--s1"], ["R", "R", "--s2"], ["scatt", "P_scatt", "--s3"], ["abs", "P_abs", "--s4"]];
+    Plotly.react("wgs", Q.filter(([k]) => loss !== "0.0" || k !== "abs").map(([k, n, c]) => ({ type: "scatter", mode: "lines", name: n, x: W.lam, y: sp[k],
+      line: { color: css(c), width: 2 }, hovertemplate: "%{x:.1f} nm: %{y:.4f}<extra>" + n + "</extra>" })), L, cfg);
+  }
+  document.getElementById("loss").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button"); if (!b) return;
+    document.querySelectorAll("#loss button").forEach((x) => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+    loss = b.dataset.v; wgs();
+  });
+  // animation: raw canvas, Re[u e^{-iφ}] = re cos φ + im sin φ
+  const W = D.slab, nx = W.x.length, nz = W.z.length, re = W.re.flat(), im = W.im.flat();
+  const amp = re.map((v, i) => Math.hypot(v, im[i])).sort((a, b) => a - b), vmax = amp[Math.floor(amp.length * 0.995)];
+  document.getElementById("anicap").textContent = "λ " + W.lam_dark.toFixed(1) + " nm · T " + W.at_dark.T.toFixed(3) + " · R " + W.at_dark.R.toFixed(3) + " · P_scatt " + W.at_dark.scatt.toFixed(3);
+  const cv = document.getElementById("ani"), cx = cv.getContext("2d"), off = document.createElement("canvas");
+  off.width = nx; off.height = nz; const ox = off.getContext("2d"), img = ox.createImageData(nx, nz);
+  let phase = 0, playing = !window.matchMedia("(prefers-reduced-motion: reduce)").matches, last = 0, cmap = null;
+  function hex(h) { return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); }
+  function setMap() {
+    const dark = css("--bg") < "#5";
+    const [a, m, b] = (dark ? ["#5aa0ec", "#2a2f35", "#e8784c"] : ["#1d5aa8", "#eceef0", "#c4501f"]).map(hex);
+    cmap = (t) => { t = Math.max(-1, Math.min(1, t)); const [p, q, w] = t < 0 ? [m, a, -t] : [m, b, t]; return [0, 1, 2].map((k) => p[k] + (q[k] - p[k]) * w); };
+  }
+  const X0 = W.x[0], X1 = W.x[nx - 1], Z0 = W.z[0], Z1 = W.z[nz - 1];
+  function px(x) { return (x - X0) / (X1 - X0) * cv.width; }
+  function pz(z) { return (1 - (z - Z0) / (Z1 - Z0)) * cv.height; }
+  function draw() {
+    const c = Math.cos(phase), s = Math.sin(phase);
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i, o = ((nz - 1 - j) * nx + i) * 4, col = cmap((re[k] * c + im[k] * s) / vmax);
+      img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255;
+    }
+    ox.putImageData(img, 0, 0);
+    cx.imageSmoothingEnabled = true; cx.drawImage(off, 0, 0, cv.width, cv.height);
+    cx.strokeStyle = css("--fg"); cx.lineWidth = 2; cx.beginPath();
+    W.outline[0].forEach((x, i) => (i ? cx.lineTo(px(x), pz(W.outline[1][i])) : cx.moveTo(px(x), pz(W.outline[1][i])))); cx.stroke();
+    cx.setLineDash([4, 4]); cx.lineWidth = 1; cx.strokeStyle = css("--muted");
+    W.slab.forEach((z) => { cx.beginPath(); cx.moveTo(0, pz(z)); cx.lineTo(cv.width, pz(z)); cx.stroke(); }); cx.setLineDash([]);
+  }
+  function tick(t) { if (playing) { if (t - last > 40) { phase += 2 * Math.PI / 48; last = t; draw(); } requestAnimationFrame(tick); } }
+  const btn = document.getElementById("play");
+  function setBtn() { btn.textContent = playing ? "Pause" : "Play"; }
+  btn.addEventListener("click", () => { playing = !playing; setBtn(); if (playing) requestAnimationFrame(tick); });
+  setMap(); draw(); setBtn(); if (playing) requestAnimationFrame(tick);
+  function all() { kpis(); shapes(); ang(); ch(); spectra(); wgs(); setMap(); draw(); fld(); camp(); }
   all();
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", all);
   new MutationObserver(all).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });

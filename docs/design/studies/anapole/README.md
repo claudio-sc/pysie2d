@@ -328,3 +328,5 @@ guided-dark design 3.74. Over the slab the all-direction optimum scatters P_scat
 TE0 mode (circle 0.079): all-direction darkness in free space does not transfer to the guided
 drive. Interior eigenvalues of the optimum: even 7.456 8.524 10.052 13.805 18.680; odd 12.546
 12.896 16.032 18.413 (none at 12.08).
+Over the slab (`wg_alldir_slab_data.py`, 1300–1800 nm, balance ≤ 6e-15): the lossless P_scatt
+minimum is 0.074 at 1422.5 nm (T 0.923, R 0.003), about the circle's value at 1550: no dark point.
