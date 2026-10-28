@@ -1,11 +1,12 @@
-"""S0 — is the Q budget feasible? Radiation Q of the circle's WGM ladder.
+"""S0 — is the Q budget feasible? The circle's WGM ladder as a loss tracker.
 
 Study script — touches no package code. Plan: ``README.md`` §S0.
 
 Setup (README, fixed): core n = 2.0 in SiO₂ n_clad = 1.45, ``pol = 1``
-(``H_y`` out of plane, E in-plane), λ_vac = 1550 nm, D = 2–10 µm, loss
-0.1–10 dB/cm. Stop rule: if no mode with Q_rad ≥ 3·Q_abs exists at the
-low-loss end for D ≤ 10 µm, report the resolvable loss floor.
+(``H_y`` out of plane, E in-plane), λ_vac = 1550 nm, baseline loss
+0.1–10 dB/cm, tracking resolution 0.1 dB/m on one device. Stop rule: the D
+range must hold a mode resolving 0.1 dB/m at σ_γ/γ ≥ 1e-3 with ≥ 1 K thermal
+tolerance, within Q_L < 1e6.
 
 What is measured
 ----------------
@@ -19,6 +20,11 @@ What is measured
   own energy fraction in the core, Γ = Q_mat/Q_abs with Q_mat = Re ε/Im ε.
   First order in κ: checked by computing at 10 dB/cm and 100 dB/cm and comparing
   the scaled values.
+- **Tracking limit**, at a 0.1 dB/cm baseline and critical coupling
+  (Q_L = Q_i/2): the linewidth repeatability σ_γ/γ = Q_L·δ(1/Q_i) that a
+  0.1 dB/m step needs, and the temperature excursion whose thermo-optic shift
+  of Q_i (core only, dn/dT = 2.5e-5 /K, an assumed literature value) equals
+  that step. Both from re-polished analytic poles.
 - **Check (README S0):** ``QNMSolver`` on circles sized so a p = 1 mode sits
   at 1550 nm, against the same analytic poles. The n ≥ 1 circle modes are
   doubly degenerate and are not Newton-refined (``QNMResult.refine``), so the
@@ -40,6 +46,7 @@ from pysie2d.reference.mie import qnm_denominator, qnm_size_parameters
 N_CORE, N_CLAD, POL, LAM0 = 2.0, 1.45, 1, 1550.0
 M_REL = N_CORE / N_CLAD
 DB_PER_CM_TO_NP_PER_NM = 1.0 / (10.0 * np.log10(np.e)) * 1.0e-7
+DN_DT = 2.5e-5  # SiN thermo-optic coefficient per K (assumed literature value)
 
 
 def kappa(db_per_cm: float) -> float:
@@ -67,9 +74,9 @@ def fundamental_pole(n: int) -> complex:
     return roots[0]
 
 
-def lossy_pole(n: int, x0: complex, db_per_cm: float) -> complex:
-    """Polish the order-n pole with an absorbing core, from the lossless one."""
-    m = (N_CORE + 1j * kappa(db_per_cm)) / N_CLAD
+def lossy_pole(n: int, x0: complex, db_per_cm: float, dn: float = 0.0) -> complex:
+    """Polish the order-n pole with an absorbing core, from a nearby pole."""
+    m = (N_CORE + dn + 1j * kappa(db_per_cm)) / N_CLAD
     with np.errstate(all="ignore"):
         return complex(
             newton(lambda z: qnm_denominator(n, z, m, POL), x0, tol=1e-14, maxiter=80)
@@ -99,20 +106,19 @@ def ladder(orders: range) -> list[dict]:
                 "q_abs_01": q_abs_01,
                 "gamma": q_mat_01 / q_abs_01,
                 "lin": lin,
-                # Loss at which Q_rad = 3·Q_abs: Q_abs ∝ 1/α.
-                "floor_db": 0.1 * 3.0 * q_abs_01 / q_rad,
             }
         )
     return rows
 
 
-def d_for_floor(rows: list[dict], db: float) -> float:
-    """Smallest D whose p = 1 mode resolves `db`, interpolating log Q_rad."""
-    d = np.array([r["D_um"] for r in rows])
-    f = np.log(np.array([r["floor_db"] for r in rows]))
-    if np.log(db) < f[-1]:
-        return float("nan")
-    return float(np.interp(-np.log(db), -f, d))  # floor decreases with D
+def tracking(n: int, base_db: float = 0.1, step_db: float = 1.0e-3) -> dict:
+    """Linewidth repeatability and ΔT tolerated for a `step_db` dB/cm change."""
+    x0 = lossy_pole(n, fundamental_pole(n), base_db)
+    inv_i = 1.0 / q_of(x0)
+    d_sig = 1.0 / q_of(lossy_pole(n, x0, base_db + step_db)) - inv_i
+    d_one_k = abs(1.0 / q_of(lossy_pole(n, x0, base_db, DN_DT)) - inv_i)
+    q_l = 0.5 / inv_i  # critical coupling, Q_c = Q_i
+    return {"q_l": q_l, "sigma": d_sig * q_l, "dT_mK": 1e3 * d_sig / d_one_k}
 
 
 def check_solver(n: int, n_pts_list: tuple[int, ...]) -> None:
@@ -157,23 +163,24 @@ def main() -> None:
     )
     print(
         f"{'n':>4} {'Re x':>8} {'D[µm]':>7} {'Q_rad':>10} {'Q_abs(0.1)':>11} "
-        f"{'Γ':>6} {'floor dB/cm':>12} {'lin':>8}"
+        f"{'Γ':>6} {'lin':>8}"
     )
     for r in rows:
         print(
             f"{r['n']:4d} {r['x'].real:8.3f} {r['D_um']:7.2f} {r['q_rad']:10.3e} "
-            f"{r['q_abs_01']:11.3e} {r['gamma']:6.3f} {r['floor_db']:12.3g} "
-            f"{r['lin']:8.1e}"
+            f"{r['q_abs_01']:11.3e} {r['gamma']:6.3f} {r['lin']:8.1e}"
         )
-    print("\nSmallest D resolving a loss (Q_rad ≥ 3·Q_abs, p = 1, at 1550 nm):")
-    for db in (10.0, 1.0, 0.1):
-        print(f"  {db:5.1f} dB/cm → D ≈ {d_for_floor(rows, db):.1f} µm")
-    at10 = max((r for r in rows if r["D_um"] <= 10.0), key=lambda r: r["D_um"])
-    print(
-        f"At D ≤ 10 µm the best mode is n={at10['n']} (D={at10['D_um']:.2f} µm), "
-        f"Q_rad={at10['q_rad']:.3g}: loss floor {at10['floor_db']:.3g} dB/cm"
-    )
     print(f"ladder: {time.perf_counter() - t0:.1f} s")
+
+    print("\nTracking 0.1 dB/m on a 0.1 dB/cm baseline, critical coupling:")
+    print(f"{'n':>4} {'D[µm]':>7} {'Q_L':>10} {'σγ/γ needed':>12} {'ΔT [mK]':>10}")
+    for r in rows:
+        if 30 <= r["n"] <= 70:
+            t = tracking(r["n"])
+            print(
+                f"{r['n']:4d} {r['D_um']:7.2f} {t['q_l']:10.3e} "
+                f"{t['sigma']:12.2e} {t['dT_mK']:10.3g}"
+            )
 
     print("\nCheck: QNMSolver vs analytic Mie pole (circle, contour estimate)")
     check_solver(10, (40, 60, 80))
