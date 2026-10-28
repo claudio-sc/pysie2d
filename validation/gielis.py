@@ -66,7 +66,32 @@ convention. The check that can is the far-field *pattern*, which is what the
 skew shape is now kept for.
 """
 
-SHAPES = {"star": STAR, "skew": SKEW}
+TRIANGLE = {"rad": 130.0, "m": 3, "n1": 4.0, "n2": 5.0, "n3": 5.0}
+"""v1.3's first particle: a rounded triangle, tip towards the slab.
+
+Chosen for its *smallest radius of curvature*, 54 nm, against the README star's
+~7 nm. MEEP's error on v1.0's star was 9.6× its error on a circle from the
+near-cusps alone; v1.3 tests the waveguide coupling, not the Yee grid on a cusp,
+so the cluster is non-circular but nowhere sharp. ``m = 3`` closes only because
+``a = b``.
+"""
+
+SQUARE = {"rad": 110.0, "m": 4, "n1": 4.0, "n2": 4.0, "n3": 4.0}
+"""v1.3's second particle: a rounded square, smallest curvature radius 44 nm."""
+
+CLUSTER = (("triangle", -170.0, 218.6), ("square", 170.0, 160.0))
+"""v1.3's cluster above the SOI slab: ``(shape, x0, z0)`` in nm, slab top at 0.
+
+The centres are *numbers*, not ``gap − min z`` of a sampled contour: the sampled
+minimum moves with the sample count as ``rad·(1 − cos(π/n))``, and a reference
+placed that way converges at second order instead of spectrally (measured: the
+reference's |S| drifted 4e-5 between 400 and 800 nodes until the centres were
+pinned). Gaps: triangle 50.01 nm and square 50.00 nm above the slab, 76 nm
+between the two. Two different shapes make the cluster mirror-asymmetric in x,
+so ``|r_L| ≠ |r_R|`` and the reciprocity check ``t_L = t_R`` is not a symmetry.
+"""
+
+SHAPES = {"star": STAR, "skew": SKEW, "triangle": TRIANGLE, "square": SQUARE}
 
 N_CONTOUR = 1440
 """Contour samples handed to gmsh and to MEEP.
@@ -115,7 +140,8 @@ def load(shape: str = "star") -> dict[str, np.ndarray]:
     """Read one committed contour. The drivers call this and nothing else.
 
     Args:
-        shape: ``star`` (the frozen anchor) or ``skew`` (the direction check).
+        shape: ``star`` (the frozen anchor), ``skew`` (the direction check),
+            or ``triangle``/``square`` (v1.3's cluster).
     """
     with np.load(DATA / f"gielis-{shape}.npz") as d:
         return {k: d[k] for k in d.files}
