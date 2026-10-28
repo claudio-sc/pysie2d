@@ -151,8 +151,46 @@ anchored in conventions §11) and the mixed ∂²λ/∂p_m∂ε″.
   allowed harmonic should give dλ/da_m = 0 at the circle. **If confirmed, the
   circle is a stationary point of S and T**, and S3 cannot start from it with
   a gradient method.
+- A2b: if A2 holds, the same rule makes the Hessian at the circle diagonal in
+  the a_m (a cross term needs m + m′ = 2n), so 30 second differences of S and
+  of R = |T|/S decide whether the circle is a local optimum.
 - A3: a generic shape — adjoint vs central differences of S; tolerance = the
   measured FD floor.
+
+*Result (2026-10-28, [s2_gradient_anchor.py](s2_gradient_anchor.py) →
+[.txt](s2_gradient_anchor.txt), n = 46, n_pts = 260): all anchors pass, and
+the circle is a local maximum of S.*
+
+- A1: S and T over r₀(1 ± 10⁻³) agree to 6·10⁻¹¹ and 1.7·10⁻⁹, S1's floors.
+- A2: max over m ≤ 30 of |dλ/da_m| is 1.3·10⁻¹¹ of |λ|/r₀ — the selection
+  rule holds. Positive control m = 2n = 92: the adjoint splits the pair by
+  ±0.033 nm/nm (0.136·|λ|/r₀), matching contour finite differences to
+  4·10⁻⁸ at h = 10⁻³ and 4·10⁻³ nm, the contour floor over 2h.
+- A2b: (1/S)·∂²S/∂a_m² < 0 for every m = 2…30, from −2·10⁻⁵ (m = 2) to
+  −6·10⁻² nm⁻² (m = 5). m = 1 is flat (−3·10⁻¹¹), being a translation to
+  first order. h = 0.5 and 1 nm agree to ≤ 2 %. **The circle is a strict local
+  maximum of S** in the cosine family. R is a saddle: 19 of 30 directions lower
+  it, but each costs S faster in log, with (ln R)″/(ln S)″ ≤ 0.85. The
+  quiet harmonics m = 11, 18, 21, 24 come close to 1; most others sit at
+  0.03–0.2. **No local direction improves both S and R.**
+- A3, at a = {2: 30, 3: 20, 5: 12, 7: 8} nm: the adjoint dλ/da_m matches
+  contour finite differences, with the gap falling as h² (m = 5:
+  3.9·10⁻⁶ → 6.2·10⁻⁵ → 1.0·10⁻³ at h = 0.125, 0.5, 2 nm). The cheap route
+  for dS/da and dT/da — predicted poles λ ± h·dλ/da, no contour — matches
+  brute force by the same h² law, to ≤ 2·10⁻⁴ at h = 0.125 nm. One gradient
+  costs five sensitivity calls per parameter instead of two contours
+  (≈ 100 assemblies).
+- This 0.5 % deformation alone cuts Q_i fivefold (4.7·10⁴ → 9.2·10³) and S
+  likewise (1.1·10⁴ → 2.1·10³): S is steep away from the circle.
+
+What it means for S3. Locally, maximising S is already solved by the circle,
+and lowering R always costs S. Whether a deformation pays depends on which term
+of the error budget dominates, δε″ ≈ √[(2σ_γ/γ)² + (|T|·(dn/dT)·ΔT)²]/S. At the
+working point (n = 58, D ≈ 16 µm, 3.6 K tolerance) the budget is noise-limited
+and the circle wins. At a smaller D, or with poor thermal control, it is
+drift-limited. There, a quadratic extrapolation along m = 18 halves R for about
+2.3× in S (a ≈ 120 nm). That is outside the perturbative range and has to be
+checked, not trusted.
 
 **S3 — design.** Maximise S at fixed D and baseline under the 100 nm critical
 dimension, with |T|/S bounded, i.e. a thermal tolerance. The job the circle
