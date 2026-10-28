@@ -71,6 +71,37 @@ at the Q ceiling. Measure Q_rad of the circle's WGM ladder (existing
 D ≤ 10 µm, report the resolvable loss floor and narrow the range with the
 owner before building anything else.
 
+*Result (2026-10-28, [s0_qrad_budget.py](s0_qrad_budget.py) →
+[.txt](s0_qrad_budget.txt)): the stop rule fires.* The best mode at
+D ≤ 10 µm is the p = 1 WGM n = 34 (D = 9.68 µm) with Q_rad = 2.3·10³, so the
+resolvable loss floor is **≈ 500 dB/cm**, three orders of magnitude above the
+range's top. Q_rad of the p = 1 ladder grows by ≈ 1.7× per order, and the
+3·Q_abs threshold is first met at:
+
+| Loss | Q_abs | Smallest D (p = 1, 1550 nm) |
+|---|---|---|
+| 10 dB/cm | 3.8·10⁴ | ≈ 13.7 µm |
+| 1 dB/cm | 3.8·10⁵ | ≈ 15.9 µm |
+| 0.1 dB/cm | 3.7·10⁶ | ≈ 18.1 µm |
+
+- Q_abs is measured per mode: the core gets the bulk κ of the quoted loss, and
+  the pole is re-polished. With Γ ≈ 0.9 for these modes, Q_abs ≈ Q_mat/Γ =
+  2πn/(αλΓ) ≈ 3.7·10⁶ at 0.1 dB/cm, not the ≈ 10⁶ assumed above; first order
+  in κ to ≤ 2·10⁻⁴.
+- The Q < 10⁶ ceiling conflicts with the low-loss end at any size. With
+  Q_rad = 3·Q_abs, Q_total = 0.75·Q_abs ≤ 10⁶ needs Q_abs ≤ 1.3·10⁶, i.e.
+  loss ≥ ≈ 0.3 dB/cm.
+- Bare indices are the optimistic case: an EIM effective core index below 2.0
+  lowers the contrast, and with it Q_rad, at every D.
+- Check: `QNMSolver` finds both members of the ±n pair, and they match the
+  analytic pole to 1.6·10⁻¹² nm (n = 10, n_pts = 80) and 4.6·10⁻¹³ nm
+  (n = 36, n_pts = 240), the contour floor. n = 36 first reaches that floor
+  at n_pts = 200; at 160 it is still 8·10⁻⁴ nm off.
+
+Open with the owner before S1. There are two ways to narrow the range: raise
+D to ≈ 14–18 µm (n ≈ 50–68; extrapolating 200 at n = 36 gives n_pts ≈ 400),
+or move the loss range up.
+
 **S1 — forward objective on the circle.** J for plane-wave incidence vs the
 closed form from interior Mie coefficients.
 *Check:* agreement at round-off by nn ≈ 30–40 (Kress, spectral); the
