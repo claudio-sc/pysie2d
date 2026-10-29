@@ -252,7 +252,32 @@ Fisher problem, and σ(δε″) with δn_cl free is [F⁻¹]₁₁.
 
 - **S4c — bus.** Q_c(g) of the main ring by `scatter_mode` on the 500 nm
   `Stack`, the critical gap, and ∂Q_c/∂n_cl as the error the Q_i/Q_c split
-  must absorb. Scoped after S4a–b.
+  must absorb. Owner chose the 58 + 62 pair as the working design (2026-10-29).
+
+*Result S4c (2026-10-29, [s4c_bus.py](s4c_bus.py) → [.txt](s4c_bus.txt)):
+the dip's Q_i/Q_c split holds, and the pair survives the bus.* `scatter_mode`
+refuses complex λ, so t(λ) on real λ is fitted to t_bg(λ − λ_z)/(λ − λ_p).
+The pole gives Q_L, and the zero gives Q_i and Q_c separately, including
+which side of critical coupling the ring sits. Held-out points, which the fit
+never saw, match it to ≤ 1.6·10⁻⁵ in t.
+
+- Anchor: the extracted Q_i tends to the isolated Mie Q_i as g grows, but
+  slowly and oscillating: +3.7 % at 1.6 µm, +0.4 % at 2.5 µm, then
+  ≤ 1.1·10⁻³ at 3–4 µm, beyond which the dip is too shallow to fit. So
+  **the bus itself raises Q_i by 1.4–3.7 % at practical gaps** — most
+  likely its slab reflecting the ring's radiation back, an interpretation
+  not tested separately. n_pts 340 → 400 changes 1/Q_i and 1/Q_c by ≤ 10⁻¹¹.
+- Coupling slope: d ln Q_c/dg = 0.745 per 100 nm for both rings, equal to
+  the closed form 2γ_bus = 2k₀√(n_eff² − n_cl²) = 0.7450 from the bus mode
+  (n_eff = 1.716649). Q_c doubles every 93 nm.
+- Critical gaps: **1058 nm** (n = 58, Q_i = Q_c = 9.0·10⁵) and **1134 nm**
+  (n = 62, 1.79·10⁶). Both are well above the 100 nm CD.
+- In situ at g_c: T_i = 35.1 and 25.8, against 35.6 and 26.4 isolated; S_i is
+  2.1·10⁵ and 4.3·10⁵, 3 % above isolated. Q_c's own aging gain is
+  T_c ≈ 11 for both rings: δn_cl = 10⁻⁴ moves Q_c by 0.1 %, and the dip's
+  zero carries that drift instead of Q_i.
+- **Pair 58 + 62 from in-situ numbers: σ(δε″) = 0.081 dB/m with δn_cl free**
+  (0.037 dB/m with it known). S4b's isolated-ring value was 0.083.
 
 ## Promotion
 

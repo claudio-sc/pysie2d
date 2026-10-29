@@ -1,0 +1,36 @@
+anchor, n=58: Q_i/Q_i,iso − 1 and Q_L/Q_i,iso − 1 vs gap
+  g= 1600: Q_i +3.70e-02  Q_L +1.89e-02  Q_c=5.09e+07  held-out 1.8e-06
+  g= 2000: Q_i +2.71e-02  Q_L +2.62e-02  Q_c=1.00e+09  held-out 8.4e-08
+  g= 2500: Q_i +3.83e-03  Q_L +3.81e-03  Q_c=4.15e+10  held-out 1.9e-09
+  g= 3000: Q_i -2.74e-03  Q_L -2.74e-03  Q_c=1.72e+12  held-out 2.7e-11
+  g= 3500: Q_i +8.13e-04  Q_L +8.13e-04  Q_c=7.14e+13  held-out 1.5e-12
+  g= 4000: Q_i -1.09e-03  Q_L -1.09e-03  Q_c=2.96e+15  held-out 4.4e-14
+  g= 4500: dip too shallow to fit (Q_c ≳ 1e16), ladder ends
+  n_pts 340 → 400 at g=1600: Δ(1/Q_i)/(1/Q_i) = 1.8e-12, Δ(1/Q_c)/(1/Q_c) = 9.5e-12
+bus n_eff = 1.716649: 2γ_bus = 0.7450 per 100 nm
+
+ring n=58: isolated Q_i (Mie) = 871056
+   gap        Q_L         Q_i        Q_c  Q_i/Q_i,iso−1 regime  held-out
+   800  1.146e+05      883301  1.317e+05       1.41e-02   over   5.1e-06
+  1000   3.53e+05      894396   5.83e+05       2.68e-02   over   1.0e-05
+  1200  6.673e+05      899525  2.585e+06       3.27e-02  under   1.6e-05
+  1400  8.368e+05      902678  1.146e+07       3.63e-02  under   6.7e-06
+  1600  8.875e+05      903246  5.086e+07       3.70e-02  under   1.8e-06
+  1800  8.971e+05      900706  2.257e+08       3.40e-02  under   4.0e-07
+  d ln Q_c/dg = 0.745 per 100 nm; critical gap ≈ 1058 nm
+  at g_c: Q_i=896070 Q_c=895784  T_i=35.13 (isolated T_cl=35.63)  T_c=10.78  S_i=2.1218e+05 (isolated S=2.0625e+05)
+
+ring n=62: isolated Q_i (Mie) = 1.75277e+06
+   gap        Q_L         Q_i        Q_c  Q_i/Q_i,iso−1 regime  held-out
+   800   1.37e+05 1.76449e+06  1.485e+05       6.68e-03   over   3.2e-06
+  1000  4.809e+05 1.78334e+06  6.584e+05       1.74e-02   over   1.9e-06
+  1200  1.109e+06 1.78885e+06   2.92e+06       2.06e-02  under   6.4e-06
+  1400  1.575e+06 1.79244e+06  1.296e+07       2.26e-02  under   4.4e-06
+  1600  1.741e+06 1.79564e+06  5.749e+07       2.45e-02  under   1.3e-06
+  1800  1.784e+06 1.79695e+06  2.551e+08       2.52e-02  under   3.0e-07
+  d ln Q_c/dg = 0.745 per 100 nm; critical gap ≈ 1134 nm
+  at g_c: Q_i=1.78715e+06 Q_c=1.78696e+06  T_i=25.79 (isolated T_cl=26.38)  T_c=11.58  S_i=4.2506e+05 (isolated S=4.1689e+05)
+
+pair 58 + 62 at their critical gaps: σ(δε″) = 0.0811 dB/m with δn_cl free, 0.0371 known (isolated rings, S4b: 0.0829, 0.0379)
+
+153 s
