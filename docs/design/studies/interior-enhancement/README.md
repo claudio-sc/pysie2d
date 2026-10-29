@@ -205,14 +205,54 @@ Q_rad is then 0.1/3.6 of the 0.1 dB/m step, about 0.003 dB/m. The budget is
 noise-limited, and S2 shows the circle is the local optimum there. The working
 point is the circle, n = 58.
 
-**S4 — drift rejection with the bus.** Bus-coupled S-parameters at several
-gaps (`BIESolver.scatter_mode`; `QNMSolver` does not take a `Stack`). The
-nuisances are the drifts of the real index, of Q_c and of surface absorption,
-not Q_rad. Channels: the linewidth and the resonance shift of one mode; a
-mode pair with contrasting Γ and T; and a bulk-weighted vs surface-weighted
-pair (Ω vs Ω_δ, the interior minus a surface margin δ). Maximise the Fisher
-information on δε″ with the drifts as nuisance parameters. Scoped in detail
-after S3.
+**S4 — drift rejection.** *Scoped with the owner 2026-10-29:* bus width
+500 nm (single-mode below the 563 nm cutoff of this 2D model); readout =
+through-port transmission dip; nuisance = **cladding index aging** δn_cl;
+channels = **sister reference rings** on the same chip.
+
+The dip gives Q_L and its depth, hence Q_i and Q_c separately, so bus-coupling
+drift is measured rather than estimated. What leaks into Q_i is δn_cl through
+Q_rad, with gain T_cl ≡ Q_i·∂(1/Q_i)/∂n_clad. A sister ring shares the film
+and the cladding, so it sees the **same** δε″ and δn_cl. It separates them
+only through a different ratio T_cl/S. Linewidth channels y_k = 1/Q_i,k with
+σ(y_k) = 2(σ_γ/γ)/Q_i,k (the single-ring rule δε″_min = 2σ/S) give a 2×2
+Fisher problem, and σ(δε″) with δn_cl free is [F⁻¹]₁₁.
+
+- **S4a — main-ring tolerance.** T_cl at n = 58, by `QNMResult.sensitivity`
+  in `n_clad` against the analytic dλ/dn_cl = λ/n_cl + (λ/x)(dx/dm)(m/n_cl).
+  *Output:* the δn_cl that mimics 0.1 dB/m. If that exceeds any plausible
+  aging, no reference ring is needed and S4 stops.
+- **S4b — sister choice.** σ(δε″) vs the sister's order n_ref (p = 1 ladder),
+  against the same pair with δn_cl known. *Output:* the best D_ref and the
+  price of not knowing δn_cl.
+
+*Result S4a–b (2026-10-29, [s4_cladding_drift.py](s4_cladding_drift.py) →
+[.txt](s4_cladding_drift.txt); σ is 1σ, at σ_γ/γ = 10⁻³):*
+
+- S4a: T_cl = +35.6 at n = 58 — raising n_cl lowers the contrast and Q_rad.
+  **δn_cl = 6.6·10⁻⁵ mimics a 0.1 dB/m step**, so a single ring is only safe
+  if the cladding index holds to better than that for months. The BIE
+  dλ/dn_clad matches the analytic derivative to 8·10⁻¹⁰, and T_cl to ≤ 10⁻⁷.
+- S4b, main n = 58 plus one sister, under Q_i ≤ 2·10⁶:
+
+  | Sister | D_ref | σ, δn_cl free | σ, δn_cl known | Price |
+  |---|---|---|---|---|
+  | n = 46 | 12.8 µm | 0.129 dB/m | 0.085 dB/m | 1.5 |
+  | n = 56 | 15.4 µm | 0.299 dB/m | 0.072 dB/m | 4.2 |
+  | n = 62 | 16.9 µm | **0.083 dB/m** | 0.038 dB/m | 2.2 |
+
+  One ring with δn_cl known gives 0.085 dB/m. **A second high-Q ring (n = 62)
+  makes the measurement immune to cladding aging at no loss** relative to that
+  single ring: both rings carry signal, and their T_cl/S differ by 2.7×
+  (1.7·10⁻⁴ vs 6.3·10⁻⁵). A low-Q reference costs 1.5×. A near-twin
+  (n = 56, 60) is ill-conditioned and costs 4×.
+- Assumed: δε″ and δn_cl are uniform across the chip, and both rings are
+  critically coupled with the same σ_γ/γ. A sister above n = 62 breaks the
+  Q_L ceiling unless it is undercoupled, which changes its noise.
+
+- **S4c — bus.** Q_c(g) of the main ring by `scatter_mode` on the 500 nm
+  `Stack`, the critical gap, and ∂Q_c/∂n_cl as the error the Q_i/Q_c split
+  must absorb. Scoped after S4a–b.
 
 ## Promotion
 
