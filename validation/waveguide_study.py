@@ -17,11 +17,17 @@ The batches
 Ordered so that what is most likely wrong fails in the cheapest batch, and each
 ends at a gate the owner reads before the next is launched.
 
-1. **Smoke test, low rungs, reciprocity.** A res-15 smoke test (``norm`` and
-   ``left``, both polarisations), then the gate in :func:`smoke_gate`, which
-   stops the batch on its own if it fails. Then the ladder at res 25, 32, 40
-   (``norm``, ``left``) and the right drive at res 25 (``right``,
-   ``norm_right``) for the first reciprocity check.
+1. **Smoke test, low rungs, reciprocity.** A smoke test at res 10 and 15
+   (``norm`` and ``left``, both polarisations), then the gate in
+   :func:`smoke_gate`, which stops the batch on its own if it fails. Then the
+   ladder at res 20, 25, 30, 40 (``norm``, ``left``) and the right drive at
+   res 25 (``right``, ``norm_right``) for the first reciprocity check.
+
+Every resolution is a multiple of 5, so the 2.2 a slab is a whole number of
+pixels and both interfaces sit on lattice points (``run_waveguide._cell``).
+MEEP converges at **first order** here, measured on MPB's n_eff against the
+closed-form slab, so :func:`analyse` reports each pair of rungs extrapolated
+to res → ∞ (``compare_waveguide.richardson``) beside the raw differences.
 2. **Production.** All four drives at res 50, both polarisations.
 3. **Systematics at res 50.** Each group varies one knob to its *larger* value
    against batch 2's run, in the polarisation it threatens most: the cladding
@@ -33,7 +39,8 @@ Cost model
 ----------
 ``seconds = pixels × steps / THROUGHPUT``. pixels = cell area × res²,
 steps = 2·res·T (Courant 0.5), T measured by the res-8 shakedown (900 a/c TE,
-950 TM: the pulse's Gaussian tail, not the low-Q cluster, sets it).
+950 TM: the pulse's Gaussian tail, not the low-Q cluster, sets it), and
+confirmed by the first res-15 smoke runs.
 """
 
 from __future__ import annotations
@@ -58,12 +65,13 @@ REF = OUT / "reference.npz"
 sys.path.insert(0, str(ROOT / "validation"))
 import compare_waveguide  # noqa: E402
 
-THROUGHPUT = 2.5e8
+THROUGHPUT = 3.0e8
 """px·step/s on one M5 performance core, for planning.
 
-Measured: 2.9–4.3e8 in the res-8 shakedown (4.4e5 px), 2.3e8 in v1.0 at
-2.9e6 px. Larger cells fall out of cache, so the planning value sits near the
-large-cell measurement; the smoke gate replaces it with the real one."""
+Measured: 2.9–4.3e8 in the res-8 shakedown (4.4e5 px), 3.3–4.3e8 in the first
+res-15 smoke runs (1.6e6 px, 2026-10-29), 2.3e8 in v1.0 at 2.9e6 px. Res 50
+is 1.7e7 px and further out of cache, so the planning value sits below the
+small-cell measurements."""
 
 T_SIM = {"te": 900.0, "tm": 950.0}
 """Simulated time, a/c, from the res-8 shakedown; resolution-independent."""
@@ -99,7 +107,8 @@ class Job:
         """Cell area, a², with this job's knobs."""
         k = {**DEFAULTS, **self.knobs}
         width = 2 * (23.0 + 2.0 + k["dpml_x"])
-        height = 2.2 + 2 * k["pad"] + TOP + 2 * k["dpml_y"]
+        # The cell is symmetric about the slab top with an integer half-height.
+        height = 2 * np.ceil(max(2.2, TOP) + k["pad"]) + 2 * k["dpml_y"]
         return width * height
 
     def seconds(self, throughput: float = THROUGHPUT) -> float:
@@ -122,15 +131,19 @@ FOUR = ("norm", "left", "right", "norm_right")
 def batch(n: int) -> list[Job]:
     """The jobs of batch ``n``, in the order they run."""
     if n == 1:
-        smoke = [Job(c, d, 15, "smoke") for c in CASES for d in ("norm", "left")]
-        r25 = [Job(c, d, 25, "ladder") for c in CASES for d in FOUR]
-        rest = [
-            Job(c, d, r, "ladder")
-            for r in (32, 40)
+        smoke = [
+            Job(c, d, r, "smoke")
+            for r in (10, 15)
             for c in CASES
             for d in ("norm", "left")
         ]
-        return smoke + r25 + rest
+        rest = [
+            Job(c, d, r, "ladder")
+            for r in (20, 25, 30, 40)
+            for c in CASES
+            for d in (FOUR if r == 25 else ("norm", "left"))
+        ]
+        return smoke + rest
     if n == 2:
         return [Job(c, d, 50, "ladder") for c in CASES for d in FOUR]
     if n == 3:
@@ -204,6 +217,24 @@ def _runs(group: str, case: str, res: int) -> dict:
     }
 
 
+LADDER = {
+    10: "smoke",
+    15: "smoke",
+    20: "ladder",
+    25: "ladder",
+    30: "ladder",
+    40: "ladder",
+    50: "ladder",
+}
+
+
+def _observables(ref: dict, case: str, res: int) -> dict | None:
+    runs = _runs(LADDER[res], case, res)
+    if runs["norm"] is None or runs["left"] is None:
+        return None
+    return compare_waveguide.observables(runs, float(ref["plane_nm"]), case)
+
+
 def smoke_gate(records: list[dict]) -> list[str]:
     """Reasons to stop after the smoke test; empty when batch 1 may continue.
 
@@ -213,11 +244,17 @@ def smoke_gate(records: list[dict]) -> list[str]:
     * every run succeeded;
     * throughput and simulated time within 2× of the cost model, or the batch
       estimates are wrong by more than the plan can absorb;
-    * MPB's n_eff within 1e-2 of pysie2d's: res 8 gave 1.4e-2 (TE) and 2.5e-2
-      (TM) at second order, so res 15 should give ≲ 7e-3, while a swapped
-      parity misses by 0.8 (2.85 vs 2.05);
-    * |t_L|² error below res 8's (2.2e-2 TE, 1.6e-2 TM): the grid error must
-      fall with refinement before larger runs spend hours on it.
+    * MPB's n_eff error *falls* from res 10 to 15 by a median factor in
+      [1.2, 2.5]: first order gives 1.5, second 2.25, and the unaligned grid
+      that failed this gate on 2026-10-29 gave 1.0;
+    * the first-order extrapolation of n_eff from res 10 and 15 within 2e-3 of
+      pysie2d: on the aligned cell MPB alone extrapolates to 1.1e-3 (TE) and
+      < 1e-4 (TM) of the closed form, and a swapped parity misses by 0.8;
+    * the |t_L|² error at res 15 below 2.5e-2, a gross bound only (res 8 gave
+      1.6–2.2e-2). Whether it *falls* is not judged on two rungs: the particles'
+      curved surfaces cannot be grid-aligned, and TM stepped unevenly,
+      1.23e-2 → 1.20e-2 → 7.9e-3 → 7.0e-3 at res 10/15/20/30 (2026-10-29).
+      The full ladder answers that, in :func:`analyse`.
     """
     bad = [r["name"] for r in records if r["returncode"] != 0 or "throughput" not in r]
     if bad:
@@ -230,26 +267,39 @@ def smoke_gate(records: list[dict]) -> list[str]:
         if not 0.5 < r["t_stop"] / T_SIM[case] < 2.0:
             why.append(f"{r['name']}: t_stop {r['t_stop']:.0f} a/c")
     ref = ensure_reference()
-    for case, t8 in (("te", 2.2e-2), ("tm", 1.6e-2)):
-        c = compare_waveguide.compare(ref, _runs("smoke", case, 15), case)
-        if c["n_eff"] > 1e-2:
-            why.append(f"{case}: n_eff off by {c['n_eff']:.2e}")
-        if c["|t_left|²"] > t8:
-            why.append(f"{case}: |t_L|² error {c['|t_left|²']:.2e} ≥ res 8's {t8:.1e}")
+    for case in CASES:
+        q10, q15 = _observables(ref, case, 10), _observables(ref, case, 15)
+        n_ref = ref[f"{case}_n_eff"]
+        rate = np.median(np.abs(q10["n_eff"] - n_ref) / np.abs(q15["n_eff"] - n_ref))
+        if not 1.2 <= rate <= 2.5:
+            why.append(f"{case}: n_eff error falls by {rate:.2f}× from res 10 to 15")
+        q_inf = compare_waveguide.richardson(q10, 10, q15, 15)
+        e_inf = np.max(np.abs(q_inf["n_eff"] - n_ref))
+        if e_inf > 2e-3:
+            why.append(f"{case}: extrapolated n_eff off by {e_inf:.2e}")
+        e15 = compare_waveguide.errors(ref, q15, case)["|t_left|²"]
+        if e15 > 2.5e-2:
+            why.append(f"{case}: |t_L|² error {e15:.2e} at res 15")
     return why
 
 
 def analyse() -> None:
-    """Print every comparison that the runs on disk allow."""
+    """Every comparison the runs on disk allow, raw and extrapolated in pairs."""
     ref = ensure_reference()
-    for group, resolutions in (("smoke", (15,)), ("ladder", (25, 32, 40, 50))):
-        for res in resolutions:
-            for case in CASES:
-                runs = _runs(group, case, res)
-                if runs["norm"] is None or runs["left"] is None:
-                    continue
-                for k, v in compare_waveguide.compare(ref, runs, case).items():
-                    print(f"{group:6s} {case} r{res:<3d} {k:32s} {v:.3e}")
+    for case in CASES:
+        prev = None
+        for res, group in LADDER.items():
+            runs = _runs(group, case, res)
+            if runs["norm"] is None or runs["left"] is None:
+                continue
+            for k, v in compare_waveguide.compare(ref, runs, case).items():
+                print(f"{case} r{res:<3d}       {k:32s} {v:.3e}")
+            q = compare_waveguide.observables(runs, float(ref["plane_nm"]), case)
+            if prev is not None:
+                q_inf = compare_waveguide.richardson(prev[1], prev[0], q, res)
+                for k, v in compare_waveguide.errors(ref, q_inf, case).items():
+                    print(f"{case} r{prev[0]}+{res:<3d} → ∞ {k:32s} {v:.3e}")
+            prev = (res, q)
 
 
 def main() -> None:
@@ -258,6 +308,7 @@ def main() -> None:
     p.add_argument("--batch", type=int, choices=(1, 2, 3))
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--analyse", action="store_true")
+    p.add_argument("--stop-after-smoke", action="store_true")
     a = p.parse_args()
     if a.analyse:
         analyse()
@@ -289,6 +340,8 @@ def main() -> None:
             print("SMOKE GATE FAILED — batch stopped:", *reasons, sep="\n  ")
             return
         print("smoke gate passed", flush=True)
+        if a.stop_after_smoke:
+            return
     for j in jobs:
         if j.group != "smoke" and not j.out.exists():
             run_job(j)

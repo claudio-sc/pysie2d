@@ -56,23 +56,52 @@ def s_params(
     return out
 
 
+def observables(runs: dict, plane_nm: float, case: str) -> dict[str, np.ndarray]:
+    """MEEP's n_eff, t and r in pysie2d's convention (TM reflection sign applied)."""
+    sign = -1.0 if case == "tm" else 1.0
+    m = s_params(runs, plane_nm)
+    return {"n_eff": runs["norm"]["n_eff"]} | {
+        k: v * (sign if k.startswith("r") else 1.0) for k, v in m.items()
+    }
+
+
+def errors(ref: dict, q: dict[str, np.ndarray], case: str) -> dict[str, float]:
+    """Max-over-λ differences of MEEP observables ``q`` from pysie2d."""
+    out = {"n_eff": np.max(np.abs(q["n_eff"] - ref[f"{case}_n_eff"]))}
+    for k in (k for k in q if k != "n_eff"):
+        rv = ref[f"{case}_{k}"]
+        out[f"|{k}|²"] = np.max(np.abs(np.abs(q[k]) ** 2 - np.abs(rv) ** 2))
+        out[f"{k} complex"] = np.max(np.abs(q[k] - rv))
+    for side in ("left", "right"):
+        if f"t_{side}" not in q:
+            continue
+        p_meep = 1 - np.abs(q[f"t_{side}"]) ** 2 - np.abs(q[f"r_{side}"]) ** 2
+        p_ref = ref[f"{case}_up_{side}"] + ref[f"{case}_down_{side}"]
+        out[f"P_rad {side}"] = np.max(np.abs(p_meep - p_ref))
+    return out
+
+
+def richardson(coarse: dict, res_c: int, fine: dict, res_f: int) -> dict:
+    """First-order Richardson extrapolation of every observable to res → ∞.
+
+    First order is measured, not assumed: on the grid-aligned cell MPB's n_eff
+    error × res is constant to three digits in TM (0.124 at res 10–40) and
+    drifts 0.083 → 0.071 in TE, against the closed-form slab, an anchor
+    independent of pysie2d. Complex t and r are extrapolated as complex numbers,
+    so a phase error converging at first order is removed with the magnitude's.
+    """
+    return {
+        k: (res_f * fine[k] - res_c * coarse[k]) / (res_f - res_c)
+        for k in fine
+        if k in coarse
+    }
+
+
 def compare(ref: dict, runs: dict, case: str) -> dict[str, float]:
     """Max-over-λ differences, MEEP minus pysie2d, plus MEEP's own diagnostics."""
     plane = float(ref["plane_nm"])
     m = s_params(runs, plane)
-    sign = -1.0 if case == "tm" else 1.0
-    out = {"n_eff": np.max(np.abs(runs["norm"]["n_eff"] - ref[f"{case}_n_eff"]))}
-    for k in m:
-        rv = ref[f"{case}_{k}"]
-        mv = m[k] * (sign if k.startswith("r") else 1.0)
-        out[f"|{k}|²"] = np.max(np.abs(np.abs(mv) ** 2 - np.abs(rv) ** 2))
-        out[f"{k} complex"] = np.max(np.abs(mv - rv))
-    for side in ("left", "right"):
-        if f"t_{side}" not in m:
-            continue
-        p_meep = 1 - np.abs(m[f"t_{side}"]) ** 2 - np.abs(m[f"r_{side}"]) ** 2
-        p_ref = ref[f"{case}_up_{side}"] + ref[f"{case}_down_{side}"]
-        out[f"P_rad {side}"] = np.max(np.abs(p_meep - p_ref))
+    out = errors(ref, observables(runs, plane, case), case)
     snap = s_params(runs, plane, snapshot=True)
     out["MEEP decay snapshot |Δt_L|"] = np.max(np.abs(snap["t_left"] - m["t_left"]))
     nl = runs["norm"]["alpha"]

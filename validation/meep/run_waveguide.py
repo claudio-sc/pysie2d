@@ -122,10 +122,22 @@ def _cell() -> tuple[mp.Vector3, mp.Vector3, float, float]:
     top = max(
         (z0 + gielis.load(s)["z"].max()) / NM_PER_A for s, _, z0 in gielis.CLUSTER
     )
-    y_lo, y_hi = -T_SI - PAD, top + PAD
+    # MEEP anchors its lattice on the cell centre, so the cell is centred on the
+    # slab's top interface: y = 0 is then always a lattice point and y = −T_SI
+    # is one whenever T_SI·res is an integer (:func:`_check_aligned`). With the
+    # centre elsewhere the interfaces landed at a resolution-dependent pixel
+    # fraction and MPB's n_eff error jumped (TE at res 10/20/40/80: −1.7e-2,
+    # −5.4e-3, −5.0e-3, −2.0e-3; res 15 twice its neighbours); aligned it is
+    # clean first order (−8.3e-3, −3.8e-3, −1.8e-3, −8.6e-4), which can be
+    # extrapolated. The symmetric cell costs < 2 % in area.
+    # An integer half-height too: MEEP rounds a cell that is not a whole number
+    # of pixels, which moves its centre by a resolution-dependent sub-pixel
+    # (res 30 fell off the first-order line until this was fixed).
+    h = float(np.ceil(max(T_SI + PAD, top + PAD)))
+    y_lo, y_hi = -h, h
     half_x = X_SOURCE + 2.0 + DPML_X
     size = mp.Vector3(2 * half_x, (y_hi - y_lo) + 2 * DPML_Y)
-    return size, mp.Vector3(0, 0.5 * (y_lo + y_hi)), y_lo, y_hi
+    return size, mp.Vector3(), y_lo, y_hi
 
 
 def _geometry(with_cluster: bool) -> list:
@@ -148,8 +160,18 @@ def _geometry(with_cluster: bool) -> list:
     return [slab, *parts]
 
 
+def _check_aligned(resolution: int) -> None:
+    """Refuse a resolution that puts a slab interface inside a pixel."""
+    if abs(T_SI * resolution - round(T_SI * resolution)) > 1e-9:
+        raise SystemExit(
+            f"resolution {resolution}: T_SI·res = {T_SI * resolution:g} is not an "
+            "integer, so the slab's bottom interface splits a pixel"
+        )
+
+
 def run(case: str, drive: str, resolution: int) -> dict:
     """One FDTD run; returns everything the study and the comparison need."""
+    _check_aligned(resolution)
     pol, component, parity = CASES[case]
     sign = -1.0 if drive in ("right", "norm_right") else +1.0
     size, centre, y_lo, y_hi = _cell()
