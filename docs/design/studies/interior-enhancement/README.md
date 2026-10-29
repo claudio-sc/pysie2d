@@ -199,6 +199,12 @@ cannot do is lower the drift gain T at fixed S.
 best circle at equal S, say so. That is a result, not a reason to add
 parameters.
 
+*Decision (owner, 2026-10-29): S3 skipped.* D ≈ 16 µm is acceptable and
+the stage is stabilised to ≤ 0.1 K. At n = 58 the thermo-optic leak through
+Q_rad is then 0.1/3.6 of the 0.1 dB/m step, about 0.003 dB/m. The budget is
+noise-limited, and S2 shows the circle is the local optimum there. The working
+point is the circle, n = 58.
+
 **S4 — drift rejection with the bus.** Bus-coupled S-parameters at several
 gaps (`BIESolver.scatter_mode`; `QNMSolver` does not take a `Stack`). The
 nuisances are the drifts of the real index, of Q_c and of surface absorption,
