@@ -31,8 +31,8 @@ from pathlib import Path
 import numpy as np
 
 
-def _load(d: Path, case: str, drive: str, res: int) -> dict | None:
-    p = d / f"{case}-{drive}-r{res}.npz"
+def _load(d: Path, case: str, drive: str, res: int, tag: str = "") -> dict | None:
+    p = d / f"{case}-{drive}-r{res}{tag}.npz"
     return dict(np.load(p)) if p.exists() else None
 
 

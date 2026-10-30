@@ -76,6 +76,10 @@ small-cell measurements."""
 T_SIM = {"te": 900.0, "tm": 950.0}
 """Simulated time, a/c, from the res-8 shakedown; resolution-independent."""
 
+T_SUBBANDS = {1: 1.0, 4: 3.16}
+"""Run-length factor for ``--subbands``: each source's pulse spans only its
+sub-band, so it lasts longer (4 sources: 2840 a/c against 900, res 10)."""
+
 DEFAULTS = {"dpml_x": 20.0, "dpml_y": 15.0, "pad": 20.0}
 TOP = 3.486
 """Highest point of the cluster, a (the triangle's z0 + max z)."""
@@ -113,7 +117,9 @@ class Job:
 
     def seconds(self, throughput: float = THROUGHPUT) -> float:
         """Predicted wall time."""
-        steps = 2 * self.res * T_SIM[self.case]
+        steps = (
+            2 * self.res * T_SIM[self.case] * T_SUBBANDS[self.knobs.get("subbands", 1)]
+        )
         return self.area * self.res**2 * steps / throughput
 
     def args(self) -> list[str]:
@@ -128,9 +134,9 @@ CASES = ("te", "tm")
 FOUR = ("norm", "left", "right", "norm_right")
 
 
-def batch(n: int) -> list[Job]:
+def batch(n: str) -> list[Job]:
     """The jobs of batch ``n``, in the order they run."""
-    if n == 1:
+    if n == "1":
         smoke = [
             Job(c, d, r, "smoke")
             for r in (10, 15)
@@ -144,6 +150,16 @@ def batch(n: int) -> list[Job]:
             for d in (FOUR if r == 25 else ("norm", "left"))
         ]
         return smoke + rest
+    if n == "1b":
+        # Batch 1's ladder again with the source systematic removed (4
+        # sub-band sources): does MEEP then extrapolate onto pysie2d?
+        return [
+            Job(c, d, r, "ladder-sb4", {"subbands": 4})
+            for r in (20, 25, 30)
+            for c in CASES
+            for d in ("norm", "left")
+        ]
+    n = int(n)
     if n == 2:
         return [Job(c, d, 50, "ladder") for c in CASES for d in FOUR]
     if n == 3:
@@ -210,9 +226,9 @@ def run_job(job: Job) -> dict:
     return rec
 
 
-def _runs(group: str, case: str, res: int) -> dict:
+def _runs(group: str, case: str, res: int, tag: str = "") -> dict:
     return {
-        d: compare_waveguide._load(OUT / group, case, d, res)
+        d: compare_waveguide._load(OUT / group, case, d, res, tag)
         for d in ("norm", "left", "right", "norm_right")
     }
 
@@ -286,26 +302,31 @@ def smoke_gate(records: list[dict]) -> list[str]:
 def analyse() -> None:
     """Every comparison the runs on disk allow, raw and extrapolated in pairs."""
     ref = ensure_reference()
-    for case in CASES:
-        prev = None
-        for res, group in LADDER.items():
-            runs = _runs(group, case, res)
-            if runs["norm"] is None or runs["left"] is None:
-                continue
-            for k, v in compare_waveguide.compare(ref, runs, case).items():
-                print(f"{case} r{res:<3d}       {k:32s} {v:.3e}")
-            q = compare_waveguide.observables(runs, float(ref["plane_nm"]), case)
-            if prev is not None:
-                q_inf = compare_waveguide.richardson(prev[1], prev[0], q, res)
-                for k, v in compare_waveguide.errors(ref, q_inf, case).items():
-                    print(f"{case} r{prev[0]}+{res:<3d} → ∞ {k:32s} {v:.3e}")
-            prev = (res, q)
+    sb4 = dict.fromkeys((20, 25, 30), ("ladder-sb4", "-subbands4"))
+    for label, ladder in (
+        ("", {r: (g, "") for r, g in LADDER.items()}),
+        ("sb4 ", sb4),
+    ):
+        for case in CASES:
+            prev = None
+            for res, (group, tag) in ladder.items():
+                runs = _runs(group, case, res, tag)
+                if runs["norm"] is None or runs["left"] is None:
+                    continue
+                for k, v in compare_waveguide.compare(ref, runs, case).items():
+                    print(f"{label}{case} r{res:<3d}       {k:32s} {v:.3e}")
+                q = compare_waveguide.observables(runs, float(ref["plane_nm"]), case)
+                if prev is not None:
+                    q_inf = compare_waveguide.richardson(prev[1], prev[0], q, res)
+                    for k, v in compare_waveguide.errors(ref, q_inf, case).items():
+                        print(f"{label}{case} r{prev[0]}+{res:<3d} → ∞ {k:32s} {v:.3e}")
+                prev = (res, q)
 
 
 def main() -> None:
     """Run, dry-run or analyse."""
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--batch", type=int, choices=(1, 2, 3))
+    p.add_argument("--batch", choices=("1", "1b", "2", "3"))
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--analyse", action="store_true")
     p.add_argument("--stop-after-smoke", action="store_true")

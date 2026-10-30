@@ -107,6 +107,9 @@ and the earlier one that measures the truncation systematic. The cluster is
 low-Q, so the probe follows the pulse's Gaussian tail: at 1e-8 the snapshot
 fell in the same window as the stop and recorded nothing (res 8, TE)."""
 
+SUBBANDS = 1
+"""Eigenmode sources across the band; see :func:`run`."""
+
 WINDOW = 20.0
 """a/c over which the decay must hold before the run stops."""
 
@@ -178,24 +181,32 @@ def run(case: str, drive: str, resolution: int) -> dict:
     span = mp.Vector3(0, y_hi - y_lo)
     yc = centre.y
     f = _freqs()
-    fcen = 0.5 * (f.min() + f.max())
-    fwidth = 1.2 * (f.max() - f.min())
-
-    source = mp.EigenModeSource(
-        mp.GaussianSource(fcen, fwidth=fwidth),
-        center=mp.Vector3(-sign * X_SOURCE, yc),
-        size=span,
-        direction=mp.X,
-        eig_kpoint=mp.Vector3(sign),
-        eig_band=1,
-        eig_parity=parity,
-    )
+    # SUBBANDS sources side by side in frequency, each an eigenmode source whose
+    # profile MPB solves at its *own* centre. One profile for the whole band
+    # misfits the mode away from the centre, and that misfit was the floor of
+    # the batch-1 ladder: a 40 nm narrowband run removed 72–100 % of the TM
+    # floor and 50–85 % of TE's (srcdiag, 2026-10-30). Each source's Gaussian
+    # spans its sub-band, so the pulse, and the run, lengthen ~SUBBANDS-fold.
+    edges = np.linspace(f.min(), f.max(), SUBBANDS + 1)
+    fwidth = 1.2 * (edges[1] - edges[0])
+    sources = [
+        mp.EigenModeSource(
+            mp.GaussianSource(0.5 * (lo + hi), fwidth=fwidth),
+            center=mp.Vector3(-sign * X_SOURCE, yc),
+            size=span,
+            direction=mp.X,
+            eig_kpoint=mp.Vector3(sign),
+            eig_band=1,
+            eig_parity=parity,
+        )
+        for lo, hi in zip(edges[:-1], edges[1:], strict=True)
+    ]
     sim = mp.Simulation(
         cell_size=size,
         geometry_center=centre,
         geometry=_geometry(drive in ("left", "right")),
         default_material=mp.Medium(index=N_OX),
-        sources=[source],
+        sources=sources,
         resolution=resolution,
         boundary_layers=[
             mp.PML(DPML_X, direction=mp.X),
@@ -271,6 +282,7 @@ def run(case: str, drive: str, resolution: int) -> dict:
                 "pad": PAD,
                 "monitors": MONITORS,
                 "x_source": X_SOURCE,
+                "subbands": SUBBANDS,
                 "decay": DECAY,
                 "snapshot": SNAPSHOT,
                 "cluster": gielis.CLUSTER,
@@ -285,7 +297,7 @@ def run(case: str, drive: str, resolution: int) -> dict:
 
 def main() -> None:
     """Run one case and drive, and write its ``.npz``."""
-    global DPML_X, DPML_Y, PAD
+    global DPML_X, DPML_Y, PAD, X_SOURCE, WAVELENGTHS, SUBBANDS
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--case", choices=sorted(CASES), required=True)
     p.add_argument(
@@ -295,9 +307,21 @@ def main() -> None:
     p.add_argument("--dpml-x", type=float, default=DPML_X)
     p.add_argument("--dpml-y", type=float, default=DPML_Y)
     p.add_argument("--pad", type=float, default=PAD)
+    p.add_argument("--x-source", type=float, default=X_SOURCE)
+    p.add_argument("--subbands", type=int, default=SUBBANDS)
+    p.add_argument(
+        "--band-nm",
+        type=float,
+        nargs=3,
+        metavar=("LO", "HI", "N"),
+        help="a sub-band of the grid, for the source-bandwidth systematic",
+    )
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
-    DPML_X, DPML_Y, PAD = a.dpml_x, a.dpml_y, a.pad
+    DPML_X, DPML_Y, PAD, X_SOURCE = a.dpml_x, a.dpml_y, a.pad, a.x_source
+    SUBBANDS = a.subbands
+    if a.band_nm:
+        WAVELENGTHS = np.linspace(a.band_nm[0], a.band_nm[1], int(a.band_nm[2]))
     out = run(a.case, a.drive, a.resolution)
     if out["alpha_snapshot"] is None:  # stopped by the window before the snapshot level
         out["alpha_snapshot"] = out["alpha"]
