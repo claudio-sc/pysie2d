@@ -107,6 +107,9 @@ and the earlier one that measures the truncation systematic. The cluster is
 low-Q, so the probe follows the pulse's Gaussian tail: at 1e-8 the snapshot
 fell in the same window as the stop and recorded nothing (res 8, TE)."""
 
+CLUSTER_NAME = "pair"
+"""Which of ``gielis.CLUSTERS``; the cell is sized for ``pair`` regardless."""
+
 SUBBANDS = 1
 """Eigenmode sources across the band; see :func:`run`."""
 
@@ -153,7 +156,7 @@ def _geometry(with_cluster: bool) -> list:
     if not with_cluster:
         return [slab]
     parts = []
-    for shape, x0, z0 in gielis.CLUSTER:
+    for shape, x0, z0 in gielis.CLUSTERS[CLUSTER_NAME]:
         c = gielis.load(shape)
         verts = [
             mp.Vector3((x0 + x) / NM_PER_A, (z0 + z) / NM_PER_A)
@@ -285,7 +288,7 @@ def run(case: str, drive: str, resolution: int) -> dict:
                 "subbands": SUBBANDS,
                 "decay": DECAY,
                 "snapshot": SNAPSHOT,
-                "cluster": gielis.CLUSTER,
+                "cluster": gielis.CLUSTERS[CLUSTER_NAME],
                 "n_si": N_SI,
                 "n_ox": N_OX,
                 "t_si_nm": T_SI * NM_PER_A,
@@ -297,7 +300,7 @@ def run(case: str, drive: str, resolution: int) -> dict:
 
 def main() -> None:
     """Run one case and drive, and write its ``.npz``."""
-    global DPML_X, DPML_Y, PAD, X_SOURCE, WAVELENGTHS, SUBBANDS
+    global DPML_X, DPML_Y, PAD, X_SOURCE, WAVELENGTHS, SUBBANDS, CLUSTER_NAME
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--case", choices=sorted(CASES), required=True)
     p.add_argument(
@@ -309,6 +312,7 @@ def main() -> None:
     p.add_argument("--pad", type=float, default=PAD)
     p.add_argument("--x-source", type=float, default=X_SOURCE)
     p.add_argument("--subbands", type=int, default=SUBBANDS)
+    p.add_argument("--cluster", choices=sorted(gielis.CLUSTERS), default=CLUSTER_NAME)
     p.add_argument(
         "--band-nm",
         type=float,
@@ -319,7 +323,7 @@ def main() -> None:
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
     DPML_X, DPML_Y, PAD, X_SOURCE = a.dpml_x, a.dpml_y, a.pad, a.x_source
-    SUBBANDS = a.subbands
+    SUBBANDS, CLUSTER_NAME = a.subbands, a.cluster
     if a.band_nm:
         WAVELENGTHS = np.linspace(a.band_nm[0], a.band_nm[1], int(a.band_nm[2]))
     out = run(a.case, a.drive, a.resolution)

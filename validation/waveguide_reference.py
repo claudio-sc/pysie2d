@@ -34,23 +34,25 @@ nodes change it by 2e-10, 7e-12, 2e-13 (TM, 1550 nm), so 400 sits at the
 1e-12 floor — eight orders below MEEP's grid error."""
 
 
-def cluster() -> Cluster:
-    """The v1.3 cluster at the reference's node count."""
+def cluster(name: str = "pair") -> Cluster:
+    """One of ``gielis.CLUSTERS`` at the reference's node count."""
     return Cluster(
         [
             Geometry.gielis(n_pts=N_PTS, x0=x0, z0=z0, **gielis.SHAPES[shape])
-            for shape, x0, z0 in gielis.CLUSTER
+            for shape, x0, z0 in gielis.CLUSTERS[name]
         ]
     )
 
 
-def reference(plane_nm: float) -> dict[str, np.ndarray]:
+def reference(plane_nm: float, name: str = "pair") -> dict[str, np.ndarray]:
     """t, r for both drives and both polarisations, r referred to ``±plane_nm``."""
     stack = Stack(((N_SI**2, T_SI_NM),), N_OX**2)
     out: dict[str, np.ndarray] = {"wavelengths": WAVELENGTHS}
     for case, pol in (("te", 2), ("tm", 1)):
-        mats = [Material(n_core=N_SI, n_clad=N_OX, pol=pol)] * len(gielis.CLUSTER)
-        sol = ClusterBIESolver(cluster(), mats, pol=pol, background=stack)
+        mats = [Material(n_core=N_SI, n_clad=N_OX, pol=pol)] * len(
+            gielis.CLUSTERS[name]
+        )
+        sol = ClusterBIESolver(cluster(name), mats, pol=pol, background=stack)
         rows = []
         for lam in WAVELENGTHS:
             (mode,) = stack.guided_modes(lam, pol, N_OX)  # single-mode by the grid
@@ -85,9 +87,9 @@ def reference(plane_nm: float) -> dict[str, np.ndarray]:
             "balance_left",
             "balance_right",
         )
-        for i, name in enumerate(names):
+        for i, col_name in enumerate(names):
             col = r[:, i]
-            out[f"{case}_{name}"] = (
+            out[f"{case}_{col_name}"] = (
                 col if np.iscomplexobj(col) and i in (1, 2, 3, 4) else col.real
             )
     return out
@@ -97,9 +99,10 @@ def main() -> None:
     """Write the reference ``.npz``."""
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--plane-nm", type=float, default=1500.0)
+    p.add_argument("--cluster", choices=sorted(gielis.CLUSTERS), default="pair")
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
-    np.savez(a.out, plane_nm=a.plane_nm, **reference(a.plane_nm))
+    np.savez(a.out, plane_nm=a.plane_nm, **reference(a.plane_nm, a.cluster))
 
 
 if __name__ == "__main__":

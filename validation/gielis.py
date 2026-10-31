@@ -91,7 +91,27 @@ between the two. Two different shapes make the cluster mirror-asymmetric in x,
 so ``|r_L| ≠ |r_R|`` and the reciprocity check ``t_L = t_R`` is not a symmetry.
 """
 
-SHAPES = {"star": STAR, "skew": SKEW, "triangle": TRIANGLE, "square": SQUARE}
+CIRCLE = {"rad": 110.0, "m": 4, "n1": 2.0, "n2": 2.0, "n3": 2.0}
+"""A circle written as a Gielis shape, so both codes read it like the others."""
+
+CLUSTERS = {
+    "pair": CLUSTER,
+    "circle": (("circle", 0.0, 160.0),),
+    "circle200": (("circle", 0.0, 310.0),),
+}
+"""``circle`` is the discriminator for the TM gap (2026-10-31): one smooth
+particle, 50 nm above the slab, the shape MEEP resolved best in v1.0. The MEEP
+cell is always sized for ``pair``, so the bare-slab ``norm`` runs are shared.
+``circle200`` is the same circle 200 nm above the slab: if the TM gap is MEEP
+resolving the narrow gap, it should shrink there."""
+
+SHAPES = {
+    "star": STAR,
+    "skew": SKEW,
+    "triangle": TRIANGLE,
+    "square": SQUARE,
+    "circle": CIRCLE,
+}
 
 N_CONTOUR = 1440
 """Contour samples handed to gmsh and to MEEP.
