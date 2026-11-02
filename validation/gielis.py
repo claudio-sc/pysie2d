@@ -98,12 +98,15 @@ CLUSTERS = {
     "pair": CLUSTER,
     "circle": (("circle", 0.0, 160.0),),
     "circle200": (("circle", 0.0, 310.0),),
+    "pair200": (("triangle", -170.0, 368.6), ("square", 170.0, 310.0)),
 }
 """``circle`` is the discriminator for the TM gap (2026-10-31): one smooth
 particle, 50 nm above the slab, the shape MEEP resolved best in v1.0. The MEEP
 cell is always sized for ``pair``, so the bare-slab ``norm`` runs are shared.
 ``circle200`` is the same circle 200 nm above the slab: if the TM gap is MEEP
-resolving the narrow gap, it should shrink there."""
+resolving the narrow gap, it should shrink there (it did: 6.1 % → 0.5 % of
+the scattered power at 1750 nm). ``pair200`` is the frozen v1.3 anchor: ``pair``
+raised 150 nm, to the gap where MEEP's TM converges like its TE."""
 
 SHAPES = {
     "star": STAR,
