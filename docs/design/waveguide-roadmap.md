@@ -171,8 +171,11 @@ committed JSON with provenance, a numpy-only test in CI. It is a separate
 milestone, under the rule that a finished additive feature is not held behind a
 conda-first tool.
 
-It also carries **one MEEP LDOS run** (R6) on a non-circular particle, the
-v1.0 §4 milestone that never ran.
+It was to carry **one MEEP LDOS run** (R6) on a non-circular particle, the
+v1.0 §4 milestone that never ran. *(Owner, 2026-11-02: moved out of v1.3, which
+closes on the S-parameters; R6 stays open in §6.)* v1.3 froze at a 200 nm gap
+with TM complex t a strict xfail at 1.3× its MEEP-only tolerance
+(`tests/test_external_waveguide.py`); a res-40 TM rung would decide it.
 
 One study closes three gaps from §6 at once: a non-circular **cluster**, a
 **layered background** with driven observables, and the **new mode channel**.
@@ -256,7 +259,7 @@ the specs:
 |---|---|---|
 | Non-circular **clusters** | two-cylinder addition theorem (circles only) | v1.3 |
 | Driven observables **over a substrate** (`c_sca_up`, `c_sca_down`, `c_abs`, near field, LDOS) | PEC mirror, a second quadrature, the v1.1 power-balance equality | partly v1.3 (driven, layered) |
-| **Near field, LDOS, Purcell** on a non-circular shape | analytic circle only; v1.0 §4 planned MEEP LDOS and never ran it | v1.3 (one MEEP LDOS run, R6) |
+| **Near field, LDOS, Purcell** on a non-circular shape | analytic circle only; v1.0 §4 planned MEEP LDOS and never ran it | open (R6, moved out of v1.3) |
 | **Absorption** cross-check between two externals | dolfinx alone (MEEP has no frequency-independent Im ε) | open |
 | **Metals** (`from_eps`, silver/gold particles and substrates) | Mie on a silver circle; metal-substrate QNMs are consistency only (G9) | open |
 | QNMs and `dλ/dp` on a **non-circular** shape | circle only | open, low priority |
