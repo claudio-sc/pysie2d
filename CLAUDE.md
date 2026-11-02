@@ -256,9 +256,12 @@ residue; v1.3 MEEP validation of the waveguide coupling; v1.4 a variational-EIM
 [studies/slab/](docs/design/studies/slab/README.md). v1.2 is implemented on the
 branch (gates GW1–GW18, conventions §17). One owner-approved change to the spec
 (2026-10-26): P_down over a stack uses S12's sine-mapped rule, not the v1.1 flux
-rule, which stalls at 1e-6 in TM. Shipped as v1.2.0 and v1.2.1. v1.3 is on
-`v1.3-meep-waveguide`: drivers in `validation/` (`waveguide_study.py` runs
-three single-core batches), batch 1 awaiting launch.
+rule, which stalls at 1e-6 in TM. Shipped as v1.2.0 and v1.2.1. v1.3 merged
+2026-11-02 (no release: test and docs only): MEEP S-parameters of a Gielis pair
+200 nm above SOI, frozen in `tests/test_external_waveguide.py`. TM complex t is
+a strict xfail at 1.3× its MEEP-only tolerance (a res-40 rung would decide it);
+the MEEP LDOS run (R6) moved out. Next: v1.4, starting with a 3D MEEP sizing run
+of the canonical case before the code-spec.
 
 ## How to work here
 
