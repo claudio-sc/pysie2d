@@ -217,10 +217,16 @@ option.
   difference from the 2.5D answer is reported as an error of the model, never
   as a tolerance of the code. Sizing: serial MEEP fits up to 20 nm voxels (res
   50, 3.8 GB, about 1.5 h per 4-sub-band run).
-- **Open, for the code-spec.** Where β of the 3D cross-section comes from
-  (user input, or a built-in vectorial mode solver); which 2D index a scatterer
-  gets (n_2D is a fit to one waveguide width, so it has no unique meaning for a
-  pillar); and whether n_2D is defined at complex λ.
+- **Owner decisions, 2026-11-02.**
+  - **R21 — β is user input.** The front end takes the 3D cross-section's n_eff
+    from any mode solver and only inverts it. A tabulated MPB n_eff dataset is
+    planned for a later release; a built-in vectorial mode solver is not.
+  - **R22 — scatterers share the waveguide's n_2D.** Every region with the same
+    vertical stack gets the same 2D index. The 3D MEEP reference measures what
+    this costs; it does not choose the rule, so it blocks no code.
+  - **R23 — real λ only.** The front end takes real wavelengths, so 2.5D QNMs
+    are out of scope (they belong with the slab QNMs). The 2D solve it feeds
+    keeps complex k, so non-negotiable 1 holds.
 
 ### Later, unscheduled
 
