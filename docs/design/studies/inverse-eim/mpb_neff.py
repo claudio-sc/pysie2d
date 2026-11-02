@@ -31,23 +31,49 @@ CELL_Y, CELL_Z = 4.0, 4.0
 leaves < 3e-4 of the field amplitude at the cell edge."""
 
 
-def solve(w_nm: float, h_nm: float, res: int, lam_nm: float = 1550.0) -> dict:
-    w, h, f = w_nm / 1000, h_nm / 1000, 1000 / lam_nm
+def _solver(w_nm: float, h_nm: float, res: int, cell: float, num_bands: int):
+    w, h = w_nm / 1000, h_nm / 1000
     geometry = [
         # Substrate fills the lower half; the core sits on it.
-        mp.Block(mp.Vector3(mp.inf, mp.inf, CELL_Z / 2), center=mp.Vector3(0, 0, -CELL_Z / 4),
+        mp.Block(mp.Vector3(mp.inf, mp.inf, cell / 2), center=mp.Vector3(0, 0, -cell / 4),
                  material=mp.Medium(index=N_OX)),
         mp.Block(mp.Vector3(mp.inf, w, h), center=mp.Vector3(0, 0, h / 2), material=mp.Medium(index=N_SI)),
     ]
-    ms = mpb.ModeSolver(
-        geometry_lattice=mp.Lattice(size=mp.Vector3(0, CELL_Y, CELL_Z)),
+    return mpb.ModeSolver(
+        geometry_lattice=mp.Lattice(size=mp.Vector3(0, cell, cell)),
         geometry=geometry,
         default_material=mp.Medium(index=N_AIR),
         resolution=res,
-        num_bands=1,
+        num_bands=num_bands,
     )
+
+
+def guided_count(w_nm: float, h_nm: float, res: int, lam_nm: float = 1550.0,
+                 cell: float = CELL_Y) -> dict:
+    """Guided bands per y-parity at λ, from one fixed-k run just past the light line.
+
+    ω_n(k) increases with k, so band n is guided at frequency f iff it lies
+    below f at k = n_ox·f (the substrate light line, where it would enter the
+    continuum). Every continuum state there has ω ≥ k/n_ox > f, so a band below
+    f is a guided mode, never a folded cladding state.
+    """
+    f = 1000 / lam_nm
+    ms = _solver(w_nm, h_nm, res, cell, 4)
+    ms.k_points = [mp.Vector3(f * N_OX * 1.001)]
     out = {}
-    for parity in (mp.EVEN_Y, mp.ODD_Y):
+    for name, parity in (("even", mp.EVEN_Y), ("odd", mp.ODD_Y)):
+        ms.run_parity(parity, True)
+        out[name] = int(np.sum(np.asarray(ms.all_freqs[0]) < f))
+    return out
+
+
+def solve(w_nm: float, h_nm: float, res: int, lam_nm: float = 1550.0,
+          cell: float = CELL_Y, parities: tuple = ("even", "odd")) -> dict:
+    """Fundamental n_eff per guided y-parity, keyed by dominant E: ``te``/``tm``."""
+    f = 1000 / lam_nm
+    ms = _solver(w_nm, h_nm, res, cell, 1)
+    out = {}
+    for parity in (p for n, p in (("even", mp.EVEN_Y), ("odd", mp.ODD_Y)) if n in parities):
         k = ms.find_k(parity, f, 1, 1, mp.Vector3(1), 1e-10, f * 2.5, f * N_OX, f * N_SI)[0]
         e = ms.get_efield(1, bloch_phase=False)
         ey, ez = np.sum(np.abs(e[..., 1]) ** 2), np.sum(np.abs(e[..., 2]) ** 2)
