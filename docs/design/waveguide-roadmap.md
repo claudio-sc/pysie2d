@@ -217,6 +217,17 @@ option.
   difference from the 2.5D answer is reported as an error of the model, never
   as a tolerance of the code. Sizing: serial MEEP fits up to 20 nm voxels (res
   50, 3.8 GB, about 1.5 h per 4-sub-band run).
+- **Status, 2026-11-04.** Paper reproduction R1–R3 done
+  ([studies/inverse-eim/](studies/inverse-eim/README.md)); the paper's top view
+  uses air | oxide lateral claddings. 3D MEEP case
+  (`validation/meep/run_strip3d.py`): the paper's air-clad 500 × 220 nm strip,
+  TE₀, 1500–1650 nm, a Si pillar beside it (r = 250 nm, 220 nm tall, 60 nm
+  gap); ladder res 25/30/40/50 run (6.6 h single core). **Open defect:** with
+  PML in the cell, MEEP's plane mode solver (source and monitors) returns
+  n_eff 2.297 at res 40, while MPB, MEEP's own solver in a periodic cell
+  without PML, and the FDTD wave's phase advance (2.390 → 2.385, res 40 → 50)
+  agree on ≈ 2.38. The coefficients are projected onto a wrong profile, so the
+  ladder is not usable until that is resolved.
 - **Owner decisions, 2026-11-02.**
   - **R21 — β is user input.** The front end takes the 3D cross-section's n_eff
     from any mode solver and only inverts it. A tabulated MPB n_eff dataset is
