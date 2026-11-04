@@ -14,7 +14,7 @@ Paper materials throughout: Si core 3.47 on SiO₂ 1.44 under air 1.0,
 |---|---|---|---|
 | R1 — Fig. 2, plain-EIM side view, 220 nm slab, TE | n_eff = 2.825 | 2.8247 | done |
 | R2 — Fig. 3, inverse-EIM n_2D, 500 × 220 nm, TE | 2.763 | **2.7637** | done |
-| R3 — Figs. 4–5, β error maps over the single-mode domain | ≤ 17 % EIM, ~100 % none, < 0.01 % inverse | — | planned |
+| R3 — Figs. 4–5, β error maps over the single-mode domain | ≤ 17 % EIM, ~100 % none, < 0.01 % inverse | 11–37 % EIM, 104–127 % none, ~1e-13 % inverse | done |
 
 ## R2
 
@@ -46,6 +46,36 @@ the lateral claddings are, by construction. The choice changes the 2D mode's
 lateral tails, so it changes the coupling to a scatterer, which is what the
 v1.4 3D MEEP reference measures. It is a convention v1.4 has to pin.
 
+## R3
+
+`r3_sweep.py` (MPB, single core, 15.6 h, 2026-11-02/03) → `r3.jsonl`;
+`r3_analyse.py` → `r3_errors.json`. Grid w 100–1000 × h 100–500 nm, 10 nm
+steps: 3731 strips, 1434 single-mode (at most one guided band per y-parity),
+1433 solved (one fails at cutoff), 83 excluded because the cell hit 12 µm.
+That leaves 1125 TE and 789 TM strips.
+
+Max (median) |Δβ/β| over the domain:
+
+| Lateral claddings | TE none | TE EIM | TM none | TM EIM |
+|---|---|---|---|---|
+| air \| air | 104 % (42) | 11.3 % (2.2) | 126 % (49) | 21.8 % (6.5) |
+| oxide \| oxide | 106 % (45) | 36.7 % (5.8) | 127 % (51) | 31.4 % (9.0) |
+| air \| oxide | 105 % (43) | 26.6 % (4.2) | 126 % (50) | 26.9 % (7.9) |
+
+Inverse EIM is ≤ 2e-13 % in every case: it reproduces β by construction, so
+the paper's "< 0.01 %" is its own interpolation noise, and the column is a
+check of the arithmetic, not of the physics.
+
+**What is reproduced:** none ≈ 100 %, EIM errors at the tens-of-percent level
+and largest at low confinement (median 2–5× higher in the less-confined half;
+the maxima sit at n_eff ≈ 1.48–1.52, near cutoff), inverse EIM exact. **What
+is not:** the paper's 17 % maximum lies between our conventions. Our domain
+reaches closer to cutoff than the paper's (its 3496 count does not map onto
+our 1914 strip–polarisation pairs), so the maxima do not discriminate the
+lateral convention. Fig. 3 (R2) remains the evidence that the paper uses
+air \| oxide.
+
 ## Reproduce
 
     ~/miniforge3/envs/pysie2d-meep/bin/python mpb_neff.py 500 220 128
+    uv run python docs/design/studies/inverse-eim/r3_analyse.py
