@@ -75,6 +75,64 @@ our 1914 strip–polarisation pairs), so the maxima do not discriminate the
 lateral convention. Fig. 3 (R2) remains the evidence that the paper uses
 air \| oxide.
 
+## 3D reference and the comparison rule
+
+**Fixed 2026-11-04, before any pysie2d number for this case was computed.**
+Nothing below may change after the 2.5D side is seen; a change needs a new
+dated entry and a statement that the comparison was already known.
+
+**Case** (`validation/meep/run_strip3d.py`). The paper's air-clad strip,
+500 × 220 nm Si (3.47) on SiO₂ (1.44) under air, TE₀, 31 λ in 1500–1650 nm. A
+Si pillar beside it: r = 250 nm, 220 nm tall, on the oxide, 60 nm edge gap,
+centred 560 nm from the strip axis. Runs: bare strip (`norm`) and `pillar`,
+launched toward +x; the pillar is x-symmetric, so the other drive is not run.
+Ladder res 25/30/40/50 px/µm, single core, 6.6 h (2026-11-03/04). Raw output
+in `validation/_study/v14/` (not in git).
+
+**Accepted systematic (owner, 2026-11-04).** With PML in the cell, MEEP's
+plane mode solver, used by the source and the monitors, returns n_eff 2.297
+(res 40) for TE₀ instead of 2.377 (MPB; MEEP's own solver in a periodic cell
+without PML gives 2.376). The profile is still TE₀: overlap 0.9966 with the
+correct one, Ey-dominant, 65 % of |E|² in the core, centred. The mismatch
+cancels exactly in the bare-strip normalisation, which is pure TE₀. Radiated
+field projected onto the distorted profile is the residual: bounded at a few
+1e-3 in |t|² in the worst case, and measured below 3e-4 by the two monitor
+planes (2.0 and 2.5 µm see different radiation content but agree to 2.9e-4
+at res 50). Accepted with that measured bound, rather than rerunning with a
+projection onto MPB's profile.
+
+**Convergence.** The FDTD wave's own n_eff (phase advance between planes)
+against MPB's 2.3773: errors 0.0234, 0.0197, 0.0122, 0.0074 at res 25, 30,
+40, 50. The apparent order rises from ≈ 1 to ≈ 2.3, so res 25 and 30 are
+pre-asymptotic and are not used.
+
+**The rule.** For each observable X(λ) ∈ {|t|², P_rad = 1 − |t|² − |r|²,
+complex t}:
+
+1. MEEP value X_M = second-order Richardson extrapolation of res 40 and 50
+   (order measured on n_eff above).
+2. MEEP uncertainty U = |X_M(p = 2) − X_M(p = 1)| + f_norm + f_plane, where
+   f_norm = max |1 − P_far/P_near| of the bare strip at res 50 (power not
+   conserved by the guided mode, 5.8e-4) and f_plane = max |t(2.0 µm) −
+   t(2.5 µm)| at res 50 (2.9e-4; it also bounds the accepted projection
+   systematic). Maxed over λ, like v1.3.
+3. pysie2d side: top view at `pol = 1` (3D TE-like, conventions §3 of the
+   roadmap); strip = a 500 nm `Stack` layer of core index n_2D(λ), by inverse
+   EIM from MPB's n_eff(λ) at every λ of the band (res 64 and 128,
+   second-order extrapolated, as R2); pillar = a disc of r = 250 nm with the
+   same n_2D (R22), on the cover side, centre 560 nm from the strip axis;
+   nodes doubled until |S| moves < 1e-8. All three lateral conventions,
+   air | air, oxide | oxide and air | oxide, are computed and reported; with
+   air | oxide, the pillar side is air, as in 3D.
+4. Reported: the model error E(λ) = X_2.5D − X_M, with U, and max |E| / U. The
+   2.5D model "agrees within MEEP's uncertainty" only if |E| ≤ 3U at every λ
+   (v1.3's factor). Otherwise E is the 2.5D model's error, reported as such,
+   never as a tolerance of the code. |r|² (≈ 4e-4) is recorded but not
+   judged if U exceeds half of it.
+5. Which lateral convention v1.4 adopts as its default is an owner decision,
+   taken with all three results on the table. The documentation will say
+   that it was chosen after this comparison.
+
 ## Reproduce
 
     ~/miniforge3/envs/pysie2d-meep/bin/python mpb_neff.py 500 220 128

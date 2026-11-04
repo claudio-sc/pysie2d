@@ -226,8 +226,9 @@ option.
   PML in the cell, MEEP's plane mode solver (source and monitors) returns
   n_eff 2.297 at res 40, while MPB, MEEP's own solver in a periodic cell
   without PML, and the FDTD wave's phase advance (2.390 → 2.385, res 40 → 50)
-  agree on ≈ 2.38. The coefficients are projected onto a wrong profile, so the
-  ladder is not usable until that is resolved.
+  agree on ≈ 2.38. The profile is still TE₀ (overlap 0.9966); the owner
+  accepted the ladder with the measured bound (< 3e-4 in |t|²). The comparison
+  rule is fixed in the study README, before any pysie2d number.
 - **Owner decisions, 2026-11-02.**
   - **R21 — β is user input.** The front end takes the 3D cross-section's n_eff
     from any mode solver and only inverts it. A tabulated MPB n_eff dataset is
