@@ -133,6 +133,31 @@ complex t}:
    taken with all three results on the table. The documentation will say
    that it was chosen after this comparison.
 
+## 3D comparison — result (2026-11-04)
+
+By the rule above, first run (`band_neff.py` → `band_neff.json`,
+`compare_3d.py` → `compare_3d.json`). MEEP: P_rad 0.47–1.09 % over the band;
+U(|t|²) = 1.8e-3, U(P_rad) = 1.7e-3, U(t) = 2.1e-3. Extrapolated |r|² is
+below U (max −3.3e-5 against U = 9.7e-4), so it is not judged. pysie2d's node
+check: |t| moves ≤ 1e-16 from 100 to 200 nodes.
+
+| Lateral claddings | n_2D over band | \|t\|² | P_rad | complex t | P_rad 2.5D | Verdict |
+|---|---|---|---|---|---|---|
+| air \| air | 2.733–2.821 | 2.4 U | 2.4 U | **4.9 U** | 0.74–1.51 % | fails on t |
+| oxide \| oxide | 2.657–2.774 | **9.5 U** | **9.9 U** | **14.6 U** | 1.59–2.81 % | fails |
+| **air \| oxide** | 2.694–2.797 | 1.0 U | 1.0 U | 2.9 U | 0.65–1.25 % | **agrees within 3U** |
+
+max |E| / U over λ; "agrees" means |E| ≤ 3U at every λ for every judged
+observable.
+
+**Reading.** With the paper's convention, air | oxide, the 2.5D model agrees
+with 3D MEEP within MEEP's uncertainty: |t|² and P_rad at 1.0 U, complex t at
+2.9 U. That is a weak claim. U is 16–36 % of the pillar's 0.5–1.1 % radiated
+power, so P_rad agrees only to within 38 % relative. Oxide | oxide is ruled
+out by 10–15 U. Air | air fails only on the transmission phase. A sharper
+verdict needs a smaller U (res 60, or the projection onto MPB's profile) or
+a stronger scatterer.
+
 ## Reproduce
 
     ~/miniforge3/envs/pysie2d-meep/bin/python mpb_neff.py 500 220 128
