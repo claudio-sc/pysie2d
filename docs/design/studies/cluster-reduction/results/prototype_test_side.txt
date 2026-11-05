@@ -1,0 +1,5 @@
+QNM side: n_core=1.5 lam_s=221.63+661.24j nm  Q=0.17  smin/smax=2.8e-08 (2% away 2.5e-03); |u_int|=1.000 |u_ext|=0.000
+QNM side: n_core=3.5 lam_s=517.14+1542.88j nm  Q=0.17  smin/smax=3.5e-08 (2% away 2.8e-03); |u_int|=1.000 |u_ext|=0.000
+exterior side: lam=261.27 nm (k_bg a = j01) eps=(-1.5-0.3j): smin/smax=3.0e-18 (3% away 4.2e-06); |u_ext|=1.000
+exterior side: lam=261.27 nm (k_bg a = j01) eps=(2-0.5j): smin/smax=2.9e-16 (3% away 1.8e-02); |u_ext|=1.000
+exterior side: lam=261.27 nm (k_bg a = j01) eps=(9-1j): smin/smax=1.4e-16 (3% away 2.5e-02); |u_ext|=1.000

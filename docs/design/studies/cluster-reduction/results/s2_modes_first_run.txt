@@ -1,0 +1,57 @@
+=== D. independent anchor: cluster eigenpermittivities, BIE full M vs Graf addition theorem vs reduced G
+-- TM plasmonic, box (-2-1.5j)..(-0.2-0.15j)
+d=   300 ranks [31, 31]: M 6 (rank 6), G 6 (rank 6), Graf 6; |M-Graf| 8.5e-07, |M-G| 8.2e-07, Graf n8 vs n10 5.6e-07
+      M: [-1.752654-0.466565j -1.612185-0.446595j -1.576622-0.406949j
+ -0.69512 -1.207728j -0.495503-0.173026j -0.237772-0.905889j]
+d=   400 ranks [23, 23]: M 0 (rank singular spectrum has no rank gap but A0 did not cancel (cancellation ), G 0 (rank singular spectrum has no rank gap but A0 did not cancel (cancellation ), Graf 5; |M-Graf| nan, |M-G| nan, Graf n8 vs n10 1.8e-07
+      M: []
+d=  1000 ranks [13, 13]: M 7 (rank 7), G 7 (rank 7), Graf 7; |M-Graf| 2.2e-08, |M-G| 4.9e-08, Graf n8 vs n10 5.9e-08
+      M: [-1.550238-0.245035j -1.520293-0.343519j -1.442974-0.259517j
+ -1.275565-0.847806j -1.136041-0.410431j -0.467751-1.033699j
+ -0.456024-0.939799j]
+-- TE dielectric, box (11-1.4j)..(13.8-0.1j)
+d=   300 ranks [31, 31]: M 4 (rank 4), G 4 (rank 4), Graf 4; |M-Graf| 6.6e-11, |M-G| 9.1e-15, Graf n8 vs n10 5.0e-09
+      M: [11.697021-0.617567j 12.262205-0.381198j 12.718856-0.539646j
+ 12.99133 -0.245027j]
+d=   400 ranks [23, 23]: M 4 (rank 4), G 4 (rank 4), Graf 4; |M-Graf| 7.9e-14, |M-G| 3.9e-14, Graf n8 vs n10 1.4e-11
+      M: [12.029967-0.377451j 12.101234-0.952116j 12.564189-0.215499j
+ 12.610167-0.586385j]
+d=  1000 ranks [13, 13]: M 4 (rank 4), G 4 (rank 4), Graf 4; |M-Graf| 9.0e-15, |M-G| 1.2e-14, Graf n8 vs n10 7.9e-15
+      M: [12.251109-0.314579j 12.282134-0.612465j 12.468638-0.510915j
+ 12.513564-0.768572j]
+
+=== E. can G hide a weakly split pair? TE n-pair of two far circles, separation sweep; M vs G count in the same box
+d=    1000 rank [13, 13]: M finds 4 (rank 4); G finds 4 (rank 4); spread(M)=2.8e-01
+d=    3000 rank [9, 9]: M finds 4 (rank 4); G finds 4 (rank 4); spread(M)=2.0e-01
+d=   10000 rank [7, 7]: M finds 4 (rank 4); G finds 4 (rank 4); spread(M)=4.4e-02
+d=   30000 rank [6, 6]: M finds 4 (rank 4); G finds 4 (rank 4); spread(M)=7.4e-02
+d=  100000 rank [5, 5]: M finds 4 (rank 4); G finds 4 (rank 4); spread(M)=1.2e-02
+d=  300000 rank [6, 6]: M finds 4 (rank 4); G finds 4 (rank 4); spread(M)=2.4e-02
+-- and a higher-Q family (n=4+ TE at larger ε) at moderate pitch
+d=   400: M finds 3 (rank 8); G finds 3 (rank 8)
+   M [26.96291-1.3983j  27.41712-1.79335j 27.47155-0.7338j ]
+   G [26.96291-1.3983j  27.41712-1.79335j 27.47155-0.7338j ]
+d=  1000: M finds 4 (rank 8); G finds 4 (rank 8)
+   M [26.39914-2.10942j 27.13514-1.52471j 27.24417-1.62895j 27.52382-1.02081j]
+   G [26.39914-2.10942j 27.13514-1.52471j 27.24417-1.62895j 27.52382-1.02081j]
+d=  3000: M finds 4 (rank 8); G finds 4 (rank 8)
+   M [26.79256-1.41126j 27.18538-1.58971j 27.19291-1.56173j 27.6583 -1.61663j]
+   G [26.79256-1.41126j 27.18538-1.58971j 27.19291-1.56173j 27.6583 -1.61663j]
+
+=== F. cancellation: x = a − R y when ε nears an isolated-particle pole (M_p singular, cluster M regular)
+isolated pole used: -1.30483168-0.00894414j
+|ε−ε_iso|=1e-01: |x_r−x_f|/|x_f|=7.0e-14  backward err full 1.3e-17, reduced 2.6e-17  cond(M_full)~1.8e+03
+|ε−ε_iso|=1e-02: |x_r−x_f|/|x_f|=2.9e-13  backward err full 2.1e-17, reduced 1.7e-16  cond(M_full)~1.5e+04
+|ε−ε_iso|=1e-04: |x_r−x_f|/|x_f|=1.1e-12  backward err full 2.3e-17, reduced 5.7e-16  cond(M_full)~2.0e+04
+|ε−ε_iso|=1e-06: |x_r−x_f|/|x_f|=3.3e-11  backward err full 2.8e-17, reduced 4.7e-14  cond(M_full)~2.1e+04
+|ε−ε_iso|=1e-08: |x_r−x_f|/|x_f|=2.3e-09  backward err full 2.9e-17, reduced 4.8e-12  cond(M_full)~2.1e+04
+|ε−ε_iso|=1e-10: |x_r−x_f|/|x_f|=4.3e-07  backward err full 3.0e-17, reduced 5.2e-10  cond(M_full)~2.1e+04
+|ε−ε_iso|=1e-12: |x_r−x_f|/|x_f|=4.1e-05  backward err full 2.9e-17, reduced 4.9e-08  cond(M_full)~2.1e+04
+
+=== G. the exterior irregular frequency: k_bg·a = j01, driven observable vs Mie (single circle)
+   keys ['qsca', 'qext', 'qabs'] <class 'dict'>
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-claudiosc-Documents-sie/f37683c6-0b69-46b3-9d1b-2823702ff32f/scratchpad/probe_modes.py", line 147, in <module>
+    qe = q["Q_ext"] if isinstance(q, dict) else q
+         ~^^^^^^^^^
+KeyError: 'Q_ext'

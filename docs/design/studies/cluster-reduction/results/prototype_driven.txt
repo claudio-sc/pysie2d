@@ -1,0 +1,3 @@
+4 particles: 40 permittivities, worst relative difference 1.5e-13; full 20 ms each, reduced 4 ms each (small problem 96 vs 800)
+8 particles: 40 permittivities, worst relative difference 2.8e-13; full 91 ms each, reduced 5 ms each (small problem 214 vs 1600)
+16 particles: 40 permittivities, worst relative difference 5.9e-13; full 381 ms each, reduced 10 ms each (small problem 446 vs 3200)

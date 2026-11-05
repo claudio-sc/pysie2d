@@ -1,0 +1,23 @@
+background: free space
+pitch 300 nm (gap ~110 nm)
+isolated outside rows == cluster self block: True
+neighbour coupling rank per particle (1e-13): [35, 57, 57, 35]  -> reduced size 184 vs full 800
+full cluster matrix (800):  7 modes, rank 10, 2.8 s for 512 contour points
+route 1, exact reduction (184): 7 modes, max |diff| vs full 4.6e-15, 0.6 s (+0.04 s compression)
+cost per contour point: full 16 ms, reduced 3 ms
+isolated particle modes: [-1.82664-0.67501j -1.82664-0.67501j -0.90061-0.00702j -0.74686-0.17379j
+ -0.74686-0.17379j]
+  leftover fit check at (-4-0.6j): |Gfit-Gexact|/|Gexact| = 5.6e-01
+  leftover fit check at (-2.2-0.5j): |Gfit-Gexact|/|Gexact| = 5.6e-01
+  leftover fit check at (-1.6-0.1j): |Gfit-Gexact|/|Gexact| = 6.1e-01
+  leftover fit check at (-1.3-0.05j): |Gfit-Gexact|/|Gexact| = 5.8e-01
+route 2, modes + leftover: 9 modes, |diff| vs full: median 8.2e-02, max 5.0e-01, 99 ms contour
+route 3, pure hybridization (20x20): 5 modes in box, |diff| vs full: median 7.7e-01, max 3.5e+00, 0.1 ms
+
+full        [-5.57261-0.87786j -2.19046-0.55527j -1.64566-0.07094j -1.3684 -0.05007j
+ -1.31412-0.14608j -1.25449-0.0565j  -1.20825-0.05178j]
+route 2     [-5.08748-0.76829j -4.77742-0.52039j -4.57073-0.32746j -3.19536-1.13424j
+ -3.09694-1.04582j -2.20274-0.44843j -1.63411-0.02345j -1.48347-0.27469j
+ -1.28649-0.05571j]
+route 3     [-2.10407-0.35778j -1.82664-0.67501j -1.82664-0.67501j -1.82664-0.67501j
+ -1.82664-0.67501j]
