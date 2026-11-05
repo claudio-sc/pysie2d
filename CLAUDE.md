@@ -263,6 +263,15 @@ a strict xfail at 1.3× its MEEP-only tolerance (a res-40 rung would decide it);
 the MEEP LDOS run (R6) moved out. Next: v1.4, starting with a 3D MEEP sizing run
 of the canonical case before the code-spec.
 
+**Cluster reduction, on `cluster-reduction`: many materials at one wavelength.**
+Parallel to v1.4; numbered by ship order at merge. Code-spec:
+[cluster-reduction-spec.md](docs/design/cluster-reduction-spec.md), study
+[studies/cluster-reduction/](docs/design/studies/cluster-reduction/README.md).
+Compresses the neighbour coupling and solves a small Woodbury system, exact to
+round-off against the dense solve; then cluster eigenpermittivities by Beyn on that
+small system, anchored on Graf and the PEC mirror. Additive. Spec awaits owner
+review of its §7; no source yet.
+
 ## How to work here
 
 - **Think before coding.** State assumptions explicitly; if a request admits
