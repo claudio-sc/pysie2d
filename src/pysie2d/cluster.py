@@ -28,6 +28,7 @@ from scipy.linalg import lu_factor, lu_solve
 
 from . import layered
 from .background import HalfSpace, Stack, _effective, _top
+from .beyn import beyn_modes, newton_refine
 from .fields import (
     _background_field,
     _check_far_field_below,
@@ -106,6 +107,22 @@ REFINE_WARN = 1.0e-10
 # of G itself would straddle G's isolated-particle poles, which at high Q lie far
 # closer than this.
 INTERIOR_DERIVATIVE_STEP = 1.0e-6
+
+
+def _upper_branch(eps: complex) -> complex:
+    """Return ``√ε`` with its cut on ``[0, ∞)``, the branch modal contours need.
+
+    The principal root makes ``M(ε)`` singular at ``H_n^{(1)}(√ε·x) = 0``, where no
+    physical mode exists. This one keeps ``Im √ε > 0`` off the cut, so ``H^{(1)}``
+    has no zeros there. The two coincide for Im ε > 0 (conventions §18).
+
+    Args:
+        eps: Background-relative permittivity, off the cut.
+
+    Returns:
+        ``i·√(−ε)``.
+    """
+    return 1j * np.sqrt(-complex(eps))
 
 
 class ClusterOverlapError(ValueError):
@@ -1402,8 +1419,8 @@ class ClusterEigenEps:
     ========= ================= ================ ========
 
     Setup costs about one ``scatter`` call (slab: 65 s at 32 particles, nearly all of
-    it the reflected-block assembly), so it pays for itself on the second material. It
-    does **not** speed up a sweep in wavelength, where everything changes at each step
+    it the reflected-block assembly), so it pays for itself within the first few
+    materials. It does **not** speed up a sweep in wavelength, where everything changes at each step
     and only very large clusters gain.
 
     **How.** Split the coupled matrix as ``M(ε) = D(ε) + U·Y``, with ``D`` the isolated
@@ -1718,4 +1735,174 @@ class ClusterEigenEps:
             mode=m,
             direction=direction,
             x_ref=x_ref,
+        )
+
+    def _reduced_at(self, eps: complex) -> np.ndarray:
+        """Beyn's operator at a background-relative ``eps``, shared by all particles.
+
+        ``G⁻¹ = I − Y·M⁻¹·U`` has poles only at cluster modes, the isolated-particle
+        poles of ``G`` itself cancelling, so ``G`` is a legal contour operator despite
+        ``beyn_modes``' warning about poles of M (conventions §18). With one particle
+        there is no ``G``, and this returns the particle's own matrix.
+
+        Args:
+            eps: Background-relative permittivity.
+
+        Returns:
+            complex ``G(eps)``, or ``M_1(eps)`` for one particle.
+        """
+        ri = _upper_branch(eps)
+        n = len(self.solver.cluster)
+        if self._offsets[-1] == 0:
+            return np.vstack([self._top[0], self._interior(0, ri, eps)])
+        return self._factor([(ri, eps)] * n).reduced
+
+    def _reduced_derivative(self, eps: complex) -> np.ndarray:
+        """Return ``dG/dε = −Y·D⁻¹·(dD/dε)·D⁻¹·U`` (``dM_1/dε`` for one particle).
+
+        Differences only the interior rows, which are smooth in ε. A difference of
+        ``G`` itself would straddle its isolated-particle poles, which at high Q lie
+        far closer than any usable step.
+
+        Args:
+            eps: Background-relative permittivity.
+
+        Returns:
+            complex matrix of the same shape as :meth:`_reduced_at`.
+        """
+        cl = self.solver.cluster
+        h = INTERIOR_DERIVATIVE_STEP
+
+        def d_interior(p: int) -> np.ndarray:
+            up = self._interior(p, _upper_branch(eps + h), eps + h)
+            down = self._interior(p, _upper_branch(eps - h), eps - h)
+            return (up - down) / (2.0 * h)
+
+        if self._offsets[-1] == 0:
+            nn = cl.geometries[0].n_pts
+            return np.vstack([np.zeros((nn, 2 * nn), dtype=complex), d_interior(0)])
+        fac = self._factor([(_upper_branch(eps), eps)] * len(cl))
+        o = self._offsets
+        out = np.zeros_like(fac.reduced)
+        for q in range(len(cl)):
+            moved = d_interior(q) @ fac.responses[q]
+            back = lu_solve(fac.lus[q], np.vstack([np.zeros_like(moved), moved]))
+            for p in range(len(cl)):
+                out[o[p] : o[p + 1], o[q] : o[q + 1]] = (
+                    -self._y[p][:, cl.slice(q)] @ back
+                )
+        return out
+
+    def _mode_vector(self, eps: complex, y: np.ndarray) -> np.ndarray:
+        """Recover the coupled solution from a null vector of ``G``.
+
+        Args:
+            eps: Background-relative permittivity.
+            y: Null vector of :meth:`_reduced_at`.
+
+        Returns:
+            complex ``(n_dof,)`` unit vector in the layout of conventions §14:
+            ``x_p = −R_p·y_p``, or ``y`` itself for one particle.
+        """
+        cl = self.solver.cluster
+        if self._offsets[-1] == 0:
+            return y / np.linalg.norm(y)
+        fac = self._factor([(_upper_branch(eps), eps)] * len(cl))
+        o = self._offsets
+        x = np.empty(cl.n_dof, dtype=complex)
+        for p in range(len(cl)):
+            x[cl.slice(p)] = -fac.responses[p] @ y[o[p] : o[p + 1]]
+        return x / np.linalg.norm(x)
+
+    def eigenpermittivities(
+        self,
+        eps_lo: complex,
+        eps_hi: complex,
+        *,
+        n_quad_per_side: int = 32,
+        n_probe: int = 16,
+        rank_tol: float = 1.0e-8,
+        tol: float = 1.0e-12,
+        max_iter: int = 30,
+    ) -> EigenpermittivityResult:
+        """Find the permittivities at which the cluster supports a source-free field.
+
+        All particles share the unknown ε, at this object's real wavelength. Unlike
+        :class:`~pysie2d.qnm.QNMSolver`, this works over a
+        :class:`~pysie2d.background.Stack`, because the background is held fixed.
+
+        **Over a Stack the result has no external check.** It has been compared only
+        with a pole fitted to this package's own driven solves, agreeing to about 1e-6;
+        a dielectric half-space likewise. Free space and PEC are checked against
+        exact references, the Graf addition theorem and a mirror image (conventions
+        §18).
+
+        A contour that ends with no rank gap raises, usually because a mode sits close
+        to its edge: move the edge. TM plasmonic modes accumulate at ``ε = −n_clad²``
+        on the real axis, so keep the top edge away from it.
+
+        Args:
+            eps_lo: Bottom-left corner, as an **absolute** permittivity.
+            eps_hi: Top-right corner, as an **absolute** permittivity.
+            n_quad_per_side: Quadrature nodes per side of the contour.
+            n_probe: Random probes; must exceed the number of modes inside. Capped at
+                the size of the small system.
+            rank_tol: Rank threshold of the contour moment.
+            tol: Newton convergence on background-relative ε.
+            max_iter: Newton iteration cap.
+
+        Returns:
+            The modes inside the rectangle; ``eps`` is absolute, ready for
+            :meth:`pysie2d.material.Material.from_eps`.
+
+        Raises:
+            ValueError: If the wavelength is complex, or the rectangle meets the real
+                ray ``ε ≥ 0``: the branch cut of ``√ε``, with ``ε = 0`` on it.
+        """
+        if np.imag(self.wavelength) != 0.0:
+            raise ValueError(
+                "eigenpermittivities needs a real wavelength: a modal permittivity "
+                "is defined at a fixed real frequency"
+            )
+        n_clad2 = self.solver.materials[0].n_clad ** 2
+        lo, hi = complex(eps_lo) / n_clad2, complex(eps_hi) / n_clad2
+        if lo.imag <= 0.0 <= hi.imag and hi.real >= 0.0:
+            raise ValueError(
+                f"the rectangle {eps_lo}..{eps_hi} meets the real ray eps >= 0, the "
+                f"branch cut of sqrt(eps) (conventions sec. 18). Keep it below "
+                f"the positive real axis, or strictly left of 0."
+            )
+        size = self._reduced_at(lo).shape[0]
+        found = beyn_modes(
+            self._reduced_at,
+            lo,
+            hi,
+            n_quad_per_side=n_quad_per_side,
+            n_probe=min(n_probe, size),
+            rank_tol=rank_tol,
+        )
+        polished = [
+            newton_refine(
+                self._reduced_at,
+                self._reduced_derivative,
+                eps,
+                found.vectors[:, k],
+                lo,
+                hi,
+                tol=tol,
+                max_iter=max_iter,
+            )
+            for k, eps in enumerate(found.eigenvalues)
+        ]
+        eps_rel = np.array([m.eigenvalue for m in polished], dtype=complex)
+        order = np.lexsort((eps_rel.imag, eps_rel.real))
+        vectors = np.empty((self.solver.cluster.n_dof, order.size), dtype=complex)
+        for col, k in enumerate(order):
+            vectors[:, col] = self._mode_vector(eps_rel[k], polished[k].vector)
+        return EigenpermittivityResult(
+            eps=eps_rel[order] * n_clad2,
+            vectors=vectors,
+            converged=np.array([polished[k].converged for k in order], dtype=bool),
+            rank=found.rank,
+            sv_ratio=found.sv_ratio,
         )

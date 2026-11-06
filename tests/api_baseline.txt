@@ -10,9 +10,18 @@ Cluster.__init__(self, geometries: collections.abc.Sequence[pysie2d.geometry.Geo
 Cluster.slice(self, p: int) -> slice
 class ClusterBIESolver
 ClusterBIESolver.__init__(self, cluster: pysie2d.cluster.Cluster, materials: collections.abc.Sequence[pysie2d.material.Material], pol: int = 2, background: pysie2d.background.HalfSpace | pysie2d.background.Stack | None = None) -> None
+ClusterBIESolver.at_wavelength(self, wavelength: float | complex) -> 'ClusterEigenEps'
 ClusterBIESolver.scatter(self, wavelength: float, angle: float = 0.0) -> 'ClusterScatterResult'
 ClusterBIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float, *, moment: tuple[complex, complex] | None = None) -> 'ClusterScatterResult'
 ClusterBIESolver.scatter_mode(self, wavelength: float, mode: pysie2d.layered.GuidedMode | int, direction: int, *, x_ref: float) -> 'ClusterScatterResult'
+class ClusterCancellationWarning
+ClusterCancellationWarning.__init__(self, /, *args, **kwargs)
+class ClusterEigenEps
+ClusterEigenEps.__init__(self, solver: pysie2d.cluster.ClusterBIESolver, wavelength: float | complex) -> None
+ClusterEigenEps.eigenpermittivities(self, eps_lo: complex, eps_hi: complex, *, n_quad_per_side: int = 32, n_probe: int = 16, rank_tol: float = 1e-08, tol: float = 1e-12, max_iter: int = 30) -> pysie2d.cluster.EigenpermittivityResult
+ClusterEigenEps.scatter(self, materials: collections.abc.Sequence[pysie2d.material.Material], angle: float = 0.0) -> pysie2d.cluster.ClusterScatterResult
+ClusterEigenEps.scatter_dipole(self, materials: collections.abc.Sequence[pysie2d.material.Material], x_s: float, z_s: float, *, moment: tuple[complex, complex] | None = None) -> pysie2d.cluster.ClusterScatterResult
+ClusterEigenEps.scatter_mode(self, materials: collections.abc.Sequence[pysie2d.material.Material], mode: pysie2d.layered.GuidedMode | int, direction: int, *, x_ref: float) -> pysie2d.cluster.ClusterScatterResult
 class ClusterGapWarning
 ClusterGapWarning.__init__(self, /, *args, **kwargs)
 class ClusterOverlapError
@@ -31,6 +40,8 @@ ClusterScatterResult.mode_amplitudes(self, x_ref: 'float') -> 'ModeAmplitudes'
 ClusterScatterResult.resolution(self) -> tuple[float, ...]
 ClusterScatterResult.wnum_bg -> property
 DEGENERATE_COND: float = 1000000000000.0
+class EigenpermittivityResult
+EigenpermittivityResult.__init__(self, eps: numpy.ndarray, vectors: numpy.ndarray, converged: numpy.ndarray, rank: int, sv_ratio: numpy.ndarray) -> None
 class Geometry
 Geometry.__init__(self, f: numpy.ndarray, g: numpy.ndarray, df: numpy.ndarray, dg: numpy.ndarray, ddf: numpy.ndarray, ddg: numpy.ndarray, *, rad: float, x0: float = 0.0, z0: float = 0.0, parametrisation: pysie2d.parametrisation.Parametrisation | None = None) -> None
 Geometry.delt -> property
