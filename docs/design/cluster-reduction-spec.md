@@ -1,7 +1,6 @@
 # Cluster reduction — code-spec (draft 1)
 
-**Status: awaiting owner review of §7.** Not ready for a builder until those are
-answered. Study: [studies/cluster-reduction/](studies/cluster-reduction/README.md).
+**Status: owner decisions taken 2026-11-06 (§7). Ready to build.** Study: [studies/cluster-reduction/](studies/cluster-reduction/README.md).
 Every number below is from there.
 
 **Goal.** Two additions on one operator, both at a fixed wavelength:
@@ -37,16 +36,16 @@ on the two existing behaviours in §6.
 
 | | Decision | Reasoning |
 |---|---|---|
-| D1 | **Entry point `ClusterBIESolver.at_wavelength(wavelength)`** returning a `ClusterSweep`. | The solver already holds the cluster, `pol` and background, and validates `n_clad`. Name pending §7 Q1. |
-| D2 | **`ClusterSweep.scatter(materials, angle=0.0)`** and `scatter_dipole`, `scatter_mode`, mirroring the solver with `materials` first; all return an ordinary `ClusterScatterResult`. | Every observable then works with no new code. `materials` is required: a default would hide which set a sweep solved. |
+| D1 | **Entry point `ClusterBIESolver.at_wavelength(wavelength)`** returning a `ClusterEigenEps`. | The solver already holds the cluster, `pol` and background, and validates `n_clad`. Names per §7. |
+| D2 | **`ClusterEigenEps.scatter(materials, angle=0.0)`** and `scatter_dipole`, `scatter_mode`, mirroring the solver with `materials` first; all return an ordinary `ClusterScatterResult`. | Every observable then works with no new code. `materials` is required: a default would hide which set a sweep solved. |
 | D3 | **Exterior rows are built one particle at a time** and discarded after compression. Never call `_assemble` from the sweep. | Otherwise the memory saving (380 MB vs 2.6 GB at `P` = 64) does not exist. |
 | D4 | **SVD compression at `1e-13`,** relative to the block's largest singular value. | Tol 1e-4 buys 1.3× per ε and costs nine digits (study `s1` C). |
 | D5 | **No identical-particle deduplication.** One factorisation per particle per call. | Worth 2.5–5× per ε, and needs a rule for "identical" that holds over a substrate. Add it if a measured use needs it. |
 | D6 | **Guard and refine.** Above `‖a‖/‖x‖ = 1e3`, refine with the full residual, at most 3 steps. | Error tracks `1.5e-14·‖a‖/‖x‖`, so 1e3 caps unrefined error near 1.5e-11. Two steps restore 1e-13 down to `|ε−ε_iso|` = 1e-12. |
 | D7 | **Modes run Beyn on `G`, not `M`.** | `G⁻¹ = I − Y·M⁻¹·U` is meromorphic with poles only at cluster modes (§3.3), and far cheaper per node. Gate B5 checks it against `M`. |
 | D8 | **Upper branch for modes:** `√ε → i·√(−ε)`, cut on `[0, ∞)`. A contour meeting that ray raises. | The principal branch has exact singularities at `H_n^{(1)}(√ε·x) = 0` with no physical mode. The two branches coincide for Im ε > 0, so driven solves are unchanged. |
-| D9 | **Public ε is absolute,** like `Material.from_eps`; internals are background-relative. Converted once, in `eigenpermittivities`. | Conventions §2's rule, applied to ε. Pending §7 Q2. |
-| D10 | **Modes share one ε across the cluster.** | What the anchors can check. Per-particle ε is a different eigenproblem. Pending §7 Q3. |
+| D9 | **Public ε is absolute,** like `Material.from_eps`; internals are background-relative. Converted once, in `eigenpermittivities`. | Conventions §2's rule, applied to ε. Owner, §7. |
+| D10 | **Modes share one ε across the cluster.** | What the anchors can check. Per-particle ε is a different eigenproblem. Owner, §7. |
 | D11 | **Modes require a real wavelength;** driven accepts complex. | Non-negotiable 1 covers every assembly path, so `G` and the sweep take complex `k`. A modal ε at a complex λ has no meaning here, so that entry point refuses it. |
 
 ## 3. The mathematics
@@ -119,9 +118,9 @@ Beside the existing classes:
     class ClusterCancellationWarning(UserWarning): ...
 
     class ClusterBIESolver:
-        def at_wavelength(self, wavelength: float | complex) -> "ClusterSweep": ...
+        def at_wavelength(self, wavelength: float | complex) -> "ClusterEigenEps": ...
 
-    class ClusterSweep:
+    class ClusterEigenEps:
         def scatter(self, materials, angle=0.0) -> ClusterScatterResult: ...
         def scatter_dipole(self, materials, x_s, z_s, *, moment=None) -> ClusterScatterResult: ...
         def scatter_mode(self, materials, mode, direction, *, x_ref) -> ClusterScatterResult: ...
@@ -167,7 +166,7 @@ background-relative.
 
 ### 4.3 Exports and docs
 
-- `__init__.py`: `ClusterSweep`, `ClusterCancellationWarning`, `EigenpermittivityResult`.
+- `__init__.py`: `ClusterEigenEps`, `ClusterCancellationWarning`, `EigenpermittivityResult`.
 - `docs/conventions.md` **§18**: the §3.1 split, D8's branch, D9's absolute/relative
   rule, why `G` is a legal Beyn operator, the refinement rule.
 - `docs/conventions.md` §1 (or the nearest fitting place): a note on the exterior
@@ -191,9 +190,9 @@ cites that number and its reason. Never widen one to pass.
 | A1 | `_interior_rows` `array_equal` to `assemble_matrix(...)[nn:]`: `pol` 1, 2; real ε > 0 (Cephes), complex ε, complex `k_bg` | new |
 | A2 | Self-exterior rows do not depend on material: `array_equal` over three materials | new |
 | A3 | `_exterior_rows` `array_equal` to `_assemble`'s exterior rows, all four backgrounds, ragged `nn` | new |
-| A4 | `ClusterSweep.scatter` vs `ClusterBIESolver.scatter`: `x`, far field, on mixed particles; free, glass, PEC, SiN; both pols | `x` ≤ 1.4e-13, far field ≤ 1.6e-15 |
+| A4 | `ClusterEigenEps.scatter` vs `ClusterBIESolver.scatter`: `x`, far field, on mixed particles; free, glass, PEC, SiN; both pols | `x` ≤ 1.4e-13, far field ≤ 1.6e-15 |
 | A5 | Gap ladder to gap/a = 0.04 with `nn` from the envelope | ≤ 4.7e-13 |
-| A6 | Independent anchor: `ClusterSweep.scatter` far field vs `reference.two_cylinder` | as `test_two_cylinder.py` |
+| A6 | Independent anchor: `ClusterEigenEps.scatter` far field vs `reference.two_cylinder` | as `test_two_cylinder.py` |
 | A7 | One-particle cluster equals `BIESolver.scatter` | new |
 | A8 | Complex wavelength: sweep vs `_assemble` + solve | new |
 | A9 | Guard: at `|ε−ε_iso|` = 1e-6, 1e-10, 1e-12 the result matches dense to refinement's floor, and refinement ran. **Must fail with refinement disabled** | 1.2e-13 to 1.4e-13; unrefined 3.3e-11 to 4.1e-5 |
@@ -229,17 +228,19 @@ If either turns out to matter, it is a new decision for the owner, not this mile
 
 ## 7. Owner decisions
 
-1. **Names.** `at_wavelength`, `ClusterSweep`, `eigenpermittivities`,
-   `EigenpermittivityResult`.
-2. **Absolute ε in the public API (D9).** Matches `Material.from_eps`; the prototype
-   and its note use `ε/ε_b`.
-3. **One shared ε (D10).** Excludes "which ε on particle 2 makes this cluster resonant,
-   with particle 1 fixed", which is a different eigenproblem and has no anchor here.
-4. **Is B4 enough for the slab?** It is the one gate over a `Stack`. Its driven path is
-   the one v1.3 compared with MEEP, but it is still two paths in this repo, and
-   non-negotiable 3 asks for more than that for new physics. Alternative: a MEEP check,
-   conda-only and off CI, as in v1.3. Without either, modes over a `Stack` should ship
-   flagged as unanchored.
+Taken 2026-11-06.
+
+1. **Names.** `ClusterEigenEps` (owner's choice, replacing the proposed `ClusterSweep`),
+   `at_wavelength`, `eigenpermittivities`, `EigenpermittivityResult`. The owner named only
+   the class; the other three stay as proposed. The class docstring and the README
+   section must state the measured speedup and why it suits repeated solves at one
+   wavelength, since the name no longer says so.
+2. **Absolute ε in the public API (D9).**
+3. **One shared ε (D10).**
+4. **Modes over a `Stack` ship with a clear caveat.** B4 is the gate. The
+   `eigenpermittivities` docstring, the README section and conventions §18 all state that
+   over a `Stack` the result has been checked only against this package's own driven
+   path, with no external reference. No MEEP comparison in this milestone.
 
 ## 8. Builder contract
 
@@ -248,7 +249,7 @@ If either turns out to matter, it is a new decision for the owner, not this mile
 1. `_interior_rows` + A1, A2.
 2. `_exterior_rows` + A3.
 3. RHS refactor + A12.
-4. `ClusterSweep.scatter*` without refinement + A4–A8.
+4. `ClusterEigenEps.scatter*` without refinement + A4–A8.
 5. Guard and refinement + A9, A10.
 6. Cost gate A11, `performance.md`.
 7. `eigenpermittivities` + B1, B7, B8, B9, conventions §18.
