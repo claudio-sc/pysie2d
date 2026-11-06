@@ -1,0 +1,34 @@
+-- high Q
+ iso 7.430064e+00-5.573265e-13j Q 6.7e+12 counts 4,4 dist 8.0e-15
+-- driven figures
+ pol 1 free: x 4.1e-14 ff 9.3e-16
+ pol 1 glass: x 3.7e-14 ff 7.6e-16
+ pol 1 pec: x 1.4e-13 ff 6.6e-16
+ pol 1 sin: x 4.1e-14 ff 8.3e-16
+ pol 2 free: x 4.4e-14 ff 1.7e-15
+ pol 2 glass: x 4.5e-14 ff 1.8e-15
+ pol 2 pec: x 4.5e-14 ff 7.9e-16
+ pol 2 sin: x 4.1e-14 ff 1.6e-15
+ dipole 7.5e-14 in-plane 6.9e-14 mode 5.3e-14
+ complex wavelength 6.1e-14
+ one particle pol 1: 3.6e-15
+ one particle pol 2: 5.7e-15
+ Graf far field pol 1: 3.5e-15
+ Graf far field pol 2: 3.7e-15
+-- glass half-space: find a mode near the real axis, then the pole fit
+ box ((-0.99-0.1j), (-0.8-0.002j)) modes rel [-0.989489-0.007451j -0.904082-0.007209j] rank 3 conv [ True  True]
+   target -0.904082-0.007209j Im 1e-04 ±0.03 n21 deg4: |p-t|=6.2e-06
+   target -0.904082-0.007209j Im 1e-04 ±0.06 n31 deg5: |p-t|=9.2e-05
+   target -0.904082-0.007209j Im 1e-03 ±0.03 n15 deg3: |p-t|=1.9e-05
+   target -0.904082-0.007209j Im 1e-04 ±0.015 n21 deg4: |p-t|=4.7e-07
+ box ((-6-1j), (-1.15-0.004j)) modes rel [-1.844811-0.712426j -1.821862-0.686006j] rank 3 conv [ True  True]
+   target -1.821862-0.686006j Im 1e-04 ±0.03 n21 deg4: |p-t|=6.7e-02
+   target -1.821862-0.686006j Im 1e-04 ±0.06 n31 deg5: |p-t|=2.8e-02
+   target -1.821862-0.686006j Im 1e-03 ±0.03 n15 deg3: |p-t|=8.2e-02
+   target -1.821862-0.686006j Im 1e-04 ±0.015 n21 deg4: |p-t|=6.6e-02
+-- does QNMSolver report the H_n^(1) zero as a mode? n_core=1.5, circle a=100, zero of H_2 at z=0.429485-1.281374j
+ lam_s (221.63016344777182+661.2363812879917j) Q 0.16758769610957333
+ box ±20.0: found [221.6302+661.2364j 221.6302+661.2364j]; nearest to lam_s 1.2e-13
+ box ±60.0: found [221.6302+661.2364j 221.6302+661.2364j]; nearest to lam_s 2.7e-13
+ Mie root check: is there a true resonance near lam_s? |D|, for TE n=2, relative scale
+  D_2(lam_s)=1.74e+00, scale 7.35e-01

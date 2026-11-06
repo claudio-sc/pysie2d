@@ -1,6 +1,6 @@
 # Cluster reduction — code-spec (draft 1)
 
-**Status: owner decisions taken 2026-11-06 (§7). Ready to build.** Study: [studies/cluster-reduction/](studies/cluster-reduction/README.md).
+**Status: implemented 2026-11-06, with the two changes in §9. Merge is the owner's decision.** Study: [studies/cluster-reduction/](studies/cluster-reduction/README.md).
 Every number below is from there.
 
 **Goal.** Two additions on one operator, both at a fixed wavelength:
@@ -41,7 +41,7 @@ on the two existing behaviours in §6.
 | D3 | **Exterior rows are built one particle at a time** and discarded after compression. Never call `_assemble` from the sweep. | Otherwise the memory saving (380 MB vs 2.6 GB at `P` = 64) does not exist. |
 | D4 | **SVD compression at `1e-13`,** relative to the block's largest singular value. | Tol 1e-4 buys 1.3× per ε and costs nine digits (study `s1` C). |
 | D5 | **No identical-particle deduplication.** One factorisation per particle per call. | Worth 2.5–5× per ε, and needs a rule for "identical" that holds over a substrate. Add it if a measured use needs it. |
-| D6 | **Guard and refine.** Above `‖a‖/‖x‖ = 1e3`, refine with the full residual, at most 3 steps. | Error tracks `1.5e-14·‖a‖/‖x‖`, so 1e3 caps unrefined error near 1.5e-11. Two steps restore 1e-13 down to `|ε−ε_iso|` = 1e-12. |
+| D6 | **Always refine once.** Superseded the a-priori guard; see §9. | The step size measures the error directly, for any right-hand side, at the cost of one more apply. |
 | D7 | **Modes run Beyn on `G`, not `M`.** | `G⁻¹ = I − Y·M⁻¹·U` is meromorphic with poles only at cluster modes (§3.3), and far cheaper per node. Gate B5 checks it against `M`. |
 | D8 | **Upper branch for modes:** `√ε → i·√(−ε)`, cut on `[0, ∞)`. A contour meeting that ray raises. | The principal branch has exact singularities at `H_n^{(1)}(√ε·x) = 0` with no physical mode. The two branches coincide for Im ε > 0, so driven solves are unchanged. |
 | D9 | **Public ε is absolute,** like `Material.from_eps`; internals are background-relative. Converted once, in `eigenpermittivities`. | Conventions §2's rule, applied to ε. Owner, §7. |
@@ -264,3 +264,24 @@ design. Do not touch `assemble_matrix`, `assemble_matrix_dwn`, `_assemble`, `bey
 
 **Commits.** `feat:` for the public additions, `test:` and `docs:` as appropriate.
 Merging to `main` releases, so that is the owner's decision.
+
+## 9. Changes made during the build
+
+The stop rule says stop and report. These are reported here and in the hand-over; the
+spec's author made them, on measurements:
+
+1. **The `‖a‖/‖x‖` guard of D6 and §3.2 was wrong, and is gone.** The study's "error tracks
+   `1.5e-14·‖a‖/‖x‖`" held only for its random right-hand side. A plane wave that does not
+   drive the resonance keeps the ratio at 0.26 while the error reaches 5e-5, so the guard
+   never fired. Gate A9, written with a physical plane wave, caught it. Now: refine once
+   always, up to `MAX_REFINE_STEPS = 3`, stop below `1e-12`, warn above `1e-10`. Cost is
+   within measurement noise of the unrefined probe, because the small matrix is factorised
+   once.
+2. **Polish uses the chain rule, not a difference of `G` (§4.2 step 4).** `G` has poles
+   closer than `h = 1e-6` at high Q. `dG/dε = −Y·D⁻¹·(dD/dε)·D⁻¹·U`, differencing only the
+   interior rows.
+
+Also: `_rhs_plane_wave` takes an optional reflection context, because rebuilding one per
+material tripled the slab cost; gate A5's bound is `5·cond(M)·eps`, because the measured
+difference scales with the conditioning (2.3–2.8 × cond·eps over all rungs) where the study's
+flat figure came from a random right-hand side; and B4 gained a dielectric half-space case.

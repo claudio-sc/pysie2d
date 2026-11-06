@@ -111,7 +111,12 @@ outright over the slab. Route 3 (pure hybridisation) misses by 0.04 to 3.5, agai
 | 1e-10 | 4.3e-7 | 2.4e7 | 1.7e-13 | 1.4e-13 |
 | 1e-12 | 4.1e-5 | 2.4e9 | 1.5e-9 | 1.3e-13 |
 
-The error tracks `1.5e-14·‖a‖/‖x‖`, so the guard costs nothing to compute.
+**Correction, from the build.** The error tracks `1.5e-14·‖a‖/‖x‖` only for this random
+right-hand side. A plane wave that does not drive the resonance keeps `‖a‖/‖x‖` at 0.26 at
+every distance, while the error still reaches 5e-5, so a guard on that ratio never fires.
+What does track it is `cond(G)`: about `5e-19·cond(G)` for both. The package therefore
+refines every solve once and reads the error off the step (`s9_final_figures.py`).
+
 Refinement must use the **full** residual: `b − M·x` has non-zero interior rows,
 and the first attempt dropped them and appeared to show refinement failing. That
 flawed run remains in `results/s3_anchor_refine_first_run.txt`, section F′.
@@ -159,10 +164,12 @@ neither is fixed.
 - **Exterior irregular frequency** (`s3` G). At k_bg·a = j₀₁ the exterior rows
   lose rank for every ε, and `Q_ext` is wrong by 17 % (TE) and 33 % (TM), silently.
   The window is narrow: 5e-11 at δλ/λ = 1e-6, 5e-8 at 1e-9, 5e-5 at 1e-12.
-- **Near-singular λ-QNM operator at H_n^{(1)} zeros** (`prototype/test_side.py`).
+- **False λ-QNM modes at H_n^{(1)} zeros** (`prototype/test_side.py`, `s9_false_qnm.py`).
   σmin/σmax is 2.8e-8, against 2.5e-3 two percent away, at Q ≈ 0.17, with the left
-  null vector entirely in the interior rows. `QNMSolver` itself was not run, so
-  whether it reports these as modes is unconfirmed.
+  null vector entirely in the interior rows. **`QNMSolver` does report it**, as a
+  doubly degenerate 221.63 + 661.24i nm, for a circle of a = 100, n_core = 1.5, TE. No
+  Mie denominator for n = 0…12 is near zero there; the true n = 2 pole is near
+  264.8 + 52.4i.
 
 ## Scripts
 
@@ -176,3 +183,9 @@ neither is fixed.
 | `s6_hidden_check.py` | The `s5` J discrepancy with widened boxes and Graf |
 | `s7_hidden_decisive.py` | `M` and `G` at the true Graf roots |
 | `s8_slab_anchor.py` | K transparent stack, L PEC mirror, M passive pole fit |
+| `s9_refine_debug.py` | The build's cancellation diagnosis: plane wave vs random, `cond(G)`, the gap floor |
+| `s9_final_figures.py`, `s9_final_gates.py`, `s9_final_gates2.py` | On the shipped code: the cost table and gap floor; the mode gate figures; the driven figures, glass fit and false QNM search |
+| `s9_false_qnm.py` | `QNMSolver` at an `H_2^{(1)}` zero, against every Mie order |
+| `s9_mutations.py` | Breaks the code on purpose; every mutation must fail a gate |
+
+The `s9` scripts run against the package's `ClusterEigenEps`, from the repo root.

@@ -1,0 +1,15 @@
+gap ladder, plane wave
+ pitch 300.0 nn 100: err 2.6e-13, cond 4.4e+02, cond*u 4.8e-14
+ pitch 250.0 nn 200: err 4.6e-13, cond 9.3e+02, cond*u 1.0e-13
+ pitch 240.0 nn 400: err 1.0e-12, cond 1.9e+03, cond*u 2.1e-13
+ pitch 234.0 nn 800: err 2.3e-12, cond 3.8e+03, cond*u 4.1e-13
+cost per material set, shipped code, nn=100, pitch 600, distinct particles, best of 3
+ free P=  4: scatter    0.02 s | setup   0.04 s | per material    11.1 ms | ranks R0=95 | stored 3 MB vs dense 10 MB
+ free P=  8: scatter    0.10 s | setup   0.15 s | per material    22.8 ms | ranks R0=214 | stored 8 MB vs dense 41 MB
+ free P= 16: scatter    0.46 s | setup   0.53 s | per material    49.6 ms | ranks R0=447 | stored 29 MB vs dense 164 MB
+ free P= 32: scatter    3.17 s | setup   2.05 s | per material   116.7 ms | ranks R0=910 | stored 105 MB vs dense 655 MB
+ free P= 64: scatter     nan s | setup   8.58 s | per material   333.7 ms | ranks R0=1839 | stored 400 MB vs dense 2621 MB
+ slab P=  4: scatter    0.18 s | setup   0.20 s | per material    11.0 ms | ranks R0=96 | stored 3 MB vs dense 10 MB
+ slab P=  8: scatter    1.14 s | setup   1.14 s | per material    22.6 ms | ranks R0=216 | stored 8 MB vs dense 41 MB
+ slab P= 16: scatter    8.51 s | setup   8.51 s | per material    49.7 ms | ranks R0=448 | stored 29 MB vs dense 164 MB
+ slab P= 32: scatter   65.77 s | setup  64.81 s | per material   117.3 ms | ranks R0=910 | stored 105 MB vs dense 655 MB

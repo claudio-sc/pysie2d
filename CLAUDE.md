@@ -269,8 +269,9 @@ Parallel to v1.4; numbered by ship order at merge. Code-spec:
 [studies/cluster-reduction/](docs/design/studies/cluster-reduction/README.md).
 Compresses the neighbour coupling and solves a small Woodbury system, exact to
 round-off against the dense solve; then cluster eigenpermittivities by Beyn on that
-small system, anchored on Graf and the PEC mirror. Additive. Owner decisions are in
-its §7; modes over a `Stack` ship flagged as having no external check.
+small system, anchored on Graf and the PEC mirror. Additive; implemented as `ClusterEigenEps`, invariants in conventions §18. Modes over a
+dielectric half-space or a `Stack` are flagged as having no external check. Found
+meanwhile, unfixed: `QNMSolver` reports false low-Q modes at `H_n^{(1)}` zeros.
 
 ## How to work here
 
