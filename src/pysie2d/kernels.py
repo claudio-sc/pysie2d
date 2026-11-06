@@ -402,6 +402,98 @@ def assemble_matrix(
 
 
 # ---------------------------------------------------------------------------
+# Interior rows alone
+#
+# WARNING: this is a deliberate duplication of the core half of assemble_matrix,
+# expression for expression and in the same order, so that the two agree
+# bit-for-bit. test_interior_rows_are_bit_identical_to_assemble_matrix asserts
+# that with np.array_equal and is the only thing guarding the copy. If you change
+# one, change both.
+# ---------------------------------------------------------------------------
+
+
+def _interior_rows(
+    pol: int,
+    nn: int,
+    f: np.ndarray,
+    g: np.ndarray,
+    df: np.ndarray,
+    dg: np.ndarray,
+    ddf: np.ndarray,
+    ddg: np.ndarray,
+    wnum_bg: complex,
+    ri: complex,
+    kd: complex,
+) -> np.ndarray:
+    """Lower half of :func:`assemble_matrix`: the only rows that see the material.
+
+    At a fixed wavelength the exterior rows do not depend on the particle, so a
+    material sweep rebuilds these alone. At an absorbing ε they are also the
+    expensive half: complex ``wnum_core`` takes the Amos path while a real
+    ``wnum_bg`` takes Cephes.
+
+    Args:
+        pol: Polarisation: 1 = p (TM), 2 = s (TE).
+        nn: Number of boundary nodes, equispaced in the quadrature parameter t.
+        f: (nn,) boundary x coordinates (nm).
+        g: (nn,) boundary z coordinates (nm).
+        df: (nn,) df/dt.
+        dg: (nn,) dg/dt.
+        ddf: (nn,) d²f/dt².
+        ddg: (nn,) d²g/dt².
+        wnum_bg: Background wavenumber k_bg = 2π·n_clad/λ_vac (rad/nm).
+        ri: Refractive index of the particle relative to the background.
+        kd: Dielectric constant of the particle relative to the background.
+
+    Returns:
+        complex (nn, 2nn) interior rows, ``assemble_matrix(...)[nn:]``.
+    """
+    wnum_bg = _real_if_real(wnum_bg)
+    wnum_core = _real_if_real(ri * wnum_bg)
+    eta = np.complex128(kd if pol == 1 else 1.0)
+    h = 2.0 * PI / nn
+    w = _kress_weights(nn)
+
+    gamma = np.sqrt(df**2 + dg**2)
+    deriv = df * ddg - ddf * dg
+
+    ui, uj = np.triu_indices(nn, k=1)
+    w_tri = w[uj - ui]
+    fi_fj = f[ui] - f[uj]
+    gi_gj = g[ui] - g[uj]
+
+    cij = fi_fj * dg[uj] - gi_gj * df[uj]
+    cji = -fi_fj * dg[ui] + gi_gj * df[ui]
+
+    r_tri = np.sqrt(fi_fj**2 + gi_gj**2)
+    z_core = wnum_core * r_tri
+    j0_core, h0_core = _j0_h0(z_core)
+    j1_core, h1_core = _j1_h1(z_core)
+
+    single_core = 0.25j * h * h0_core - w_tri * j0_core / (4.0 * PI)
+    ratio_core = 0.25j * h * (h1_core / z_core) - w_tri * (j1_core / z_core) / (
+        4.0 * PI
+    )
+    double_core = wnum_core**2 * ratio_core
+
+    diag_idx = np.arange(nn)
+    d_m3 = -(0.5 + deriv * h / (4.0 * PI) / gamma**2).astype(complex)
+    d_m4 = eta * (
+        -w[0] / (4.0 * PI)
+        + h * (0.25j - (np.euler_gamma + np.log(wnum_core * gamma / 2.0)) / (2.0 * PI))
+    )
+
+    rows = np.zeros((nn, 2 * nn), dtype=complex)
+    rows[ui, uj] = double_core * cij
+    rows[uj, ui] = double_core * cji
+    rows[ui, uj + nn] = eta * single_core
+    rows[uj, ui + nn] = eta * single_core
+    rows[diag_idx, diag_idx] = d_m3
+    rows[diag_idx, diag_idx + nn] = d_m4
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Fused matrix + analytic wavenumber derivative
 #
 # WARNING: the M half below is a deliberate duplication of assemble_matrix,

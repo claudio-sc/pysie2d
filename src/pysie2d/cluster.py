@@ -424,6 +424,174 @@ class ClusterBIESolver:
                     me[r0 : r0 + gq.n_pts, c0 + gp.n_pts : c0 + 2 * gp.n_pts] += m2
         return me
 
+    def _exterior_rows(
+        self,
+        q: int,
+        wavelength: float | complex,
+        refl: layered.Reflection | layered.StackReflection | None,
+    ) -> np.ndarray:
+        """Build one particle's exterior rows of the coupled matrix.
+
+        These rows do not depend on any particle's material, so they are all a
+        fixed-wavelength sweep needs from the assembly, and building them one
+        particle at a time is what keeps the dense matrix out of memory.
+
+        Args:
+            q: The field particle whose rows are built.
+            wavelength: Vacuum wavelength λ_vac in nm. May be complex.
+            refl: The reflected-field context of :meth:`_reflection`.
+
+        Returns:
+            complex ``(nn_q, n_dof)``: ``_assemble(wavelength)``'s rows of ``q``.
+        """
+        cl = self.cluster
+        k_bg = _real_if_real(self.materials[0].wnum_bg(wavelength))
+        gq = cl.geometries[q]
+        rows = np.zeros((gq.n_pts, cl.n_dof), dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            c0 = cl.offsets[p]
+            if p == q:
+                # ri = kd = 1: the upper half of assemble_matrix sees neither.
+                rows[:, cl.slice(p)] = assemble_matrix(
+                    self.pol,
+                    gp.n_pts,
+                    gp.f,
+                    gp.g,
+                    gp.df,
+                    gp.dg,
+                    gp.ddf,
+                    gp.ddg,
+                    k_bg,
+                    1.0,
+                    1.0,
+                )[: gp.n_pts]
+            else:
+                m1, m2 = assemble_cross_block(
+                    k_bg, gp.n_pts, gp.f, gp.g, gp.df, gp.dg, gq.f, gq.g
+                )
+                rows[:, c0 : c0 + gp.n_pts] = m1
+                rows[:, c0 + gp.n_pts : c0 + 2 * gp.n_pts] = m2
+            if refl is not None:
+                m1, m2 = refl.blocks(gq, gp)
+                rows[:, c0 : c0 + gp.n_pts] += m1
+                rows[:, c0 + gp.n_pts : c0 + 2 * gp.n_pts] += m2
+        return rows
+
+    def _rhs_plane_wave(self, wavelength: float, angle: float) -> np.ndarray:
+        """Right-hand side of a plane wave, in the layout of conventions §14.
+
+        Args:
+            wavelength: Vacuum wavelength λ_vac in nm.
+            angle: Incidence angle in degrees; 0 propagates along −z.
+
+        Returns:
+            complex ``(n_dof,)`` right-hand side.
+        """
+        cl = self.cluster
+        k_bg = self.materials[0].wnum_bg(wavelength)
+        rhs = np.zeros(cl.n_dof, dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            rhs[cl.slice(p)] = plane_wave_rhs(gp.n_pts, angle, k_bg, gp.f, gp.g)
+        refl = self._reflection(wavelength)
+        if refl is not None:
+            for p, gp in enumerate(cl.geometries):
+                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += refl.plane_wave(
+                    angle, gp.f, gp.g
+                )
+        return rhs
+
+    def _rhs_dipole(
+        self,
+        wavelength: float,
+        x_s: float,
+        z_s: float,
+        moment: tuple[complex, complex] | None,
+    ) -> np.ndarray:
+        """Right-hand side of a line dipole, in the layout of conventions §14.
+
+        Args:
+            wavelength: Vacuum wavelength λ_vac in nm.
+            x_s: Source x-coordinate (nm).
+            z_s: Source z-coordinate (nm).
+            moment: ``(p_x, p_z)`` of an in-plane electric dipole, TM only.
+
+        Returns:
+            complex ``(n_dof,)`` right-hand side.
+
+        Raises:
+            ValueError: If the source lies inside, or too close to, any
+                particle — raised by :func:`~pysie2d.sources.line_dipole_rhs`;
+                a ``moment`` at ``pol = 2`` (T7).
+        """
+        if moment is not None and self.pol != 1:
+            raise ValueError(
+                "moment= is accepted at pol = 1 (TM) only: in TE the same source "
+                "would be an in-plane magnetic dipole (slab-spec T7)"
+            )
+        b = None if moment is None else in_plane_moment_b(moment)
+        cl = self.cluster
+        k_bg = self.materials[0].wnum_bg(wavelength)
+        rhs = np.zeros(cl.n_dof, dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            if b is not None:
+                rhs[cl.slice(p)] = _in_plane_dipole_rhs(
+                    gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s, b
+                )
+                continue
+            # line_dipole_rhs's own inside/too-close guards run once per
+            # particle, which is exactly the cluster condition: the source must
+            # lie outside every particle. No extra check is needed here and
+            # none should be added.
+            rhs[cl.slice(p)] = line_dipole_rhs(gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s)
+        refl = self._reflection(
+            wavelength,
+            np.append(np.concatenate([gp.f for gp in cl.geometries]), x_s),
+            np.append(np.concatenate([gp.g for gp in cl.geometries]), z_s),
+        )
+        if refl is not None:
+            for p, gp in enumerate(cl.geometries):
+                gs = refl.green(gp.f, gp.g, x_s, z_s)
+                term = gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
+                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += term
+        return rhs
+
+    def _rhs_mode(
+        self,
+        wavelength: float,
+        mode: GuidedMode | int,
+        direction: int,
+        x_ref: float,
+    ) -> tuple[np.ndarray, GuidedMode]:
+        """Right-hand side of an incident guided mode, and the mode it resolved to.
+
+        Args:
+            wavelength: Real vacuum wavelength λ_vac in nm.
+            mode: A guided mode of this stack, or its index.
+            direction: +1 towards +x, −1 towards −x.
+            x_ref: Phase reference along x (nm).
+
+        Returns:
+            ``(rhs, mode)``: complex ``(n_dof,)`` right-hand side and the
+            :class:`~pysie2d.layered.GuidedMode`.
+
+        Raises:
+            ValueError: Without a stack; complex λ or a lossy stack (T2); a
+                direction other than ±1; a mode foreign to this stack.
+        """
+        n_clad = self.materials[0].n_clad
+        if not isinstance(_effective(self.background, n_clad, wavelength), Stack):
+            raise ValueError("scatter_mode needs a Stack background that guides")
+        m = _resolve_mode(
+            self.background, wavelength, self.pol, n_clad, mode, direction
+        )
+        cl = self.cluster
+        rhs = np.zeros(cl.n_dof, dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] = _mode_rhs(
+                m, direction, x_ref, gp.f, gp.g
+            )
+        return rhs, m
+
     def scatter(self, wavelength: float, angle: float = 0.0) -> "ClusterScatterResult":
         """Solve the coupled system for plane-wave excitation.
 
@@ -442,21 +610,11 @@ class ClusterBIESolver:
         """
         self._check_resolution(wavelength)
         self._check_gap(wavelength)
-        cl = self.cluster
-        k_bg = self.materials[0].wnum_bg(wavelength)
-        rhs = np.zeros(cl.n_dof, dtype=complex)
-        for p, gp in enumerate(cl.geometries):
-            rhs[cl.slice(p)] = plane_wave_rhs(gp.n_pts, angle, k_bg, gp.f, gp.g)
-        refl = self._reflection(wavelength)
-        if refl is not None:
-            for p, gp in enumerate(cl.geometries):
-                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += refl.plane_wave(
-                    angle, gp.f, gp.g
-                )
+        rhs = self._rhs_plane_wave(wavelength, angle)
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
             ei,
-            cl,
+            self.cluster,
             self.materials,
             self.pol,
             wavelength,
@@ -498,40 +656,11 @@ class ClusterBIESolver:
         """
         self._check_resolution(wavelength)
         self._check_gap(wavelength)
-        if moment is not None and self.pol != 1:
-            raise ValueError(
-                "moment= is accepted at pol = 1 (TM) only: in TE the same source "
-                "would be an in-plane magnetic dipole (slab-spec T7)"
-            )
-        b = None if moment is None else in_plane_moment_b(moment)
-        cl = self.cluster
-        k_bg = self.materials[0].wnum_bg(wavelength)
-        rhs = np.zeros(cl.n_dof, dtype=complex)
-        for p, gp in enumerate(cl.geometries):
-            if b is not None:
-                rhs[cl.slice(p)] = _in_plane_dipole_rhs(
-                    gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s, b
-                )
-                continue
-            # line_dipole_rhs's own inside/too-close guards run once per
-            # particle, which is exactly the cluster condition: the source must
-            # lie outside every particle. No extra check is needed here and
-            # none should be added.
-            rhs[cl.slice(p)] = line_dipole_rhs(gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s)
-        refl = self._reflection(
-            wavelength,
-            np.append(np.concatenate([gp.f for gp in cl.geometries]), x_s),
-            np.append(np.concatenate([gp.g for gp in cl.geometries]), z_s),
-        )
-        if refl is not None:
-            for p, gp in enumerate(cl.geometries):
-                gs = refl.green(gp.f, gp.g, x_s, z_s)
-                term = gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
-                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += term
+        rhs = self._rhs_dipole(wavelength, x_s, z_s, moment)
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
             ei,
-            cl,
+            self.cluster,
             self.materials,
             self.pol,
             wavelength,
@@ -570,22 +699,11 @@ class ClusterBIESolver:
         """
         self._check_resolution(wavelength)
         self._check_gap(wavelength)
-        n_clad = self.materials[0].n_clad
-        if not isinstance(_effective(self.background, n_clad, wavelength), Stack):
-            raise ValueError("scatter_mode needs a Stack background that guides")
-        m = _resolve_mode(
-            self.background, wavelength, self.pol, n_clad, mode, direction
-        )
-        cl = self.cluster
-        rhs = np.zeros(cl.n_dof, dtype=complex)
-        for p, gp in enumerate(cl.geometries):
-            rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] = _mode_rhs(
-                m, direction, x_ref, gp.f, gp.g
-            )
+        rhs, m = self._rhs_mode(wavelength, mode, direction, x_ref)
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
             ei,
-            cl,
+            self.cluster,
             self.materials,
             self.pol,
             wavelength,
