@@ -1,0 +1,25 @@
+-- B2 Graf
+ pol 2 d 1000.0: N=4 |BIE-Graf12| 1.3e-14  Graf 10v12 1.3e-14 conv True
+ pol 1 d 1000.0: N=6 |BIE-Graf12| 9.4e-16  Graf 10v12 1.1e-15 conv True
+ pol 2 d 400.0: N=4 |BIE-Graf12| 2.5e-14  Graf 10v12 6.0e-14 conv True
+ pol 1 d 400.0: N=5 |BIE-Graf12| 2.9e-14  Graf 10v12 4.9e-12 conv True
+-- B1 circle
+ pol 1: N=4 max err 8.7e-16
+ pol 2: N=2 max err 7.8e-15
+-- B3 PEC
+ pol 2 h 200.0: 2 of 4, dist 3.6e-15; other-parity modes are 5.6e-01 away
+ pol 2 h 500.0: 2 of 4, dist 1.8e-15; other-parity modes are 2.1e-01 away
+ pol 1 h 200.0: 3 of 5, dist 2.5e-16; other-parity modes are 3.6e-01 away
+ pol 1 h 500.0: 2 of 6, dist 2.5e-16; other-parity modes are 9.5e-02 away
+-- B5 G vs M, null vector
+ pol 1: N 5/5 dist 5.0e-16 max|Mx|/|M| 5.5e-17 conv True
+ pol 2: N 4/4 dist 3.6e-15 max|Mx|/|M| 1.1e-16 conv True
+-- B8 absolute
+ dist 5.3e-15
+-- B4 slab and glass pole fits
+ SiN slab s0 target -1.299071-0.008580j Im 1e-04 ±0.03 n21 deg4: |p-t|=5.9e-07
+ SiN slab s0 target -1.299071-0.008580j Im 1e-04 ±0.06 n31 deg5: |p-t|=1.5e-06
+ SiN slab s0 target -1.299071-0.008580j Im 1e-03 ±0.03 n15 deg3: |p-t|=1.1e-05
+ SiN slab field target -1.299071-0.008580j Im 1e-04 ±0.03 n21 deg4: |p-t|=2.2e-07
+ SiN slab field target -1.299071-0.008580j Im 1e-04 ±0.06 n31 deg5: |p-t|=1.1e-06
+ SiN slab field target -1.299071-0.008580j Im 1e-03 ±0.03 n15 deg3: |p-t|=6.7e-06

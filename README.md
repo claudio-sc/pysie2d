@@ -322,6 +322,47 @@ print(res.resolution())                      # points per interior wavelength
 dipole, `eval_field(x, z)` gives the field at arbitrary points inside or
 outside, and `ei_particle(p)` hands back one particle's `(φ_p, χ_p)` sub-vector.
 
+**Many materials at one wavelength.** `scatter` rebuilds and factorises everything on
+each call. `at_wavelength` builds the part the materials cannot change once, and returns
+a `ClusterEigenEps`, whose solves are far faster with the same answer to round-off:
+
+```python
+solver = ClusterBIESolver(cluster, mats, pol=2)
+fast = solver.at_wavelength(633.0)            # about one scatter() call
+
+for eps in sweep:
+    new = [Material.from_eps(eps, pol=2), mats[1]]
+    res = fast.scatter(new, angle=30.0)       # an ordinary ClusterScatterResult
+```
+
+| Particles | `scatter`, free space | `scatter`, over a slab | `fast.scatter` |
+|---|---|---|---|
+| 4 | 0.03 s | 0.18 s | 11 ms |
+| 16 | 0.46 s | 8.5 s | 50 ms |
+| 32 | 2.8 s | 66 s | 0.12 s |
+| 64 | 27 s | not run | 0.33 s |
+
+(100 nodes per particle, distinct particles, an absorbing ε.) It is convenient whenever
+the wavelength holds still, and pays for itself within the first few materials. A sweep in
+*wavelength* rebuilds everything at each step, so keep using `scatter` there.
+
+**Eigenpermittivities.** `fast.eigenpermittivities(eps_lo, eps_hi)` finds the absolute
+permittivities, shared by all particles, at which the cluster supports a field with no
+source, in free space and over any background. Results go straight into
+`Material.from_eps`. In free space they are checked against the analytic circle and a Graf
+addition-theorem determinant, and over PEC against the mirror image. **Over a dielectric
+half-space or a `Stack` the only check is against this package's own driven solves, with no
+external reference yet.**
+
+```python
+modes = fast.eigenpermittivities(11.0 - 1.4j, 13.8 - 0.1j)
+print(modes.eps, modes.converged)             # also .vectors, .rank, .sv_ratio
+```
+
+Keep the rectangle off the real ray `ε ≥ 0`, which raises. A box that ends with no rank
+gap also raises, usually because a mode sits near its edge. See
+[conventions §18](docs/conventions.md).
+
 What you need to know before using it:
 
 - **Overlapping boundaries raise `ClusterOverlapError`.** The coupled

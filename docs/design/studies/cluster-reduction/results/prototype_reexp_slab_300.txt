@@ -1,0 +1,21 @@
+background: SiN slab
+pitch 300 nm (gap ~110 nm)
+isolated outside rows == cluster self block: True
+neighbour coupling rank per particle (1e-13): [35, 57, 57, 35]  -> reduced size 184 vs full 800
+full cluster matrix (800):  5 modes, rank 9, 2.8 s for 512 contour points
+route 1, exact reduction (184): 5 modes, max |diff| vs full 1.4e-15, 0.6 s (+0.04 s compression)
+cost per contour point: full 15 ms, reduced 3 ms
+isolated particle modes: [-1.77827-0.6929j  -1.30483-0.00894j -0.92485-0.02325j -0.88048-0.24491j
+ -0.7441 -0.18026j]
+  leftover fit check at (-4-0.6j): |Gfit-Gexact|/|Gexact| = 4.0e-01
+  leftover fit check at (-2.2-0.5j): |Gfit-Gexact|/|Gexact| = 3.2e-01
+  leftover fit check at (-1.6-0.1j): |Gfit-Gexact|/|Gexact| = 2.8e-01
+  leftover fit check at (-1.3-0.05j): |Gfit-Gexact|/|Gexact| = 1.4e-01
+  route 2 contour: singular spectrum has no rank gap but A0 did not cancel (cancellation 1.68e-01 > 1e-04): t
+route 2, modes + leftover: 0 modes, |diff| vs full: median nan, max nan, nan ms contour
+route 3, pure hybridization (20x20): 4 modes in box, |diff| vs full: median 1.6e-01, max 7.6e-01, 0.7 ms
+
+full        [-2.11177-0.60906j -1.63804-0.08056j -1.43764-0.11488j -1.4097 -0.11351j
+ -1.35398-1.14512j]
+route 2     []
+route 3     [-1.98475-0.49871j -1.48012-0.08524j -1.37853-0.38685j -1.2197 -0.04018j]

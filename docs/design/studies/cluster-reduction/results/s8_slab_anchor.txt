@@ -1,0 +1,16 @@
+=== K. transparent stack: every layer index equal to the cladding, so R(q) = 0 and M must be the free-space M
+pol=2: free 2 modes, transparent stack 2; max diff 0.0e+00; ‖M_stack−M_free‖/‖M‖ 0.0e+00
+pol=1: free 4 modes, transparent stack 4; max diff 0.0e+00; ‖M_stack−M_free‖/‖M‖ 0.0e+00
+
+=== L. PEC mirror: a circle at height h over PEC vs the circle + image in free space, by parity
+pol=2 h=200 [odd (E_y=0 on the mirror)]: PEC 2 modes, mirror pair 4; every PEC mode in the pair to 1.9e-15
+pol=2 h=500 [odd (E_y=0 on the mirror)]: PEC 2 modes, mirror pair 4; every PEC mode in the pair to 1.8e-15
+pol=1 h=200 [even (∂H_y/∂z=0)]: PEC 3 modes, mirror pair 5; every PEC mode in the pair to 3.1e-16
+pol=1 h=500 [even (∂H_y/∂z=0)]: PEC 2 modes, mirror pair 6; every PEC mode in the pair to 2.5e-16
+
+=== M. pole from the passive driven response: Material.from_eps, ScatterResult, no contour, no branch choice
+ε-Beyn over the slab (polished): [-1.29907102-0.00858036j -1.10234969-0.01332019j]
+Im ε=1e-03, ±0.03, 15 solves, degree 3: pole -1.29907772-0.00858939j; |p−ε_Beyn|=1.1e-05
+Im ε=1e-03, ±0.06, 21 solves, degree 4: pole -1.29908167-0.00857325j; |p−ε_Beyn|=1.3e-05
+Im ε=1e-04, ±0.03, 21 solves, degree 4: pole -1.29907152-0.00858005j; |p−ε_Beyn|=5.9e-07
+Im ε=1e-04, ±0.06, 31 solves, degree 5: pole -1.29907020-0.00857914j; |p−ε_Beyn|=1.5e-06

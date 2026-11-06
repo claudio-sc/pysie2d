@@ -1,0 +1,32 @@
+=== H. driven, physical plane wave: mixed shapes, nn and materials; both polarisations on every background
+ background        pol  ranks              R0/N       |x_r-x_d|/|x_d|  |Δamp|/|amp|  ‖a‖/‖x‖
+ free              1   [24, 39, 32, 23]     118/828        4.1e-14      6.4e-16  5.7e-01  (rhs interior leak 6e-16)
+ free              2   [24, 39, 32, 23]     118/828        4.4e-14      1.6e-15  6.0e-01  (rhs interior leak 6e-16)
+ glass half-space  1   [24, 39, 32, 23]     118/828        3.8e-14      7.5e-16  5.7e-01  (rhs interior leak 5e-16)
+ glass half-space  2   [24, 39, 32, 23]     118/828        4.7e-14      1.4e-15  6.1e-01  (rhs interior leak 6e-16)
+ PEC               1   [20, 35, 27, 18]     100/828        1.4e-13      8.1e-16  7.9e-01  (rhs interior leak 9e-16)
+ PEC               2   [20, 35, 27, 18]     100/828        4.9e-14      7.9e-16  7.7e-01  (rhs interior leak 5e-16)
+ SiN slab          1   [24, 39, 33, 23]     119/828        4.2e-14      1.0e-15  5.6e-01  (rhs interior leak 6e-16)
+ SiN slab          2   [25, 39, 33, 23]     120/828        4.3e-14      1.6e-15  6.1e-01  (rhs interior leak 5e-16)
+
+=== I. rank vs particle size: 4 circles at pitch 2.5a, TE, n=2, λ=600, nn = 12 points per interior wavelength
+     a      x    nn  ranks                 r_max/2nn   R0/N        dense/ε   route1 shared/ε  ratio  err
+   250    2.6    64  [36, 60, 60, 36]          0.469    192/  512        3 ms        1 ms     2.7x  2.1e-13
+   500    5.2   126  [43, 76, 76, 43]          0.302    238/ 1008       14 ms        3 ms     5.2x  2.6e-14
+  1000   10.5   252  [43, 80, 80, 43]          0.159    246/ 2016      116 ms        7 ms    16.4x  2.9e-14
+  2000   20.9   503  [45, 87, 87, 45]          0.086    264/ 4024      699 ms       31 ms    22.5x  5.9e-14
+  4000   41.9  1006  [52, 100, 100, 52]        0.050    304/ 8048     5026 ms      189 ms    26.7x  6.6e-14
+
+=== J. hidden-mode worst case: TE whispering-gallery ladder of two circles (a=1000, λ=600, x=10.47), rising Q
+n=14 ε_iso=2.754249-5.85e-03j d= 2500 nn=209 rk=[41, 41]: M 4 (rank 4), G 4 (rank 4); max|M-G| 6.7e-15, split/|Im ε_iso| 0.43  [1s]
+n=14 ε_iso=2.754249-5.85e-03j d= 6000 nn=209 rk=[18, 18]: M 4 (rank 4), G 4 (rank 4); max|M-G| 3.1e-15, split/|Im ε_iso| 0.32  [1s]
+n=16 ε_iso=3.549373-1.89e-04j d= 2500 nn=237 rk=[41, 41]: M 4 (rank 4), G 4 (rank 4); max|M-G| 5.8e-15, split/|Im ε_iso| 0.33  [2s]
+n=16 ε_iso=3.549373-1.89e-04j d= 6000 nn=237 rk=[18, 18]: M 4 (rank 4), G 4 (rank 4); max|M-G| 5.5e-15, split/|Im ε_iso| 0.22  [2s]
+n=18 ε_iso=4.406330-3.01e-06j d= 2500 nn=264 rk=[41, 41]: M 0 (rank 0), G 0 (rank 0); max|M-G| nan, split/|Im ε_iso| nan  [2s]
+n=18 ε_iso=4.406330-3.01e-06j d= 6000 nn=264 rk=[18, 18]: M 4 (rank 4), G 4 (rank 4); max|M-G| 1.5e-14, split/|Im ε_iso| 0.34  [2s]
+n=20 ε_iso=5.336963-2.72e-08j d= 2500 nn=291 rk=[41, 41]: M 0 (rank 4), G 0 (rank 0); max|M-G| nan, split/|Im ε_iso| nan  [3s]
+n=20 ε_iso=5.336963-2.72e-08j d= 6000 nn=291 rk=[18, 18]: M 4 (rank 4), G 4 (rank 4); max|M-G| 1.0e-14, split/|Im ε_iso| 0.37  [3s]
+n=22 ε_iso=6.344526-1.52e-10j d= 2500 nn=317 rk=[41, 41]: M 0 (rank 4), G 0 (rank 0); max|M-G| nan, split/|Im ε_iso| nan  [3s]
+n=22 ε_iso=6.344526-1.52e-10j d= 6000 nn=317 rk=[18, 18]: M 4 (rank 4), G 4 (rank 4); max|M-G| 1.1e-14, split/|Im ε_iso| 0.34  [3s]
+n=24 ε_iso=7.430064-5.57e-13j d= 2500 nn=343 rk=[41, 41]: M 0 (rank 4), G 0 (rank 0); max|M-G| nan, split/|Im ε_iso| nan  [4s]
+n=24 ε_iso=7.430064-5.57e-13j d= 6000 nn=343 rk=[18, 18]: M 4 (rank 4), G 4 (rank 4); max|M-G| 1.4e-14, split/|Im ε_iso| 0.38  [4s]

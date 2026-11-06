@@ -275,11 +275,13 @@ def test_symmetric_basis_matches_an_independent_projection(wavelength):
             odd = radial * 1j * np.sin(m * theta)
             c_minus[m - 1] = np.dot(field, odd.conj()) / np.sum(np.abs(odd) ** 2)
 
-    # Measured 8.0e-16 (real k) and 6.3e-16 (complex k) on the star — a
-    # round-off floor between two algebraically identical projections of the
-    # same sampled field.
-    np.testing.assert_allclose(mp.c_plus, c_plus, rtol=0, atol=1e-15)
-    np.testing.assert_allclose(mp.c_minus, c_minus, rtol=0, atol=1e-15)
+    # Measured 8.0e-16 (real k) and 6.3e-16 (complex k) on the star on macOS, and
+    # 1.37e-15 at complex k on the Linux CI runners — a round-off floor between two
+    # algebraically identical projections of the same sampled field, about four ulps
+    # of a coefficient of size 1.68. 5e-15 is ~4× headroom over the worst platform;
+    # owner-approved 2026-11-06, the difference being noise and not a defect.
+    np.testing.assert_allclose(mp.c_plus, c_plus, rtol=0, atol=5e-15)
+    np.testing.assert_allclose(mp.c_minus, c_minus, rtol=0, atol=5e-15)
 
 
 def test_evaluation_circle_must_exceed_the_circumscribing_radius():

@@ -585,3 +585,38 @@ its single LU factorisation.
 search builds it once per box. Building it costs 1.5 ms at `D = 200 nm, Z_min =
 40 nm` and 17 ms at `D = 1 µm, Z_min = 10 nm` (the panel loop is Python), which is
 below one assembly at nn ≥ 64 and not worth caching further.
+
+
+## 8. Many materials at one wavelength: `ClusterEigenEps`
+
+Measured 2026-11-06 at `nn = 100`, pitch 600 nm, distinct particles, complex ε so the
+interior rows take the Amos path, `VECLIB_MAXIMUM_THREADS=4`, best of three
+(`P ≥ 32` dense: one run; the `P = 64` dense figure is from the study's probe).
+
+| `P` | `N` | `R₀` | `scatter`, free | `scatter`, slab | Dense, exterior cached | here, per material | setup, free | setup, slab | stored | dense |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 4 | 800 | 95 | 0.02 s | 0.18 s | 17 ms | 11 ms | 0.04 s | 0.23 s | 3 MB | 10 MB |
+| 8 | 1600 | 214 | 0.10 s | 1.15 s | 74 ms | 23 ms | 0.15 s | 1.15 s | 8 MB | 41 MB |
+| 16 | 3200 | 447 | 0.46 s | 8.5 s | ~400 ms | 50 ms | 0.54 s | 8.6 s | 29 MB | 164 MB |
+| 32 | 6400 | 910 | 2.8 s | 66 s | 2.5 s | 0.12 s | 2.1 s | 65 s | 105 MB | 655 MB |
+| 64 | 12800 | 1839 | 27 s | not run | 26 s | 0.33 s | 8.6 s | not run | 400 MB | 2.6 GB |
+
+**This is what §6 said any solver would have to aim at:** the O(N³) dense solve. `R₀/P`
+saturates near 28, because it measures what one small particle can receive, so the
+reduced LU keeps the O(P³) but with `(r/2nn)³ ≈ 1/360` in front.
+
+**It does not help a sweep in wavelength.** Everything is rebuilt per λ. A one-off solve
+wins only at large `P` (9.6 s against 27 s at `P = 64`, a slight loss at `P = 16`), so
+`scatter` stays dense.
+
+**Over a slab, assembly and not the solve dominates a cold call,** reversing §6's ranking.
+The reflected blocks grow 6–8× per doubling of `P` and are 27× the solve at `P = 32`: the
+path is sized by the whole cluster's extent (§7), on `P²` blocks. Setup pays that once.
+Reducing it, by exploiting that reflected blocks depend only on the offset between
+particles at equal heights, is unattempted.
+
+**A per-call reflection context is expensive.** Rebuilding it per material tripled the
+slab cost (347 ms against 118 ms at `P = 32`), which is why setup keeps it.
+
+**The gain grows with particle size** at fixed sampling (12 points per interior
+wavelength, `P = 4`): 2.7× at `x = 2.6`, 27× at `x = 42`.

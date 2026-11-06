@@ -1,0 +1,18 @@
+-- n=18 ε_iso=4.406330-3.01e-06j nn=264 rk=[41, 41]
+   Graf found 2 roots from 2 σmin minima
+   ε_c−ε_iso=-1.254e-04-1.618e-06j  Q≈4.8e+05 | |M root−Graf| 2.5e-09 |G root−Graf| 2.5e-09 | σmin/σmax M 3.1e-17 G 1.2e-14 | tight box w=3e-05: M 2 (rank 2) G 2 (rank 2)
+   ε_c−ε_iso=1.311e-04-1.115e-06j  Q≈5.3e+05 | |M root−Graf| 6.4e-10 |G root−Graf| 6.4e-10 | σmin/σmax M 4.8e-17 G 4.3e-14 | tight box w=2e-05: M 2 (rank 2) G 2 (rank 2)
+-- n=20 ε_iso=5.336963-2.72e-08j nn=291 rk=[41, 41]
+   Graf found 2 roots from 2 σmin minima
+   ε_c−ε_iso=4.110e-05-9.522e-07j  Q≈2.7e+06 | |M root−Graf| 3.2e-09 |G root−Graf| 3.2e-09 | σmin/σmax M 4.8e-18 G 1.1e-13 | tight box w=6e-06: M 2 (rank 2) G 2 (rank 2)
+   ε_c−ε_iso=2.997e-04-1.407e-02j  Q≈1.9e+02 | |M root−Graf| 1.7e-10 |G root−Graf| 1.7e-10 | σmin/σmax M 5.3e-17 G 8.5e-16 | tight box w=8e-02: M 0 (rank singular spectrum has no rank gap but A0 did not cancel (can) G 4 (rank 4)
+-- n=22 ε_iso=6.344526-1.52e-10j nn=317 rk=[41, 41]
+   Graf found 3 roots from 4 σmin minima
+   ε_c−ε_iso=1.484e-02-4.494e-06j  Q≈7.1e+05 | |M root−Graf| 5.4e-08 |G root−Graf| 5.4e-08 | σmin/σmax M 1.5e-17 G 2.8e-14 | tight box w=3e-05: M 2 (rank 2) G 2 (rank 2)
+   ε_c−ε_iso=1.507e-02-3.761e-06j  Q≈8.5e+05 | |M root−Graf| 1.8e-07 |G root−Graf| 1.8e-07 | σmin/σmax M 6.8e-17 G 7.5e-16 | tight box w=2e-05: M 2 (rank 2) G 2 (rank 2)
+   ε_c−ε_iso=4.792e-02-2.381e-02j  Q≈1.3e+02 | |M root−Graf| 4.3e-13 |G root−Graf| 4.3e-13 | σmin/σmax M 4.6e-16 G 1.1e-14 | tight box w=1e-01: M 0 (rank singular spectrum has no rank gap but A0 did not cancel (can) G 7 (rank 7)
+-- n=24 ε_iso=7.430064-5.57e-13j nn=343 rk=[41, 41]
+   Graf found 3 roots from 3 σmin minima
+   ε_c−ε_iso=2.990e-02-8.850e-02j  Q≈4.2e+01 | |M root−Graf| 2.7e-14 |G root−Graf| 2.7e-14 | σmin/σmax M 3.3e-16 G 1.1e-14 | tight box w=5e-01: M 0 (rank singular spectrum has no rank gap but A0 did not cancel (can) G 0 (rank singular spectrum has no rank gap but A0 did not cancel (can)
+   ε_c−ε_iso=3.087e-02-8.158e-02j  Q≈4.6e+01 | |M root−Graf| 2.1e-13 |G root−Graf| 2.1e-13 | σmin/σmax M 2.3e-17 G 2.7e-16 | tight box w=5e-01: M 0 (rank singular spectrum has no rank gap but A0 did not cancel (can) G 0 (rank singular spectrum has no rank gap but A0 did not cancel (can)
+   ε_c−ε_iso=3.089e-02-4.410e-02j  Q≈8.5e+01 | |M root−Graf| 2.9e-14 |G root−Graf| 2.8e-14 | σmin/σmax M 2.2e-16 G 6.9e-15 | tight box w=3e-01: M 0 (rank singular spectrum has no rank gap but A0 did not cancel (can) G 0 (rank singular spectrum has no rank gap but A0 did not cancel (can)

@@ -317,6 +317,13 @@ The release ships with these, and they are design boundaries rather than bugs:
 
 ---
 
+**A very low-Q result may not be a mode.** `QNMSolver` also returns the zeros of
+`H_n^{(1)}(n_core·k·a)`, where the operator is singular with no physical resonance. For a
+circle with `a = 100`, `n_core = 1.5`, TE, it reports a doubly degenerate
+`221.63 + 661.24i` nm, `Q ≈ 0.17`; no Mie denominator is near zero there. The tell is a
+left null vector entirely in the interior rows (conventions §18). Check any `Q` well
+below 1 before believing it.
+
 ## See also
 
 - `docs/conventions.md` §2 (vacuum wavelengths) and §8 (the QNM half-plane) —

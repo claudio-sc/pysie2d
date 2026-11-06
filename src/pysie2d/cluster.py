@@ -21,11 +21,14 @@ repairs it.
 
 import warnings
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import numpy as np
+from scipy.linalg import lu_factor, lu_solve
 
 from . import layered
 from .background import HalfSpace, Stack, _effective, _top
+from .beyn import beyn_modes, newton_refine
 from .fields import (
     _background_field,
     _check_far_field_below,
@@ -38,7 +41,12 @@ from .fields import (
     _upward_far_field,
 )
 from .geometry import Geometry
-from .kernels import _real_if_real, assemble_cross_block, assemble_matrix
+from .kernels import (
+    _interior_rows,
+    _real_if_real,
+    assemble_cross_block,
+    assemble_matrix,
+)
 from .layered import GuidedMode
 from .material import Material
 from .solver import wavelength_over_ds
@@ -80,6 +88,42 @@ RESOLUTION_SPREAD_WARN = 4.0
 # treated as diagnostic rather than a hard bound.
 GAP_ENVELOPE_C = 100.0
 
+# Singular values kept when compressing the neighbour coupling, relative to the
+# largest. Truncating harder is false economy: 1e-4 gains 1.3× per permittivity
+# and costs nine digits (docs/design/studies/cluster-reduction/README.md).
+COUPLING_RANK_TOL = 1.0e-13
+
+# x = a − R·y cancels when an isolated particle is near resonance and the cluster is
+# not, by up to 5e-5 at |ε − ε_iso| = 1e-12. No a-priori ratio detects it: ‖a‖/‖x‖ stays
+# at 0.26 for a plane wave that does not drive the resonance, so every solve refines
+# once and reads the error off the step. An ordinary solve's first step is ≲ 1e-12 and
+# ends there; 5e-5 takes three to reach 4e-13, the comparison's floor
+# (docs/design/studies/cluster-reduction/README.md).
+MAX_REFINE_STEPS = 3
+REFINE_CONVERGED = 1.0e-12
+REFINE_WARN = 1.0e-10
+
+# Step for dD/dε. Applied to the interior rows, which are smooth in ε: a difference
+# of G itself would straddle G's isolated-particle poles, which at high Q lie far
+# closer than this.
+INTERIOR_DERIVATIVE_STEP = 1.0e-6
+
+
+def _upper_branch(eps: complex) -> complex:
+    """Return ``√ε`` with its cut on ``[0, ∞)``, the branch modal contours need.
+
+    The principal root makes ``M(ε)`` singular at ``H_n^{(1)}(√ε·x) = 0``, where no
+    physical mode exists. This one keeps ``Im √ε > 0`` off the cut, so ``H^{(1)}``
+    has no zeros there. The two coincide for Im ε > 0 (conventions §18).
+
+    Args:
+        eps: Background-relative permittivity, off the cut.
+
+    Returns:
+        ``i·√(−ε)``.
+    """
+    return 1j * np.sqrt(-complex(eps))
+
 
 class ClusterOverlapError(ValueError):
     """Two particle boundaries intersect; the formulation does not apply."""
@@ -91,6 +135,43 @@ class ClusterGapWarning(UserWarning):
 
 class ClusterResolutionWarning(UserWarning):
     """One particle is far more coarsely resolved than its neighbours."""
+
+
+class ClusterCancellationWarning(UserWarning):
+    """A fast solve lost accuracy to a particle resonance, despite refining."""
+
+
+def _check_materials(materials: Sequence[Material], n_particles: int, pol: int) -> None:
+    """Validate one material set against a cluster.
+
+    Args:
+        materials: One material per particle.
+        n_particles: Number of particles in the cluster.
+        pol: The cluster's polarisation.
+
+    Raises:
+        ValueError: If the number of materials does not match the number of
+            particles, if any material's ``pol`` differs from ``pol``, or if the
+            materials disagree on ``n_clad``.
+    """
+    if len(materials) != n_particles:
+        raise ValueError(f"{len(materials)} materials for {n_particles} particles")
+    for i, mat in enumerate(materials):
+        if mat.pol != pol:
+            raise ValueError(
+                f"material {i} has pol = {mat.pol}, but the cluster is "
+                f"being solved at pol = {pol}. Polarisation is a property "
+                f"of the problem, not of a particle (conventions sec. 1)."
+            )
+        if mat.n_clad != materials[0].n_clad:
+            raise ValueError(
+                f"material {i} has n_clad = {mat.n_clad}, material 0 has "
+                f"{materials[0].n_clad}. A cluster has one background, and "
+                f"k_bg = 2*pi*n_clad/lambda_vac must be unambiguous. "
+                f"Per-particle optical properties go in n_core and epsi, "
+                f"which enter as the background-relative nc and eps "
+                f"(conventions sec. 2)."
+            )
 
 
 class Cluster:
@@ -294,30 +375,35 @@ class ClusterBIESolver:
             InterfaceGapWarning: With a background, if a boundary is too coarse
                 for its distance to the interface.
         """
-        if len(materials) != len(cluster):
-            raise ValueError(f"{len(materials)} materials for {len(cluster)} particles")
-        for i, mat in enumerate(materials):
-            if mat.pol != pol:
-                raise ValueError(
-                    f"material {i} has pol = {mat.pol}, but the cluster is "
-                    f"being solved at pol = {pol}. Polarisation is a property "
-                    f"of the problem, not of a particle (conventions sec. 1)."
-                )
-            if mat.n_clad != materials[0].n_clad:
-                raise ValueError(
-                    f"material {i} has n_clad = {mat.n_clad}, material 0 has "
-                    f"{materials[0].n_clad}. A cluster has one background, and "
-                    f"k_bg = 2*pi*n_clad/lambda_vac must be unambiguous. "
-                    f"Per-particle optical properties go in n_core and epsi, "
-                    f"which enter as the background-relative nc and eps "
-                    f"(conventions sec. 2)."
-                )
+        _check_materials(materials, len(cluster), pol)
         self.cluster = cluster
         self.materials = tuple(materials)
         self.pol = pol
         self.background = background
         if background is not None:
             layered.check_interface_gap(cluster.geometries, _top(background), pol)
+
+    def at_wavelength(self, wavelength: float | complex) -> "ClusterEigenEps":
+        """Prepare fast solves and eigenpermittivities at one wavelength.
+
+        Use it when many materials are solved at one wavelength: see
+        :class:`ClusterEigenEps`. A sweep in wavelength rebuilds everything at each
+        step, so :meth:`scatter` remains the tool for that, except at very large
+        clusters.
+
+        Args:
+            wavelength: Vacuum wavelength λ_vac in nm. May be complex for driven
+                solves; eigenpermittivities need it real.
+
+        Returns:
+            The prepared :class:`ClusterEigenEps`.
+
+        Warns:
+            ClusterGapWarning: If the closest gap falls below the quadrature
+                envelope of ``GAP_ENVELOPE_C``.
+        """
+        self._check_gap(wavelength)
+        return ClusterEigenEps(self, wavelength)
 
     def _reflection(
         self,
@@ -424,6 +510,183 @@ class ClusterBIESolver:
                     me[r0 : r0 + gq.n_pts, c0 + gp.n_pts : c0 + 2 * gp.n_pts] += m2
         return me
 
+    def _exterior_rows(
+        self,
+        q: int,
+        wavelength: float | complex,
+        refl: layered.Reflection | layered.StackReflection | None,
+    ) -> np.ndarray:
+        """Build one particle's exterior rows of the coupled matrix.
+
+        These rows do not depend on any particle's material, so they are all a
+        fixed-wavelength sweep needs from the assembly, and building them one
+        particle at a time is what keeps the dense matrix out of memory.
+
+        Args:
+            q: The field particle whose rows are built.
+            wavelength: Vacuum wavelength λ_vac in nm. May be complex.
+            refl: The reflected-field context of :meth:`_reflection`.
+
+        Returns:
+            complex ``(nn_q, n_dof)``: ``_assemble(wavelength)``'s rows of ``q``.
+        """
+        cl = self.cluster
+        k_bg = _real_if_real(self.materials[0].wnum_bg(wavelength))
+        gq = cl.geometries[q]
+        rows = np.zeros((gq.n_pts, cl.n_dof), dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            c0 = cl.offsets[p]
+            if p == q:
+                # ri = kd = 1: the upper half of assemble_matrix sees neither.
+                rows[:, cl.slice(p)] = assemble_matrix(
+                    self.pol,
+                    gp.n_pts,
+                    gp.f,
+                    gp.g,
+                    gp.df,
+                    gp.dg,
+                    gp.ddf,
+                    gp.ddg,
+                    k_bg,
+                    1.0,
+                    1.0,
+                )[: gp.n_pts]
+            else:
+                m1, m2 = assemble_cross_block(
+                    k_bg, gp.n_pts, gp.f, gp.g, gp.df, gp.dg, gq.f, gq.g
+                )
+                rows[:, c0 : c0 + gp.n_pts] = m1
+                rows[:, c0 + gp.n_pts : c0 + 2 * gp.n_pts] = m2
+            if refl is not None:
+                m1, m2 = refl.blocks(gq, gp)
+                rows[:, c0 : c0 + gp.n_pts] += m1
+                rows[:, c0 + gp.n_pts : c0 + 2 * gp.n_pts] += m2
+        return rows
+
+    def _rhs_plane_wave(
+        self,
+        wavelength: float,
+        angle: float,
+        refl: layered.Reflection | layered.StackReflection | None = None,
+    ) -> np.ndarray:
+        """Right-hand side of a plane wave, in the layout of conventions §14.
+
+        Args:
+            wavelength: Vacuum wavelength λ_vac in nm.
+            angle: Incidence angle in degrees; 0 propagates along −z.
+            refl: A reflected-field context already built for every node, because
+                building one is most of a slab solve's cost per material; by default
+                it is built here.
+
+        Returns:
+            complex ``(n_dof,)`` right-hand side.
+        """
+        cl = self.cluster
+        k_bg = self.materials[0].wnum_bg(wavelength)
+        rhs = np.zeros(cl.n_dof, dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            rhs[cl.slice(p)] = plane_wave_rhs(gp.n_pts, angle, k_bg, gp.f, gp.g)
+        if refl is None:
+            refl = self._reflection(wavelength)
+        if refl is not None:
+            for p, gp in enumerate(cl.geometries):
+                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += refl.plane_wave(
+                    angle, gp.f, gp.g
+                )
+        return rhs
+
+    def _rhs_dipole(
+        self,
+        wavelength: float,
+        x_s: float,
+        z_s: float,
+        moment: tuple[complex, complex] | None,
+    ) -> np.ndarray:
+        """Right-hand side of a line dipole, in the layout of conventions §14.
+
+        Args:
+            wavelength: Vacuum wavelength λ_vac in nm.
+            x_s: Source x-coordinate (nm).
+            z_s: Source z-coordinate (nm).
+            moment: ``(p_x, p_z)`` of an in-plane electric dipole, TM only.
+
+        Returns:
+            complex ``(n_dof,)`` right-hand side.
+
+        Raises:
+            ValueError: If the source lies inside, or too close to, any
+                particle — raised by :func:`~pysie2d.sources.line_dipole_rhs`;
+                a ``moment`` at ``pol = 2`` (T7).
+        """
+        if moment is not None and self.pol != 1:
+            raise ValueError(
+                "moment= is accepted at pol = 1 (TM) only: in TE the same source "
+                "would be an in-plane magnetic dipole (slab-spec T7)"
+            )
+        b = None if moment is None else in_plane_moment_b(moment)
+        cl = self.cluster
+        k_bg = self.materials[0].wnum_bg(wavelength)
+        rhs = np.zeros(cl.n_dof, dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            if b is not None:
+                rhs[cl.slice(p)] = _in_plane_dipole_rhs(
+                    gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s, b
+                )
+                continue
+            # line_dipole_rhs's own inside/too-close guards run once per
+            # particle, which is exactly the cluster condition: the source must
+            # lie outside every particle. No extra check is needed here and
+            # none should be added.
+            rhs[cl.slice(p)] = line_dipole_rhs(gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s)
+        refl = self._reflection(
+            wavelength,
+            np.append(np.concatenate([gp.f for gp in cl.geometries]), x_s),
+            np.append(np.concatenate([gp.g for gp in cl.geometries]), z_s),
+        )
+        if refl is not None:
+            for p, gp in enumerate(cl.geometries):
+                gs = refl.green(gp.f, gp.g, x_s, z_s)
+                term = gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
+                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += term
+        return rhs
+
+    def _rhs_mode(
+        self,
+        wavelength: float,
+        mode: GuidedMode | int,
+        direction: int,
+        x_ref: float,
+    ) -> tuple[np.ndarray, GuidedMode]:
+        """Right-hand side of an incident guided mode, and the mode it resolved to.
+
+        Args:
+            wavelength: Real vacuum wavelength λ_vac in nm.
+            mode: A guided mode of this stack, or its index.
+            direction: +1 towards +x, −1 towards −x.
+            x_ref: Phase reference along x (nm).
+
+        Returns:
+            ``(rhs, mode)``: complex ``(n_dof,)`` right-hand side and the
+            :class:`~pysie2d.layered.GuidedMode`.
+
+        Raises:
+            ValueError: Without a stack; complex λ or a lossy stack (T2); a
+                direction other than ±1; a mode foreign to this stack.
+        """
+        n_clad = self.materials[0].n_clad
+        if not isinstance(_effective(self.background, n_clad, wavelength), Stack):
+            raise ValueError("scatter_mode needs a Stack background that guides")
+        m = _resolve_mode(
+            self.background, wavelength, self.pol, n_clad, mode, direction
+        )
+        cl = self.cluster
+        rhs = np.zeros(cl.n_dof, dtype=complex)
+        for p, gp in enumerate(cl.geometries):
+            rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] = _mode_rhs(
+                m, direction, x_ref, gp.f, gp.g
+            )
+        return rhs, m
+
     def scatter(self, wavelength: float, angle: float = 0.0) -> "ClusterScatterResult":
         """Solve the coupled system for plane-wave excitation.
 
@@ -442,21 +705,11 @@ class ClusterBIESolver:
         """
         self._check_resolution(wavelength)
         self._check_gap(wavelength)
-        cl = self.cluster
-        k_bg = self.materials[0].wnum_bg(wavelength)
-        rhs = np.zeros(cl.n_dof, dtype=complex)
-        for p, gp in enumerate(cl.geometries):
-            rhs[cl.slice(p)] = plane_wave_rhs(gp.n_pts, angle, k_bg, gp.f, gp.g)
-        refl = self._reflection(wavelength)
-        if refl is not None:
-            for p, gp in enumerate(cl.geometries):
-                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += refl.plane_wave(
-                    angle, gp.f, gp.g
-                )
+        rhs = self._rhs_plane_wave(wavelength, angle)
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
             ei,
-            cl,
+            self.cluster,
             self.materials,
             self.pol,
             wavelength,
@@ -498,40 +751,11 @@ class ClusterBIESolver:
         """
         self._check_resolution(wavelength)
         self._check_gap(wavelength)
-        if moment is not None and self.pol != 1:
-            raise ValueError(
-                "moment= is accepted at pol = 1 (TM) only: in TE the same source "
-                "would be an in-plane magnetic dipole (slab-spec T7)"
-            )
-        b = None if moment is None else in_plane_moment_b(moment)
-        cl = self.cluster
-        k_bg = self.materials[0].wnum_bg(wavelength)
-        rhs = np.zeros(cl.n_dof, dtype=complex)
-        for p, gp in enumerate(cl.geometries):
-            if b is not None:
-                rhs[cl.slice(p)] = _in_plane_dipole_rhs(
-                    gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s, b
-                )
-                continue
-            # line_dipole_rhs's own inside/too-close guards run once per
-            # particle, which is exactly the cluster condition: the source must
-            # lie outside every particle. No extra check is needed here and
-            # none should be added.
-            rhs[cl.slice(p)] = line_dipole_rhs(gp.n_pts, k_bg, gp.f, gp.g, x_s, z_s)
-        refl = self._reflection(
-            wavelength,
-            np.append(np.concatenate([gp.f for gp in cl.geometries]), x_s),
-            np.append(np.concatenate([gp.g for gp in cl.geometries]), z_s),
-        )
-        if refl is not None:
-            for p, gp in enumerate(cl.geometries):
-                gs = refl.green(gp.f, gp.g, x_s, z_s)
-                term = gs[0] if b is None else -(b[0] * gs[1] + b[1] * gs[2])
-                rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] += term
+        rhs = self._rhs_dipole(wavelength, x_s, z_s, moment)
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
             ei,
-            cl,
+            self.cluster,
             self.materials,
             self.pol,
             wavelength,
@@ -570,22 +794,11 @@ class ClusterBIESolver:
         """
         self._check_resolution(wavelength)
         self._check_gap(wavelength)
-        n_clad = self.materials[0].n_clad
-        if not isinstance(_effective(self.background, n_clad, wavelength), Stack):
-            raise ValueError("scatter_mode needs a Stack background that guides")
-        m = _resolve_mode(
-            self.background, wavelength, self.pol, n_clad, mode, direction
-        )
-        cl = self.cluster
-        rhs = np.zeros(cl.n_dof, dtype=complex)
-        for p, gp in enumerate(cl.geometries):
-            rhs[cl.offsets[p] : cl.offsets[p] + gp.n_pts] = _mode_rhs(
-                m, direction, x_ref, gp.f, gp.g
-            )
+        rhs, m = self._rhs_mode(wavelength, mode, direction, x_ref)
         ei = np.linalg.solve(self._assemble(wavelength), rhs)
         return ClusterScatterResult(
             ei,
-            cl,
+            self.cluster,
             self.materials,
             self.pol,
             wavelength,
@@ -641,7 +854,11 @@ class ClusterBIESolver:
             stacklevel=3,
         )
 
-    def _check_resolution(self, wavelength: float | complex) -> None:
+    def _check_resolution(
+        self,
+        wavelength: float | complex,
+        materials: Sequence[Material] | None = None,
+    ) -> None:
         """Warn when one particle is far coarser than its best-resolved peer.
 
         The user picks ``n_pts`` per particle (D7) — that freedom is the point
@@ -651,10 +868,12 @@ class ClusterBIESolver:
 
         Args:
             wavelength: Vacuum wavelength λ_vac in nm.
+            materials: The set to check; the solver's own by default.
         """
+        mats = self.materials if materials is None else materials
         res = [
             wavelength_over_ds(g, m, wavelength)
-            for g, m in zip(self.cluster.geometries, self.materials, strict=True)
+            for g, m in zip(self.cluster.geometries, mats, strict=True)
         ]
         if len(res) < 2:
             return
@@ -1142,4 +1361,548 @@ class ClusterScatterResult(_StackResult):
         return tuple(
             wavelength_over_ds(g, m, self.wavelength)
             for g, m in zip(self.cluster.geometries, self.materials, strict=True)
+        )
+
+
+@dataclass(frozen=True)
+class EigenpermittivityResult:
+    """Eigenpermittivities of a cluster inside a rectangle, at one real wavelength.
+
+    Attributes:
+        eps: complex (K,) **absolute** permittivities, the value
+            :meth:`pysie2d.material.Material.from_eps` takes, sorted by real part
+            then imaginary part.
+        vectors: complex (n_dof, K) unit source-free solutions, one column per
+            eigenvalue, in the layout of conventions §14.
+        converged: bool (K,) whether each Newton polish met its tolerance.
+        rank: Rank of the contour moment, before the in-contour filter.
+        sv_ratio: Singular values of the contour moment over the largest; the rank
+            gap is visible here.
+    """
+
+    eps: np.ndarray
+    vectors: np.ndarray
+    converged: np.ndarray
+    rank: int
+    sv_ratio: np.ndarray
+
+
+@dataclass(frozen=True)
+class _Factored:
+    """One material set's factors, reusable for every right-hand side."""
+
+    blocks: list[np.ndarray]
+    lus: list[tuple[np.ndarray, np.ndarray]]
+    responses: list[np.ndarray]
+    reduced: np.ndarray
+
+
+class ClusterEigenEps:
+    """A cluster at one fixed wavelength: fast material sweeps and eigenpermittivities.
+
+    **What it is for.** Solving one cluster for many materials at one wavelength.
+    :meth:`ClusterBIESolver.scatter` rebuilds and factorises the whole coupled matrix
+    on every call. Here the part that does not depend on the materials is built once,
+    so each later solve costs only a set of small per-particle problems and one small
+    coupled problem. The answer is the dense solve's, to round-off.
+
+    Measured per material set with 100 nodes per particle, distinct particles and an
+    absorbing ε (docs/design/studies/cluster-reduction/README.md):
+
+    ========= ================= ================ ========
+    particles ``scatter``, free ``scatter``, slab here
+    ========= ================= ================ ========
+    4         0.03 s            0.18 s           11 ms
+    16        0.46 s            8.5 s            50 ms
+    32        2.8 s             66 s             0.12 s
+    64        27 s              not run          0.33 s
+    ========= ================= ================ ========
+
+    Setup costs about one ``scatter`` call (slab: 65 s at 32 particles, nearly all of
+    it the reflected-block assembly), so it pays for itself within the first few
+    materials. It does **not** speed up a sweep in wavelength, where everything changes
+    at each step and only very large clusters gain.
+
+    **How.** Split the coupled matrix as ``M(ε) = D(ε) + U·Y``, with ``D`` the isolated
+    particles, substrate included, and ``U·Y`` the SVD-compressed neighbour coupling.
+    Only the interior rows of ``D`` depend on ε (conventions §14), and Woodbury leaves
+    the small matrix ``G = I + Y·D⁻¹·U``. The rank per particle saturates with cluster
+    size, because it measures what one small particle can receive.
+
+    Build it with :meth:`ClusterBIESolver.at_wavelength`.
+
+    Attributes:
+        solver: The solver this was prepared from. Its materials are not used for
+            solving; only their shared ``n_clad`` is.
+        wavelength: Vacuum wavelength λ_vac in nm.
+        coupling_ranks: Retained coupling rank per particle.
+    """
+
+    def __init__(self, solver: ClusterBIESolver, wavelength: float | complex) -> None:
+        """Build and compress the exterior rows, one particle at a time.
+
+        They are never held together: that is what keeps the dense matrix, 2.6 GB at
+        64 particles against 380 MB for the compressed form, out of memory.
+
+        Args:
+            solver: The cluster, polarisation and background.
+            wavelength: Vacuum wavelength λ_vac in nm. May be complex.
+        """
+        self.solver = solver
+        self.wavelength = wavelength
+        cl = solver.cluster
+        refl = solver._reflection(wavelength)
+        self._refl = refl
+        self._top: list[np.ndarray] = []
+        self._u: list[np.ndarray] = []
+        self._y: list[np.ndarray] = []
+        for q in range(len(cl)):
+            rows = solver._exterior_rows(q, wavelength, refl)
+            self._top.append(rows[:, cl.slice(q)].copy())
+            rows[:, cl.slice(q)] = 0.0
+            u, sv, _ = np.linalg.svd(rows, full_matrices=False)
+            rank = int(np.sum(sv > COUPLING_RANK_TOL * sv[0]))
+            self._u.append(u[:, :rank])
+            self._y.append(u[:, :rank].conj().T @ rows)
+        self.coupling_ranks = tuple(u.shape[1] for u in self._u)
+        self._offsets = np.cumsum((0, *self.coupling_ranks))
+
+    def _interior(self, p: int, ri: complex, kd: complex) -> np.ndarray:
+        """Interior rows of particle ``p`` at a background-relative ``ri``, ``kd``."""
+        g = self.solver.cluster.geometries[p]
+        return _interior_rows(
+            self.solver.pol,
+            g.n_pts,
+            g.f,
+            g.g,
+            g.df,
+            g.dg,
+            g.ddf,
+            g.ddg,
+            self.solver.materials[0].wnum_bg(self.wavelength),
+            ri,
+            kd,
+        )
+
+    def _factor(self, optics: Sequence[tuple[complex, complex]]) -> _Factored:
+        """Factorise the isolated particles and build the small coupled matrix.
+
+        Args:
+            optics: ``(ri, kd)`` per particle, background-relative.
+
+        Returns:
+            The factors of ``D`` and the matrix ``G``.
+        """
+        cl = self.solver.cluster
+        blocks = [
+            np.vstack([self._top[p], self._interior(p, *optics[p])])
+            for p in range(len(cl))
+        ]
+        lus = [lu_factor(b) for b in blocks]
+        responses = [
+            lu_solve(lus[p], self._embed(p, self._u[p])) for p in range(len(cl))
+        ]
+        o = self._offsets
+        reduced = np.eye(o[-1], dtype=complex)
+        for p in range(len(cl)):
+            for q in range(len(cl)):
+                reduced[o[p] : o[p + 1], o[q] : o[q + 1]] += (
+                    self._y[p][:, cl.slice(q)] @ responses[q]
+                )
+        return _Factored(blocks, lus, responses, reduced)
+
+    def _embed(self, p: int, exterior: np.ndarray) -> np.ndarray:
+        """Pad exterior rows with zero interior rows: the coupling has none (§14)."""
+        return np.vstack([exterior, np.zeros_like(exterior)])
+
+    def _apply(
+        self,
+        fac: _Factored,
+        reduced_lu: tuple[np.ndarray, np.ndarray] | None,
+        rhs: np.ndarray,
+    ) -> np.ndarray:
+        """Solve ``M x = rhs`` by Woodbury.
+
+        Args:
+            fac: The factors.
+            reduced_lu: The LU factors of ``fac.reduced``; ``None`` for one particle,
+                where there is nothing to couple.
+            rhs: complex ``(n_dof,)``, exterior and interior rows both, because a
+                refinement residual has non-zero interior rows.
+
+        Returns:
+            complex ``(n_dof,)`` solution.
+        """
+        cl = self.solver.cluster
+        o = self._offsets
+        alone = [lu_solve(fac.lus[p], rhs[cl.slice(p)]) for p in range(len(cl))]
+        x = np.empty(cl.n_dof, dtype=complex)
+        y = np.empty(0, dtype=complex)
+        if reduced_lu is not None:
+            g = np.zeros(o[-1], dtype=complex)
+            for p in range(len(cl)):
+                for q in range(len(cl)):
+                    g[o[p] : o[p + 1]] += self._y[p][:, cl.slice(q)] @ alone[q]
+            y = lu_solve(reduced_lu, g)
+        for p in range(len(cl)):
+            x[cl.slice(p)] = alone[p] - fac.responses[p] @ y[o[p] : o[p + 1]]
+        return x
+
+    def _residual(self, fac: _Factored, rhs: np.ndarray, x: np.ndarray) -> np.ndarray:
+        """Return ``rhs − M·x``, without forming ``M``."""
+        cl = self.solver.cluster
+        r = rhs.copy()
+        for p in range(len(cl)):
+            sl = cl.slice(p)
+            r[sl] -= fac.blocks[p] @ x[sl]
+            r[sl.start : sl.start + self._u[p].shape[0]] -= self._u[p] @ (
+                self._y[p] @ x
+            )
+        return r
+
+    def _solve(self, materials: Sequence[Material], rhs: np.ndarray) -> np.ndarray:
+        """Solve for one material set, refining against the Woodbury cancellation.
+
+        Args:
+            materials: One material per particle, already validated.
+            rhs: complex ``(n_dof,)`` right-hand side.
+
+        Returns:
+            complex ``(n_dof,)`` solution.
+
+        Warns:
+            ClusterCancellationWarning: If refining did not converge.
+        """
+        fac = self._factor([(m.nc, m.eps) for m in materials])
+        reduced_lu = lu_factor(fac.reduced) if self._offsets[-1] else None
+        x = self._apply(fac, reduced_lu, rhs)
+        change = np.inf
+        for _ in range(MAX_REFINE_STEPS):
+            dx = self._apply(fac, reduced_lu, self._residual(fac, rhs, x))
+            x = x + dx
+            change = float(np.linalg.norm(dx) / np.linalg.norm(x))
+            if change < REFINE_CONVERGED:
+                break
+        if change > REFINE_WARN:
+            warnings.warn(
+                f"a particle is so close to resonance on its own that the fast solve "
+                f"lost accuracy: the last refinement step changed x by {change:.1e}. "
+                f"ClusterBIESolver.scatter solves this case directly.",
+                ClusterCancellationWarning,
+                stacklevel=3,
+            )
+        return x
+
+    def _validated(self, materials: Sequence[Material]) -> tuple[Material, ...]:
+        """Check one material set against this cluster and return it.
+
+        Args:
+            materials: One material per particle.
+
+        Returns:
+            The materials as a tuple.
+
+        Raises:
+            ValueError: As :class:`ClusterBIESolver` does, or if ``n_clad`` differs
+                from the solver's: the exterior rows were built for that one.
+        """
+        solver = self.solver
+        _check_materials(materials, len(solver.cluster), solver.pol)
+        if materials[0].n_clad != solver.materials[0].n_clad:
+            raise ValueError(
+                f"materials have n_clad = {materials[0].n_clad}, but the exterior "
+                f"rows were built for n_clad = {solver.materials[0].n_clad}"
+            )
+        solver._check_resolution(self.wavelength, materials)
+        return tuple(materials)
+
+    def scatter(
+        self, materials: Sequence[Material], angle: float = 0.0
+    ) -> ClusterScatterResult:
+        """Solve for plane-wave excitation with one material set.
+
+        Args:
+            materials: One material per particle.
+            angle: Incidence angle in degrees; 0 propagates along −z.
+
+        Returns:
+            The same result :meth:`ClusterBIESolver.scatter` returns.
+
+        Raises:
+            ValueError: If ``materials`` does not fit this cluster.
+
+        Warns:
+            ClusterResolutionWarning: See :meth:`ClusterBIESolver.scatter`.
+            ClusterCancellationWarning: If a particle is too close to resonance on
+                its own for this solve to be accurate.
+        """
+        mats = self._validated(materials)
+        solver = self.solver
+        rhs = solver._rhs_plane_wave(self.wavelength, angle, self._refl)
+        return ClusterScatterResult(
+            self._solve(mats, rhs),
+            solver.cluster,
+            mats,
+            solver.pol,
+            self.wavelength,
+            angle,
+            "plane_wave",
+            solver.background,
+        )
+
+    def scatter_dipole(
+        self,
+        materials: Sequence[Material],
+        x_s: float,
+        z_s: float,
+        *,
+        moment: tuple[complex, complex] | None = None,
+    ) -> ClusterScatterResult:
+        """Solve for a line-dipole source with one material set.
+
+        Args:
+            materials: One material per particle.
+            x_s: Source x-coordinate (nm).
+            z_s: Source z-coordinate (nm).
+            moment: See :meth:`ClusterBIESolver.scatter_dipole`.
+
+        Returns:
+            The same result :meth:`ClusterBIESolver.scatter_dipole` returns.
+
+        Raises:
+            ValueError: If ``materials`` does not fit this cluster; for the source,
+                as :meth:`ClusterBIESolver.scatter_dipole`.
+
+        Warns:
+            ClusterResolutionWarning: See :meth:`ClusterBIESolver.scatter`.
+            ClusterCancellationWarning: See :meth:`scatter`.
+        """
+        mats = self._validated(materials)
+        solver = self.solver
+        rhs = solver._rhs_dipole(self.wavelength, x_s, z_s, moment)
+        return ClusterScatterResult(
+            self._solve(mats, rhs),
+            solver.cluster,
+            mats,
+            solver.pol,
+            self.wavelength,
+            0.0,
+            "dipole",
+            solver.background,
+            source=(x_s, z_s),
+            moment=None if moment is None else (complex(moment[0]), complex(moment[1])),
+        )
+
+    def scatter_mode(
+        self,
+        materials: Sequence[Material],
+        mode: GuidedMode | int,
+        direction: int,
+        *,
+        x_ref: float,
+    ) -> ClusterScatterResult:
+        """Solve for an incident guided mode with one material set.
+
+        Args:
+            materials: One material per particle.
+            mode: A guided mode of this stack, or its index.
+            direction: +1 towards +x, −1 towards −x.
+            x_ref: Phase reference along x (nm), required (R14).
+
+        Returns:
+            The same result :meth:`ClusterBIESolver.scatter_mode` returns.
+
+        Raises:
+            ValueError: If ``materials`` does not fit this cluster; otherwise as
+                :meth:`ClusterBIESolver.scatter_mode`.
+
+        Warns:
+            ClusterResolutionWarning: See :meth:`ClusterBIESolver.scatter`.
+            ClusterCancellationWarning: See :meth:`scatter`.
+        """
+        mats = self._validated(materials)
+        solver = self.solver
+        rhs, m = solver._rhs_mode(self.wavelength, mode, direction, x_ref)
+        return ClusterScatterResult(
+            self._solve(mats, rhs),
+            solver.cluster,
+            mats,
+            solver.pol,
+            self.wavelength,
+            0.0,
+            "mode",
+            solver.background,
+            mode=m,
+            direction=direction,
+            x_ref=x_ref,
+        )
+
+    def _reduced_at(self, eps: complex) -> np.ndarray:
+        """Beyn's operator at a background-relative ``eps``, shared by all particles.
+
+        ``G⁻¹ = I − Y·M⁻¹·U`` has poles only at cluster modes, the isolated-particle
+        poles of ``G`` itself cancelling, so ``G`` is a legal contour operator despite
+        ``beyn_modes``' warning about poles of M (conventions §18). With one particle
+        there is no ``G``, and this returns the particle's own matrix.
+
+        Args:
+            eps: Background-relative permittivity.
+
+        Returns:
+            complex ``G(eps)``, or ``M_1(eps)`` for one particle.
+        """
+        ri = _upper_branch(eps)
+        n = len(self.solver.cluster)
+        if self._offsets[-1] == 0:
+            return np.vstack([self._top[0], self._interior(0, ri, eps)])
+        return self._factor([(ri, eps)] * n).reduced
+
+    def _reduced_derivative(self, eps: complex) -> np.ndarray:
+        """Return ``dG/dε = −Y·D⁻¹·(dD/dε)·D⁻¹·U`` (``dM_1/dε`` for one particle).
+
+        Differences only the interior rows, which are smooth in ε. A difference of
+        ``G`` itself would straddle its isolated-particle poles, which at high Q lie
+        far closer than any usable step.
+
+        Args:
+            eps: Background-relative permittivity.
+
+        Returns:
+            complex matrix of the same shape as :meth:`_reduced_at`.
+        """
+        cl = self.solver.cluster
+        h = INTERIOR_DERIVATIVE_STEP
+
+        def d_interior(p: int) -> np.ndarray:
+            up = self._interior(p, _upper_branch(eps + h), eps + h)
+            down = self._interior(p, _upper_branch(eps - h), eps - h)
+            return (up - down) / (2.0 * h)
+
+        if self._offsets[-1] == 0:
+            nn = cl.geometries[0].n_pts
+            return np.vstack([np.zeros((nn, 2 * nn), dtype=complex), d_interior(0)])
+        fac = self._factor([(_upper_branch(eps), eps)] * len(cl))
+        o = self._offsets
+        out = np.zeros_like(fac.reduced)
+        for q in range(len(cl)):
+            moved = d_interior(q) @ fac.responses[q]
+            back = lu_solve(fac.lus[q], np.vstack([np.zeros_like(moved), moved]))
+            for p in range(len(cl)):
+                out[o[p] : o[p + 1], o[q] : o[q + 1]] = (
+                    -self._y[p][:, cl.slice(q)] @ back
+                )
+        return out
+
+    def _mode_vector(self, eps: complex, y: np.ndarray) -> np.ndarray:
+        """Recover the coupled solution from a null vector of ``G``.
+
+        Args:
+            eps: Background-relative permittivity.
+            y: Null vector of :meth:`_reduced_at`.
+
+        Returns:
+            complex ``(n_dof,)`` unit vector in the layout of conventions §14:
+            ``x_p = −R_p·y_p``, or ``y`` itself for one particle.
+        """
+        cl = self.solver.cluster
+        if self._offsets[-1] == 0:
+            return y / np.linalg.norm(y)
+        fac = self._factor([(_upper_branch(eps), eps)] * len(cl))
+        o = self._offsets
+        x = np.empty(cl.n_dof, dtype=complex)
+        for p in range(len(cl)):
+            x[cl.slice(p)] = -fac.responses[p] @ y[o[p] : o[p + 1]]
+        return x / np.linalg.norm(x)
+
+    def eigenpermittivities(
+        self,
+        eps_lo: complex,
+        eps_hi: complex,
+        *,
+        n_quad_per_side: int = 32,
+        n_probe: int = 16,
+        rank_tol: float = 1.0e-8,
+        tol: float = 1.0e-12,
+        max_iter: int = 30,
+    ) -> EigenpermittivityResult:
+        """Find the permittivities at which the cluster supports a source-free field.
+
+        All particles share the unknown ε, at this object's real wavelength. Unlike
+        :class:`~pysie2d.qnm.QNMSolver`, this works over a
+        :class:`~pysie2d.background.Stack`, because the background is held fixed.
+
+        **Over a Stack the result has no external check.** It has been compared only
+        with a pole fitted to this package's own driven solves, agreeing to about 1e-6;
+        a dielectric half-space likewise. Free space and PEC are checked against
+        exact references, the Graf addition theorem and a mirror image (conventions
+        §18).
+
+        A contour that ends with no rank gap raises, usually because a mode sits close
+        to its edge: move the edge. TM plasmonic modes accumulate at ``ε = −n_clad²``
+        on the real axis, so keep the top edge away from it.
+
+        Args:
+            eps_lo: Bottom-left corner, as an **absolute** permittivity.
+            eps_hi: Top-right corner, as an **absolute** permittivity.
+            n_quad_per_side: Quadrature nodes per side of the contour.
+            n_probe: Random probes; must exceed the number of modes inside. Capped at
+                the size of the small system.
+            rank_tol: Rank threshold of the contour moment.
+            tol: Newton convergence on background-relative ε.
+            max_iter: Newton iteration cap.
+
+        Returns:
+            The modes inside the rectangle; ``eps`` is absolute, ready for
+            :meth:`pysie2d.material.Material.from_eps`.
+
+        Raises:
+            ValueError: If the wavelength is complex, or the rectangle meets the real
+                ray ``ε ≥ 0``: the branch cut of ``√ε``, with ``ε = 0`` on it.
+        """
+        if np.imag(self.wavelength) != 0.0:
+            raise ValueError(
+                "eigenpermittivities needs a real wavelength: a modal permittivity "
+                "is defined at a fixed real frequency"
+            )
+        n_clad2 = self.solver.materials[0].n_clad ** 2
+        lo, hi = complex(eps_lo) / n_clad2, complex(eps_hi) / n_clad2
+        if lo.imag <= 0.0 <= hi.imag and hi.real >= 0.0:
+            raise ValueError(
+                f"the rectangle {eps_lo}..{eps_hi} meets the real ray eps >= 0, the "
+                f"branch cut of sqrt(eps) (conventions sec. 18). Keep it below "
+                f"the positive real axis, or strictly left of 0."
+            )
+        size = self._reduced_at(lo).shape[0]
+        found = beyn_modes(
+            self._reduced_at,
+            lo,
+            hi,
+            n_quad_per_side=n_quad_per_side,
+            n_probe=min(n_probe, size),
+            rank_tol=rank_tol,
+        )
+        polished = [
+            newton_refine(
+                self._reduced_at,
+                self._reduced_derivative,
+                eps,
+                found.vectors[:, k],
+                lo,
+                hi,
+                tol=tol,
+                max_iter=max_iter,
+            )
+            for k, eps in enumerate(found.eigenvalues)
+        ]
+        eps_rel = np.array([m.eigenvalue for m in polished], dtype=complex)
+        order = np.lexsort((eps_rel.imag, eps_rel.real))
+        vectors = np.empty((self.solver.cluster.n_dof, order.size), dtype=complex)
+        for col, k in enumerate(order):
+            vectors[:, col] = self._mode_vector(eps_rel[k], polished[k].vector)
+        return EigenpermittivityResult(
+            eps=eps_rel[order] * n_clad2,
+            vectors=vectors,
+            converged=np.array([polished[k].converged for k in order], dtype=bool),
+            rank=found.rank,
+            sv_ratio=found.sv_ratio,
         )

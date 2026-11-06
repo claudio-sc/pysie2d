@@ -1,0 +1,167 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=2.1cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{graphicx,booktabs,xcolor,enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{caption,float}
+\captionsetup{font=small,labelformat=empty,skip=2pt}
+\definecolor{acc}{HTML}{C0392B}
+\definecolor{muted}{HTML}{666666}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlist{nosep,leftmargin=1.2em}
+\newcommand{\vb}[1]{\boldsymbol{#1}}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\br}[1]{\langle #1 |}
+\newcommand{\kt}[1]{| #1 \rangle}
+\newtcolorbox{plain}[1]{colback=acc!4,colframe=acc!60,boxrule=0.5pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt,title={#1},coltitle=black,colbacktitle=acc!12,fonttitle=\bfseries}
+\pagestyle{plain}
+
+\begin{document}
+
+{\Large\bfseries From a volume to a boundary: the paper's mode expansion for a 2-D particle}\par
+\vspace{2pt}
+{\color{muted} Companion note to Chen, Bergman and Sivan (arXiv 1711.00335; Phys.\ Rev.\ Applied 11, 044018, 2019), equations (21) and (26).
+Prepared for Claudio Silvestre Castro, 4 November 2026. Equation numbers in brackets like (9) are the paper's; primed ones like (21$'$) are this note's.}
+
+\section*{1\quad The paper in three lines}
+
+The paper writes the field as its equation (11), $\vb E = \vb E_0 + (\eps_i-\eps_b)\,\hat\Gamma\hat\theta\,\vb E$, where $\hat\Gamma\hat\theta$ means ``integrate the background Green function against the field, over the particle only''. Moving the unknown to one side:
+\begin{equation}
+M(\eps_i)\,\vb E=\vb E_0,\qquad M(\eps_i)=1-(\eps_i-\eps_b)\,\hat\Gamma\hat\theta .
+\tag{A}
+\end{equation}
+The particle permittivity $\eps_i$ appears once, as a number in front of a fixed operator: \textbf{$M$ is a straight line in $\eps_i$.}
+
+A mode is a value $\eps_m$ and a field $\vb E_m$ with $M(\eps_m)\vb E_m=0$, that is $\hat\Gamma\hat\theta\,\vb E_m=s_m\vb E_m$ with $s_m=1/(\eps_m-\eps_b)$, equations (9)--(10). Each mode is scaled so that $\br{E_m}\hat\theta\kt{E_m}=\int_{\text{particle}}\vb E_m\cdot\vb E_m\,d\vb r=1$, equation (16), with no complex conjugate, equation (34). The two results are
+\begin{align*}
+\vb E &= \vb E_0+\sum_m \vb E_m\,\frac{\eps_i-\eps_b}{\eps_m-\eps_i}\,\br{E_m}\hat\theta\kt{E_0}, \tag{21}\\
+\bar{\bar G}(\vb r,\vb r') &= \bar{\bar G}_0(\vb r,\vb r')+\frac1{k^2}\sum_m \frac{\eps_i-\eps_b}{(\eps_m-\eps_i)(\eps_m-\eps_b)}\,\vb E_m(\vb r)\otimes\vb E_m(\vb r'). \tag{26}
+\end{align*}
+
+\section*{2\quad The same problem written on the boundary}
+
+For a long cylinder, Maxwell's equations reduce to one field component $\psi$ along the axis ($E_y$ or $H_y$). Instead of the field inside the particle, the unknowns are two functions on the boundary curve: the field $\varphi=\psi$ and its outward slope $\chi=\partial\psi/\partial n$. With $n$ boundary points they form one vector $x=[\varphi;\chi]$ of $2n$ numbers (Fig.~1).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{fig1.pdf}
+\caption*{\textbf{Fig.\ 1.} (a) The unknowns sit on the boundary. (b) The matrix: the outside rows use the background Green function $g_b$ (any slab included) and never see $\eps_i$; only the inside rows change with $\eps_i$.}
+\end{figure}
+\vspace{-6pt}
+
+Green's identity gives two sets of $n$ equations each (Fig.~1b):
+\begin{itemize}
+\item \textbf{outside rows}, built with $g_b$: \quad $A\varphi+B\chi=b$, where $b_j=\psi_0(\text{point } j)$ is the incident field on the boundary;
+\item \textbf{inside rows}, built with the outgoing wave $H_0^{(1)}(k_i|\vb r-\vb r'|)$ at the inside wavenumber $k_i=k\sqrt{\eps_i}$: \quad $C(\eps_i)\varphi+\eta\,D(\eps_i)\chi=0$, with $\eta=\eps_i/\eps_b$ for $H_y$ and $\eta=1$ for $E_y$.
+\end{itemize}
+\begin{equation}
+M(\eps_i)\,x=\begin{bmatrix}b\\0\end{bmatrix},\qquad
+\psi(\vb r)=\psi_0(\vb r)+P(\vb r)\,x\quad\text{(field at any outside point $\vb r$)}.
+\tag{B}
+\end{equation}
+$P(\vb r)$ is a fixed row of numbers: the field at $\vb r$ radiated by the boundary values (pysie2d's \texttt{eval\_field}).
+
+\textbf{The one difference that matters:} $\eps_i$ now sits \emph{inside} the Green function, through $\sqrt{\eps_i}$. So $M$ is a curve in $\eps_i$, not a straight line.
+
+\section*{3\quad The weight of one mode, in four lines}
+
+A mode is a value $\eps_m$ and a vector $v_m$ with $M(\eps_m)v_m=0$: boundary values of a field that exists with no incident wave. Each mode also has a row partner $w_m$ with $w_m^{T}M(\eps_m)=0$. In the paper the partner is the mode itself ($\br{E_m}\hat\theta$, equation 34); on the boundary $M$ is not symmetric, so $w_m$ is a different vector, computed alongside $v_m$.
+
+Multiply (B) on the left by $w_m^T$. Because $w_m^TM(\eps_m)=0$, we can subtract it for free:
+\[
+w_m^T\big[M(\eps_i)-M(\eps_m)\big]\,x=w_m^T b .
+\]
+Close to $\eps_m$: $M(\eps_i)-M(\eps_m)\approx(\eps_i-\eps_m)\,M'(\eps_m)$, with $M'=dM/d\eps_i$, and one mode dominates, $x\approx c_m v_m$. Therefore
+\begin{equation}
+c_m(\eps_i)=\frac{w_m^T b}{(\eps_i-\eps_m)\,N_m},\qquad N_m=w_m^T M'(\eps_m)\,v_m .
+\tag{C}
+\end{equation}
+$N_m$ replaces the paper's scaling (16). Only the inside rows of $M'$ are non-zero.
+
+\textbf{Check against the paper.} For (A): $M'=-\hat\Gamma\hat\theta$ and $w_m=\br{E_m}\hat\theta$, so $N_m=-s_m\br{E_m}\hat\theta\kt{E_m}=-s_m$. Then (C) gives
+$c_m=\br{E_m}\hat\theta\kt{E_0}\,(\eps_m-\eps_b)/(\eps_m-\eps_i)$: exactly the weight in the paper's equation (19). For a straight line both ``$\approx$'' are exact, because the partners of different modes do not mix ($w_m^TM'v_n=0$ for $n\neq m$).
+
+\section*{4\quad What is left over}
+
+\begin{plain}{Keldysh's theorem, in plain words}
+Let $M(\eps)$ be a matrix whose entries change smoothly with complex $\eps$. Near each mode value $\eps_m$ (a mode that is not repeated), its inverse looks like a single fraction:
+\[
+M(\eps)^{-1}\approx \frac{v_m\,w_m^T}{(\eps-\eps_m)\,N_m}.
+\]
+Subtract these fractions for all modes in a region of the complex $\eps$ plane. What remains has no blow-ups in that region and changes smoothly with $\eps$. {\color{muted}(M.\ V.\ Keldysh, 1951.)}
+\end{plain}
+
+The same idea with ordinary numbers, $1/f(\eps)$ instead of a matrix inverse:
+\begin{itemize}
+\item a straight line, $f=a(\eps-\eps_1)$: $\;1/f=1/[a(\eps-\eps_1)]$ exactly, so nothing is left over;
+\item a curve, $f=e^{\eps}-1$, which is zero at $\eps=2\pi i\ell$ for every whole number $\ell$:
+\[
+\frac1{e^{\eps}-1}=-\frac12+\sum_{\ell}\frac1{\eps-2\pi i \ell}\qquad(\text{adding $\ell$ and $-\ell$ together}).
+\]
+\end{itemize}
+Even with every zero included, $-\tfrac12$ is left over.
+
+So, for any $M$:
+\begin{equation}
+x(\eps_i)=\sum_m c_m(\eps_i)\,v_m+x_{\text{smooth}}(\eps_i).
+\tag{D}
+\end{equation}
+
+\textbf{In the paper (straight line) the leftover does not depend on $\eps_i$.} From (19)--(20), the leftover is $\vb E_0-\sum_m \vb E_m\br{E_m}\hat\theta\kt{E_0}$, with no $\eps_i$ in it; it vanishes inside the particle (equation 15). Equation (21) folds this constant back into $\vb E_0$, using
+\[
+\frac{\eps_m-\eps_b}{\eps_m-\eps_i}=1+\frac{\eps_i-\eps_b}{\eps_m-\eps_i}.
+\]
+That is where (21)'s factor $(\eps_i-\eps_b)/(\eps_m-\eps_i)$ comes from.
+
+\textbf{On the boundary (curve) the leftover changes with $\eps_i$}, smoothly. It also collects every mode you did not include. A few exact solves pin it down.
+
+\section*{5\quad The boundary versions of (21) and (26)}
+
+Put (C) and (D) into (B). With $F_m(\vb r)=P(\vb r)\,v_m$, the field of mode $m$ outside the particle:
+\begin{equation}
+\psi(\vb r)=\psi_0(\vb r)+\sum_m F_m(\vb r)\,\frac{w_m^T b}{(\eps_i-\eps_m)\,N_m}+P(\vb r)\,x_{\text{smooth}}(\eps_i).
+\tag{21$'$}
+\end{equation}
+For a line source at $\vb r'$, the incident field is $g_b(\vb r,\vb r')$ and $b_j=g_b(\text{point } j,\vb r')$. The overlap $w_m^Tb$ becomes $\tilde F_m(\vb r')=\sum_j w_{m,j}\,g_b(\text{point } j,\vb r')$:
+\begin{equation}
+G(\vb r,\vb r')=g_b(\vb r,\vb r')+\sum_m \frac{F_m(\vb r)\,\tilde F_m(\vb r')}{(\eps_i-\eps_m)\,N_m}+P(\vb r)\,x_{\text{smooth}}(\eps_i;\vb r').
+\tag{26$'$}
+\end{equation}
+$\tilde F_m$ plays the part of the paper's ``adjoint'' mode $\vb E^\dagger_m$. Equation (34) says $\vb E^\dagger_m=\vb E_m$. Here, the response at $\vb r$ to a source at $\vb r'$ equals the response at $\vb r'$ to a source at $\vb r$; that forces $\tilde F_m=\kappa_m F_m$ for a constant $\kappa_m$. Checked with pysie2d for two modes of a particle with no symmetry, at five points: equal to 1 part in $10^{14}$. So (26$'$) has the paper's shape, with the term $F_m(\vb r)F_m(\vb r')\,\kappa_m/[(\eps_i-\eps_m)N_m]$.
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{3.1cm}p{6.1cm}p{6.6cm}@{}}
+\toprule
+ & \textbf{Volume (paper)} & \textbf{Boundary (2-D particle, pysie2d)}\\
+\midrule
+unknown & $\vb E(\vb r)$ inside the particle & $\varphi,\chi$ at $n$ boundary points\\
+how $\eps_i$ enters & number $(\eps_i-\eps_b)$ in front of $\hat\Gamma\hat\theta$ & inside the Green function, via $k\sqrt{\eps_i}$\\
+mode & $\hat\Gamma\hat\theta\vb E_m=s_m\vb E_m$ & $M(\eps_m)v_m=0$\\
+partner & $\br{E_m}\hat\theta$, the mode itself & $w_m$ with $w_m^TM(\eps_m)=0$, a different vector\\
+scaling & $\br{E_m}\hat\theta\kt{E_m}=1$ & $N_m=w_m^TM'(\eps_m)v_m$\\
+overlap with source & $\int_{\text{particle}}\vb E_m\cdot\vb E_0\,d\vb r$ & $\sum_j w_{m,j}\,\psi_0(\text{point } j)$, outside rows only\\
+weight & $(\eps_i-\eps_b)/(\eps_m-\eps_i)$ & $1/[(\eps_i-\eps_m)N_m]$\\
+leftover & constant in $\eps_i$, folded into $\vb E_0$ & smooth in $\eps_i$; fitted from a few exact solves\\
+layered background & layered Green function inside every mode calculation (9) & $g_b$ only in the outside rows, at the real wavelength, built once\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{6\quad How well it works}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{fig2.pdf}
+\caption*{\textbf{Fig.\ 2.} Rounded triangle 140\,nm above a 400\,nm silicon nitride slab in silica, 1550\,nm, $H_y$. Amplitude of the slab's guided wave under a plane wave, versus the particle permittivity.}
+\end{figure}
+\vspace{-6pt}
+
+The six mode terms alone (dashed) miss by 19--39\,\%. Modelling the leftover as $a+b\,\eps_i+c\,\eps_i^2$, from three exact solves in each of the three ranges (red; the middle range is shaded), brings the error to 0.14--1.5\,\%, except near $\eps_i=-\eps_b$ (28\,\%). There, many sharp modes crowd together and no short formula captures them; the paper meets the same crowding.
+
+\end{document}

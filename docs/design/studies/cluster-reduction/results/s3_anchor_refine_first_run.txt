@@ -1,0 +1,31 @@
+=== D'. TM anchor with Newton polish on every operator; top edge pulled down from the accumulation at ε=-1
+-- box (-2-1.5j)..(-0.2-0.15j)
+d=   300: counts M 6 G 6 Graf 6; polished |M-G| 3.1e-16, |M-Graf(12)| 3.1e-10; Graf 8v12 5.7e-07, 10v12 1.3e-08
+d=   400: M singular spectrum has no rank gap but A0 did not cancel (cancellation ; G singular spectrum has no rank gap but A0 did not cancel (cancellation ; Graf n10 finds 5: [-1.600384-1.051353j -1.572602-0.514836j -1.537998-0.328217j
+ -0.448018-1.165891j -0.414416-0.808527j]
+d=  1000: counts M 7 G 7 Graf 7; polished |M-G| 7.0e-16, |M-Graf(12)| 7.0e-16; Graf 8v12 1.7e-15, 10v12 7.0e-16
+-- box (-2-1.5j)..(-0.2-0.25j)
+d=   300: counts M 5 G 5 Graf 5; polished |M-G| 4.7e-16, |M-Graf(12)| 3.1e-10; Graf 8v12 5.7e-07, 10v12 1.3e-08
+d=   400: counts M 5 G 5 Graf 5; polished |M-G| 6.3e-16, |M-Graf(12)| 2.9e-14; Graf 8v12 8.0e-10, 10v12 4.9e-12
+d=  1000: counts M 6 G 6 Graf 6; polished |M-G| 8.0e-16, |M-Graf(12)| 7.7e-16; Graf 8v12 2.0e-15, 10v12 8.9e-16
+
+=== F'. cancellation, then one and two steps of iterative refinement with the same reduced factors
+|ε−ε_iso|=1e-02: err 2.9e-13 → 1 step 9.3e-14 → 2 steps 1.1e-13;  guard ‖a‖/‖x‖=4.6e-01
+|ε−ε_iso|=1e-06: err 3.3e-11 → 1 step 1.4e-10 → 2 steps 1.4e-10;  guard ‖a‖/‖x‖=2.4e+03
+|ε−ε_iso|=1e-08: err 2.3e-09 → 1 step 1.9e-08 → 2 steps 1.9e-08;  guard ‖a‖/‖x‖=2.4e+05
+|ε−ε_iso|=1e-10: err 4.3e-07 → 1 step 1.4e-06 → 2 steps 1.4e-06;  guard ‖a‖/‖x‖=2.4e+07
+|ε−ε_iso|=1e-12: err 4.1e-05 → 1 step 3.0e-04 → 2 steps 3.0e-04;  guard ‖a‖/‖x‖=2.4e+09
+
+=== G. the exterior irregular frequency: k_bg·a = j01, driven observable vs Mie (single circle)
+  TE δλ/λ=1e-01: σmin/σmax=1.6e-02  Q_ext BIE=2.836699035947 Mie=2.836699035947 rel err 1.1e-15
+  TE δλ/λ=1e-03: σmin/σmax=1.4e-03  Q_ext BIE=3.345454102553 Mie=3.345454102553 rel err 4.4e-14
+  TE δλ/λ=1e-06: σmin/σmax=1.5e-06  Q_ext BIE=3.349915915341 Mie=3.349915915507 rel err 5.0e-11
+  TE δλ/λ=1e-09: σmin/σmax=1.5e-09  Q_ext BIE=3.349920191550 Mie=3.349920359215 rel err 5.0e-08
+  TE δλ/λ=1e-12: σmin/σmax=1.5e-12  Q_ext BIE=3.349764850157 Mie=3.349920363659 rel err 4.6e-05
+  TE δλ/λ=0e+00: σmin/σmax=4.6e-16  Q_ext BIE=2.793064708591 Mie=3.349920363663 rel err 1.7e-01
+  TM δλ/λ=1e-01: σmin/σmax=2.6e-02  Q_ext BIE=2.180193072621 Mie=2.180193072621 rel err 8.1e-16
+  TM δλ/λ=1e-03: σmin/σmax=1.6e-03  Q_ext BIE=2.622747222227 Mie=2.622747222227 rel err 3.7e-14
+  TM δλ/λ=1e-06: σmin/σmax=1.7e-06  Q_ext BIE=2.627471027943 Mie=2.627471028077 rel err 5.1e-11
+  TM δλ/λ=1e-09: σmin/σmax=1.7e-09  Q_ext BIE=2.627475663936 Mie=2.627475750117 rel err 3.3e-08
+  TM δλ/λ=1e-12: σmin/σmax=1.7e-12  Q_ext BIE=2.627382945147 Mie=2.627475754839 rel err 3.5e-05
+  TM δλ/λ=0e+00: σmin/σmax=3.8e-16  Q_ext BIE=1.763938551064 Mie=2.627475754843 rel err 3.3e-01

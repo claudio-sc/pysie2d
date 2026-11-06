@@ -1,0 +1,4 @@
+ P  | full size | full point | reduced size | reduced point | one-off compression | memory full / reduced (MB)
+  4 |       800 |       16 ms |           96 |           3 ms |            0.04 s   |    10.2 / 0.1
+  8 |      1600 |       71 ms |          214 |           4 ms |            0.12 s   |    41.0 / 0.7
+ 16 |      3200 |      359 ms |          446 |           8 ms |            0.43 s   |   163.8 / 3.2

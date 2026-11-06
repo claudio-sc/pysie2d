@@ -873,6 +873,74 @@ same source would be a magnetic dipole and is refused.
 **Polarisation naming in cross-section.** `pol = 2` (`E_y`) is slab **TE**,
 `pol = 1` (`H_y`) slab **TM**, consistent with §1.
 
+## 18. Fixed-wavelength reduction and eigenpermittivities (v-next)
+
+`ClusterBIESolver.at_wavelength` returns a `ClusterEigenEps`. It solves the same
+matrix as §14, by a different route.
+
+**The split.** `M(ε) = D(ε) + U·Y`. `D` holds the isolated particles, each with its
+own substrate reflection. `U·Y` is the neighbour coupling, compressed by SVD at
+`1e-13` of the largest singular value, per receiving particle. Only the interior
+rows of `D` depend on ε: that is the zero lower half of §14's off-diagonal blocks,
+and it is why `U` is padded with zeros in the interior rows.
+
+**The solve.** With `R_p = M_p⁻¹·[U_p; 0]` and `G = I + Y·D⁻¹·U`,
+
+    x_p = a_p − R_p·y_p,    a_p = M_p⁻¹·b_p,    G·y = Y·a
+
+**Every solve refines once, against the full residual.** `x = a − R·y` cancels when a
+particle is near resonance on its own and the cluster is not, reaching 5e-5 at
+`|ε − ε_iso| = 1e-12`. No a-priori ratio detects this: `‖a‖/‖x‖` tracks the error for a
+random right-hand side, but stays at 0.26 for a plane wave that does not drive the
+resonance, while the error is the same. So the size of the refinement step is the
+measurement. The residual `b − M·x` has non-zero **interior** rows, so the Woodbury
+apply must take a right-hand side in all rows; dropping them looks exactly like
+refinement failing.
+
+**Public ε is absolute; internals are background-relative.** The one conversion, by
+`n_clad²`, is in `eigenpermittivities`: §2's rule, applied to ε. A result goes directly
+into `Material.from_eps`.
+
+**The branch.** Modes use `√ε = i·√(−ε)`, cut on `[0, ∞)`, and a contour meeting that
+ray raises. `ε = 0`, an exact TM singularity (`σ_min ∝ |ε|`), is on the ray. The
+principal root would add exact singularities at `H_n^{(1)}(√ε·x) = 0` with no physical
+mode. The two roots coincide for Im ε > 0. Driven solves use `Material.nc`, the
+principal root, unchanged, which is also why they agree bit for bit with §14 at gain.
+
+**Why `G` is a legal contour operator**, despite `beyn_modes`' warning that poles of
+`M` invalidate its rank argument. `G` has poles at isolated-particle modes, but Woodbury
+gives
+
+    G⁻¹ = I − Y·M⁻¹·U
+
+exactly, so those cancel in `G⁻¹`, the only thing the contour integrates, and `G⁻¹` has
+poles only at modes of the cluster. The residue is `∝ Y·v`. It vanishes only if the
+mode's field is zero on every neighbour's boundary, and an outgoing field that vanishes
+on a curve vanishes throughout the exterior. The remaining way to lose a mode is
+truncation: a Q ≈ 7e12 pair is found at `1e-13` and lost at `1e-7`.
+
+**Polish with `dG/dε = −Y·D⁻¹·(dD/dε)·D⁻¹·U`,** differencing only the interior rows.
+They are smooth in ε; `G` itself has a pole closer than any usable step at high Q.
+
+**What the modes have been checked against.** Free space: the analytic circle, with the
+count from the argument principle, and two circles by a Graf determinant. PEC: the
+mirror image. **Over a dielectric half-space and a `Stack`, only a pole fitted to this
+package's own passive driven solves, ≈ 5e-7. No external reference.** A transparent
+stack is not a check: `_effective` turns it into no background, so it cannot fail.
+
+**Two existing behaviours, found while measuring this and not fixed:**
+
+- **`QNMSolver` reports a false mode at the zeros of `H_n^{(1)}(n_core·k·a)`,** with the
+  principal root at complex λ. For a circle of `a = 100`, `n_core = 1.5`, TE, it returns
+  a doubly degenerate `221.63 + 661.24i` nm, `Q ≈ 0.17`, whose left null vector is
+  entirely interior rows. No Mie denominator for `n = 0…12` is near zero there (the
+  smallest is 25 % of its terms); the true `n = 2` pole is near `264.8 + 52.4i`. Treat a
+  very low-Q mode with suspicion. See `docs/qnm-guide.md` §6.
+- **The exterior irregular frequency.** At an interior Dirichlet eigenvalue of `k_bg`,
+  `k_bg·a = j₀₁` on a circle, the exterior rows lose rank for every ε. `Q_ext` is then
+  silently wrong, by 17 % (TE) and 33 % (TM) at exactly that λ for `n_core = 1.5`. The
+  window is narrow: 5e-11 at `δλ/λ = 1e-6`, 5e-8 at `1e-9`.
+
 ## Formulation and validation references
 
 - Bohren & Huffman, *Absorption and Scattering of Light by Small Particles*,
