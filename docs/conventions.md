@@ -873,7 +873,7 @@ same source would be a magnetic dipole and is refused.
 **Polarisation naming in cross-section.** `pol = 2` (`E_y`) is slab **TE**,
 `pol = 1` (`H_y`) slab **TM**, consistent with §1.
 
-## 18. Fixed-wavelength reduction and eigenpermittivities (v-next)
+## 18. Fixed-wavelength reduction and eigenpermittivities (package v1.3.0)
 
 `ClusterBIESolver.at_wavelength` returns a `ClusterEigenEps`. It solves the same
 matrix as §14, by a different route.
