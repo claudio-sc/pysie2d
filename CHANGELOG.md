@@ -2,6 +2,47 @@
 
 <!-- version list -->
 
+## v1.3.0 (2026-11-06)
+
+### Code Style
+
+- Wrap ClusterEigenEps docstring
+  ([`2260906`](https://github.com/claudio-sc/pysie2d/commit/22609069fb9c9bfb2b016312571530e5c4752813))
+
+### Documentation
+
+- Cluster reduction code-spec, draft 1
+  ([`9e2ee2b`](https://github.com/claudio-sc/pysie2d/commit/9e2ee2b102df2cf120168645fa0a0fde3d5cfcfb))
+
+- Cluster reduction guide, performance, build record, false QNM note
+  ([`baaf56a`](https://github.com/claudio-sc/pysie2d/commit/baaf56a1db007a1906c04695e70e871406a96a68))
+
+- Cluster reduction study, prototype and measurements
+  ([`db5107a`](https://github.com/claudio-sc/pysie2d/commit/db5107aeab92d8723860392b05314159be2a2440))
+
+- Move the MEEP LDOS run (R6) out of v1.3
+  ([`9ea299c`](https://github.com/claudio-sc/pysie2d/commit/9ea299c867548fdffb31c746199e897cacef91df))
+
+- Record cluster reduction owner decisions
+  ([`378baf1`](https://github.com/claudio-sc/pysie2d/commit/378baf186f892e28c0d65f0e2105e71a68b822ba))
+
+- Record v1.3 closed in CLAUDE.md
+  ([`a14e407`](https://github.com/claudio-sc/pysie2d/commit/a14e4078cf335f8aefaeb74cacc40666d8e25a87))
+
+### Features
+
+- Cluster eigenpermittivities on the reduced operator
+  ([`dc0fac2`](https://github.com/claudio-sc/pysie2d/commit/dc0fac22934f2ab9ab466832040f016e67079ea9))
+
+- ClusterEigenEps, fast cluster solves over many materials at one wavelength
+  ([`99cdd90`](https://github.com/claudio-sc/pysie2d/commit/99cdd906f7745abbaabf965714a25e262e914ff4))
+
+### Refactoring
+
+- Split cluster exterior rows, interior rows and right-hand sides
+  ([`25475c1`](https://github.com/claudio-sc/pysie2d/commit/25475c1fd4f5a6c70796a06b0914183c8c04b0a9))
+
+
 ## v1.2.1 (2026-10-27)
 
 ### Bug Fixes
