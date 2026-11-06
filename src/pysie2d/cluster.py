@@ -1420,8 +1420,8 @@ class ClusterEigenEps:
 
     Setup costs about one ``scatter`` call (slab: 65 s at 32 particles, nearly all of
     it the reflected-block assembly), so it pays for itself within the first few
-    materials. It does **not** speed up a sweep in wavelength, where everything changes at each step
-    and only very large clusters gain.
+    materials. It does **not** speed up a sweep in wavelength, where everything changes
+    at each step and only very large clusters gain.
 
     **How.** Split the coupled matrix as ``M(ε) = D(ε) + U·Y``, with ``D`` the isolated
     particles, substrate included, and ``U·Y`` the SVD-compressed neighbour coupling.
