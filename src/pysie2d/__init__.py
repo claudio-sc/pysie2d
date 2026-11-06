@@ -58,6 +58,10 @@ Public API:
     ClusterScatterResult: the coupled solution, with the total far field,
         absolute cross-sections and near fields. Deliberately no
         ``efficiencies()`` (a cluster has no ``rad``) and no ``multipoles()``.
+    ClusterEigenEps: from ``ClusterBIESolver.at_wavelength``; solves one cluster for
+        many materials at one wavelength far faster than ``scatter``, to round-off,
+        and finds its eigenpermittivities (``EigenpermittivityResult``).
+        ``ClusterCancellationWarning`` flags a solve it could not make accurate.
     ClusterOverlapError, ClusterGapWarning, ClusterResolutionWarning: the
         cluster geometry guards — overlapping boundaries, a gap too small for
         the resolution in use, and a particle far coarser than its neighbours.
@@ -86,10 +90,13 @@ from .background import HalfSpace, NearDegenerateModesError, Stack
 from .cluster import (
     Cluster,
     ClusterBIESolver,
+    ClusterCancellationWarning,
+    ClusterEigenEps,
     ClusterGapWarning,
     ClusterOverlapError,
     ClusterResolutionWarning,
     ClusterScatterResult,
+    EigenpermittivityResult,
 )
 from .fields import eval_field, far_field
 from .geometry import Geometry
@@ -133,10 +140,13 @@ __all__ = [
     "BIESolver",
     "Cluster",
     "ClusterBIESolver",
+    "ClusterCancellationWarning",
+    "ClusterEigenEps",
     "ClusterGapWarning",
     "ClusterOverlapError",
     "ClusterResolutionWarning",
     "ClusterScatterResult",
+    "EigenpermittivityResult",
     "DEGENERATE_COND",
     "Geometry",
     "GuidedMode",
