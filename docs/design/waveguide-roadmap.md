@@ -27,7 +27,7 @@ Owner decisions taken 2026-10-23:
 | R7 | **The 2.5D front end lives in the library**, as a thin layer on the v1.2 mode solver. |
 | R8 | **Out-of-plane loss in 2.5D is a documented limitation**, not estimated. An estimate would be new physics with no anchor. |
 | R9 | **The S-parameter API shape** (layout over mode and direction, phase reference plane) **is settled in the v1.2 code-spec**, with the options laid out there. |
-| R10 | **The 2.5D method is variational EIM** (owner, 2026-10-23), with plain EIM as an option for regions whose stack guides a mode. See v1.4 for the reasons. |
+| R10 | *(Revised by the owner 2026-11-02: the **inverse EIM** of Høvik & Aksnes, IEEE Photon. J. 16, 6600106 (2024), replaces variational EIM. See v1.4.)* ~~The 2.5D method is variational EIM (owner, 2026-10-23), with plain EIM as an option for regions whose stack guides a mode.~~ |
 
 Owner decisions taken 2026-10-25, before the v1.2 code-spec. The goal they serve
 is a **shape optimisation of a scatterer that couples light into the slab**.
@@ -183,39 +183,77 @@ with TM complex t a strict xfail at 1.3× its MEEP-only tolerance
 One study closes three gaps from §6 at once: a non-circular **cluster**, a
 **layered background** with driven observables, and the **new mode channel**.
 
-### v1.4 — 2.5D effective-index front end
+### v1.4 — 2.5D front end by inverse EIM
 
-- `effective_index(stack, wavelength, pol, order)` from the v1.2 mode solver,
-  and a helper that turns a chip layout (vertical stack per region) into the 2D
-  problem: background `Stack` of n_eff values plus particles of n_eff.
-- In the library (R7). **The method is variational EIM (R10)**, the
-  approximation varFDTD is built on. One reference vertical profile Ψ_ref(z)
-  (the slab mode of a reference stack at a reference wavelength) is assumed
-  everywhere, and each region's ε₂D is the overlap of its real stack with
-  |Ψ_ref|², weighted by 1/ε in the TM-like case. The exact form is derived and
-  verified in the v1.4 spec. Reasons:
-  - **Plain EIM is undefined exactly where R1's scatterers sit.** A thin metal
-    antenna, a short pillar or any region with no core under it guides no slab
-    mode, so it has no local n_eff. The overlap is always defined.
-  - It is the same approximation as the stated comparison target.
-  - At complex λ only Ψ_ref needs continuing; the overlaps are plain integrals.
+The method is the **inverse effective index method** (R10, revised 2026-11-02;
+Høvik & Aksnes, IEEE Photon. J. 16, 6600106, 2024). Plain EIM solves the side
+view for n_eff and uses it as the top-view core index. Inverse EIM goes the
+other way round:
 
-  Plain EIM (a local slab mode per region, ε₂D = n_eff²) stays available as an
-  option for regions whose stack guides a mode. The reference stack and the
-  reference wavelength are explicit, required inputs, and each frozen comparison
-  records them.
-- **What it cannot do, stated in the docstrings and README:** out-of-plane
-  radiation (R8: documented, not estimated). A 2.5D model loses power scattered into the substrate and cover
-  in 3D, and for a scatterer beside a waveguide that loss is often the quantity
-  of interest. It also cannot see vertical-mode conversion.
-- **Validation.** The 2D solve is anchored by v1.2/v1.3. The **approximation**
-  itself has no closed form, and only a 3D solver can measure it. The deliverable
-  is a characterised error on one canonical case (e.g. an SOI strip with a
-  side-coupled pillar) against MEEP 3D, frozen like v1.0, with the error
-  reported as an error of the model, never as a tolerance of the code.
-- **Conventions it breaks, by construction:** n_eff(λ) is dispersive even for
-  non-dispersive materials, so scale covariance (§9) does not hold for the 2.5D
-  problem as a function of λ. It still holds for the 2D solve at fixed indices.
+1. Take β of the real 3D waveguide (its rectangular cross-section, from a
+   vectorial mode solver).
+2. Pick the top-view core index n_2D for which the 2D slab of the same width
+   (core n_2D, lateral cladding n_cl) guides exactly that β. One real root of
+   the slab dispersion relation, with n_2D the unknown instead of n_eff.
+
+The 2D waveguide then reproduces the 3D propagation constant **by
+construction**, at each λ. The paper reports < 0.01 % error in β for every
+geometry, against up to 17 % for plain EIM; plain EIM stays available as an
+option.
+
+- **The inversion reuses v1.2.** The top-view slab is a `Stack`, so step 2 is a
+  scalar root-find on `Stack.guided_modes`. Top-view in-plane E (3D TE-like)
+  is pysie2d `pol = 1`, the paper's eq. (2); 3D TM-like is `pol = 2`, eq. (1)
+  (see §3, *Polarisation in 2.5D*).
+- **What it pins and what it does not.** Inverse EIM matches the guided mode's
+  β and nothing else. It says nothing about a scatterer's 2D index, the mode's
+  profile or the coupling strength. Those are where the 2.5D error lives, and
+  only a 3D solve measures them.
+- **Out-of-plane radiation** is still lost (R8: documented, not estimated).
+- **Dispersion.** n_2D(λ) is a fit at each λ, so scale covariance (§9) does not
+  hold for the 2.5D problem as a function of λ. It still holds for the 2D solve
+  at fixed indices.
+- **Validation.** Step 2 is self-consistent by construction, which proves
+  nothing. The anchors are the paper's published case (500 × 220 nm SOI at
+  1550 nm, air cover: plain-EIM n_eff = 2.825, inverse-EIM n_2D = 2.763) and a
+  3D MEEP reference for the coupling to a scatterer, frozen like v1.0. Its
+  difference from the 2.5D answer is reported as an error of the model, never
+  as a tolerance of the code. Sizing: serial MEEP fits up to 20 nm voxels (res
+  50, 3.8 GB, about 1.5 h per 4-sub-band run).
+- **Status, 2026-11-04.** Paper reproduction R1–R3 done
+  ([studies/inverse-eim/](studies/inverse-eim/README.md)); the paper's top view
+  uses air | oxide lateral claddings. 3D MEEP case
+  (`validation/meep/run_strip3d.py`): the paper's air-clad 500 × 220 nm strip,
+  TE₀, 1500–1650 nm, a Si pillar beside it (r = 250 nm, 220 nm tall, 60 nm
+  gap); ladder res 25/30/40/50 run (6.6 h single core). **Open defect:** with
+  PML in the cell, MEEP's plane mode solver (source and monitors) returns
+  n_eff 2.297 at res 40, while MPB, MEEP's own solver in a periodic cell
+  without PML, and the FDTD wave's phase advance (2.390 → 2.385, res 40 → 50)
+  agree on ≈ 2.38. The profile is still TE₀ (overlap 0.9966); the owner
+  accepted the ladder with the measured bound (< 3e-4 in |t|²). The comparison
+  rule is fixed in the study README, before any pysie2d number.
+- **Owner decisions, 2026-11-02.**
+  - **R21 — β is user input.** The front end takes the 3D cross-section's n_eff
+    from any mode solver and only inverts it. A tabulated MPB n_eff dataset is
+    planned for a later release; a built-in vectorial mode solver is not.
+  - **R22 — scatterers share the waveguide's n_2D.** Every region with the same
+    vertical stack gets the same 2D index. The 3D MEEP reference measures what
+    this costs; it does not choose the rule, so it blocks no code.
+  - **R23 — real λ only.** The front end takes real wavelengths, so 2.5D QNMs
+    are out of scope (they belong with the slab QNMs). The 2D solve it feeds
+    keeps complex k, so non-negotiable 1 holds.
+- **Owner decision, 2026-11-07.**
+  - **R24 — lateral claddings: paper default, any pair allowed.** The top-view
+    slab's two lateral claddings are two real indices in fixed geometric order,
+    (−x side, +x side). Any values are accepted. The default is the paper's
+    air | oxide: (cover index, substrate index) of the stack, with the cover
+    index on the particles' side when all particles sit on one side; particles
+    on both sides need an explicit pair. Physically both sides are the same
+    stack, so the asymmetric default is a convention, chosen because it alone
+    agrees with the 3D MEEP reference (study README, 679e5b6). That check had
+    the pillar on the cover-index side only; a particle on the other side is
+    allowed and documented as unvalidated, with no warning. The code-spec pins
+    the signature.
 
 ### Later, unscheduled
 
@@ -291,15 +329,9 @@ qnm-guide limitation in §4) were fixed on 2026-10-24.
 
 ## 8. Still open
 
-The owner decisions are R1–R10 (§1). What is left is measured, not chosen:
-
-- **Negative ε₂D.** For strong local contrast the variational overlap can fall
-  below the cladding value or go negative. `Material.from_eps` can express that.
-  But the slab TE₀ case maps to `pol = 1`, where a lossless negative-ε region
-  supports surface-plasmon-like modes (compare v1.1's finding 2), and those may
-  be artefacts of the 2D model rather than physics. The v1.4 study checks this
-  against MEEP 3D before any such result is trusted, and the spec states what
-  happens when a region comes out negative.
+The owner decisions are R1–R10 (§1), with R10 revised for v1.4. The variational-EIM
+concern about a negative 2D permittivity no longer applies: inverse EIM's n_2D is a
+real root above the cladding index. v1.4's open items are listed in its section.
 
 ## 9. Next step
 
