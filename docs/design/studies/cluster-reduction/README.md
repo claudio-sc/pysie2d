@@ -132,7 +132,7 @@ flawed run remains in `results/s3_anchor_refine_first_run.txt`, section F′.
 
 At d = 300 the limit is Graf's own truncation: order 10 against 12 differs by
 1.3e-8 in TM. The slab fit needs no contour and no branch choice, and its driven
-path is the one v1.3 compared with MEEP.
+path is the one the roadmap's v1.3 milestone compared with MEEP.
 
 **A transparent stack is not an anchor.** `_effective` turns it into no
 background, so the difference is exactly 0.0 by construction (`s8` K): it cannot

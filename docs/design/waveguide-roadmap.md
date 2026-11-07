@@ -163,6 +163,9 @@ item 6, particles on both sides of the stack (R4), is dropped for now.
 
 ### v1.3 — external validation of waveguide coupling (MEEP)
 
+*In this roadmap and in `validation/`, "v1.3" names this milestone. It released
+nothing (test and docs only); package v1.3.0 is cluster reduction.*
+
 The S-parameters of a **non-circular cluster** beside a slab, against MEEP 2D
 with an eigenmode source and `get_eigenmode_coefficients`. This is a regime
 MEEP does well: real λ, broadband, lossless, low-to-moderate Q. It reuses
