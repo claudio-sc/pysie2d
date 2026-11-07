@@ -239,6 +239,18 @@ option.
   - **R23 — real λ only.** The front end takes real wavelengths, so 2.5D QNMs
     are out of scope (they belong with the slab QNMs). The 2D solve it feeds
     keeps complex k, so non-negotiable 1 holds.
+- **Owner decision, 2026-11-07.**
+  - **R24 — lateral claddings: paper default, any pair allowed.** The top-view
+    slab's two lateral claddings are two real indices in fixed geometric order,
+    (−x side, +x side). Any values are accepted. The default is the paper's
+    air | oxide: (cover index, substrate index) of the stack, with the cover
+    index on the particles' side when all particles sit on one side; particles
+    on both sides need an explicit pair. Physically both sides are the same
+    stack, so the asymmetric default is a convention, chosen because it alone
+    agrees with the 3D MEEP reference (study README, 679e5b6). That check had
+    the pillar on the cover-index side only; a particle on the other side is
+    allowed and documented as unvalidated, with no warning. The code-spec pins
+    the signature.
 
 ### Later, unscheduled
 
