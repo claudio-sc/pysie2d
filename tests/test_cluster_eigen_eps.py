@@ -608,7 +608,7 @@ def test_mode_over_a_slab_is_a_pole_of_the_driven_response():
 
     Passive driven solves near the real axis, with no contour and no branch choice, are
     fitted to one pole plus a smooth remainder: ε·f = p·f + Σ b_k·ε^k is linear in p.
-    That driven path is the one the MEEP milestone compared. Measured 5.9e-7 at Im ε = 1e-4
+    That driven path is the one compared with MEEP. Measured 5.9e-7 at Im ε = 1e-4
     with 21 solves; the floor is the fit's model error, moving with the window (1.5e-6
     at twice the width), so 5e-6 is ~8× headroom, far below the 8.6e-3 by which a mode
     on the real axis would miss.
