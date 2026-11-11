@@ -194,7 +194,7 @@
 - Material.nc no longer rebuilds Im n from |ε| after v0.8.2
   ([`83ea555`](https://github.com/claudio-sc/pysie2d/commit/83ea55543dcf232f7a5d1b0d2d95742cf7e82741))
 
-- Park the v0.9 heater figure; G9's MEEP anchor stays with v1.0
+- Park a v0.9 LDOS figure; G9's MEEP anchor stays with v1.0
   ([`6e2e13f`](https://github.com/claudio-sc/pysie2d/commit/6e2e13f8209a11aa95e1ed544dc58da0a550f77a))
 
 - Pin the QNM chain factor, G9 procedure and LDOS map below the interface

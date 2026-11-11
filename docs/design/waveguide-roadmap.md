@@ -1,7 +1,8 @@
-# Waveguide-coupled clusters — roadmap (v1.2 → v1.4)
+# Waveguide-coupled clusters — roadmap (v1.2 → v1.3)
 
 **Status: roadmap, 2026-10-23; owner decisions R1–R10 complete. v1.1 shipped
-2026-10-24 as v1.1.0, so v1.2 is unblocked.** This is
+2026-10-24 as v1.1.0, so v1.2 is unblocked. Revised 2026-11-11: the 2.5D
+front end once planned as v1.4 is out of scope (R25).** This is
 the planning document above the code-specs. It fixes the goal, the physics shape, the milestone split, the
 validation anchors and the owner decisions (§1, R1–R10). Each milestone gets its own
 builder-ready code-spec later, in the form of
@@ -10,9 +11,14 @@ builder-ready code-spec later, in the form of
 ## 1. Goal
 
 S-parameters of **arbitrary clusters of scatterers evanescently coupled to a
-slab waveguide**, computed by the boundary-integral solver. Then a 2.5D
-front end, so that a planar photonic-chip layout can be simulated the way
-Lumerical's varFDTD does: in the chip plane, with effective indices.
+slab waveguide**, computed by the boundary-integral solver: how a particle near
+a planar layered background scatters light into its guided modes and into
+radiation. This is the scattering problem behind directional coupling of
+dipoles and nanoantennas to guided modes in nanophotonics (Rodríguez-Fortuño
+et al., [Science 340, 328 (2013)](https://doi.org/10.1126/science.1233739);
+Petersen, Volz and Rauschenbeutel,
+[Science 346, 67 (2014)](https://doi.org/10.1126/science.1257671)). pysie2d
+stays a 2-D scattering solver; it is not a simulator of planar circuit layouts.
 
 Owner decisions taken 2026-10-23:
 
@@ -21,20 +27,20 @@ Owner decisions taken 2026-10-23:
 | R1 | **Scatterers stay outside the core.** No particle intersects or sits inside a layer of the stack. Etched gratings, holes in the core and photonic-crystal waveguides are out of scope. |
 | R2 | **S-parameters first.** QNMs with a slab background come later and are low priority: isolated-cluster QNMs (shipped) guide the design, and the slab-coupled response is read from the driven S-parameters. |
 | R3 | **v1.1 (transmitted fields) stays first** (done: v1.1.0). Its generic τ = T/α₁ and its `P_down` by interface flux are prerequisites. The G14 → GT7 power equality is also the slab's best anchor. |
-| R4 | *(Dropped 2026-10-25, see below.)* **Particles on both sides of the stack**, staged as v1.2 item 6. In the 2.5D top view the strip has two claddings, and side-coupled structures commonly sit on both. |
+| R4 | *(Dropped 2026-10-25, see below.)* **Particles on both sides of the stack**, staged as v1.2 item 6. |
 | R5 | **General N-layer `Stack` in v1.2**, not a three-layer slab first. The gates run on the three-layer case first. |
 | R6 | **v1.3 is a MEEP milestone**: eigenmode S-parameters, plus one MEEP LDOS run that closes a v1.0 gap. |
-| R7 | **The 2.5D front end lives in the library**, as a thin layer on the v1.2 mode solver. |
-| R8 | **Out-of-plane loss in 2.5D is a documented limitation**, not estimated. An estimate would be new physics with no anchor. |
+| R7 | *(Withdrawn 2026-11-11 with the 2.5D front end, R25.)* |
+| R8 | *(Withdrawn 2026-11-11 with the 2.5D front end, R25.)* |
 | R9 | **The S-parameter API shape** (layout over mode and direction, phase reference plane) **is settled in the v1.2 code-spec**, with the options laid out there. |
-| R10 | **The 2.5D method is variational EIM** (owner, 2026-10-23), with plain EIM as an option for regions whose stack guides a mode. See v1.4 for the reasons. |
+| R10 | *(Withdrawn 2026-11-11 with the 2.5D front end, R25.)* |
 
 Owner decisions taken 2026-10-25, before the v1.2 code-spec. The goal they serve
 is a **shape optimisation of a scatterer that couples light into the slab**.
 
 | # | Decision |
 |---|---|
-| R11 | **Cross-section first, top view later.** The first optimisation is a wire (infinite along y) above a slab, which v1.2 makes exact in 2D. The same machinery is carried to the 2.5D top view in v1.4. |
+| R11 | **Cross-section only.** The optimisation is a wire (infinite along y) above a slab, which v1.2 makes exact in 2D. |
 | R12 | **First objective: dipole power into one direction of TE₀**, with an antenna shape. It is normalised to the dipole's total power, so it is a true efficiency, and the power balance (A6) checks every evaluation. |
 | R13 | **S-parameters are complex amplitudes c_m^± plus power fractions** (settles R9). One code path serves power objectives now and phase-sensitive uses later. |
 | R14 | **The phase reference plane `x_ref` is a required argument.** There is no hidden default; \|S\|² does not depend on it. |
@@ -47,14 +53,15 @@ is a **shape optimisation of a scatterer that couples light into the slab**.
 of the stack. Its item 6 is removed from v1.2 below and returns to the roadmap
 only when a design needs it.
 
-## 2. Why this is one reframing, not a new solver
+**R25 — the 2.5D front end is out of scope** (owner, 2026-11-11). pysie2d stays
+a 2-D scattering solver in the cross-section plane. Mapping planar layouts to
+effective-index problems is not part of it, so R7, R8 and R10 are withdrawn and
+the v1.4 milestone is removed.
 
-In varFDTD the vertical direction is folded into an effective index, so the 2D
-computational plane is the **top view of the chip**. A straight waveguide in
-that plane is a strip of `n_eff,core` between claddings of `n_eff,clad`, which
-is a **three-layer background**: the same object as a slab waveguide seen in
-cross-section. Only the coordinate labels change: layers are stacked in `z`,
-and guided modes propagate along `x`.
+## 2. Why a slab is a background, not a new solver
+
+A slab waveguide seen in cross-section is a **three-layer background**: layers
+are stacked in `z`, and guided modes propagate along `x`.
 
 Every piece above the background already exists:
 
@@ -111,12 +118,6 @@ and verified numerically in the v1.2 spec** before it is pinned.
   surface plasmon leak over a lossless metal) is exactly the half-space case
   of the missing `P_guided` term, and this closes it.
 
-**Polarisation in 2.5D** (a convention to pin before code). A slab TE₀ mode
-(E in the chip plane, the dominant SOI mode) has H normal to the chip, so its
-2D top-view problem is pysie2d **`pol = 1`** (labelled TM here). A slab TM₀
-mode maps to `pol = 2`. The names clash, so conventions.md records this in the
-v1.4 commit.
-
 ## 4. Milestones
 
 ### v1.1 — transmitted fields (shipped, v1.1.0)
@@ -142,8 +143,7 @@ Branch `v1.2-slab-waveguide`. Additive.
    The path must pass on the radiation-condition side of each pole: below
    +β, above −β.
 3. **Mode solver.** β_m and u_m(z) for the stack at real λ, TE and TM, all
-   guided orders. The v1.4 effective-index front end reuses it, and so would
-   slab QNMs (complex root-finding, later).
+   guided orders. Slab QNMs would reuse it (complex root-finding, later).
 4. **Mode source and outputs.** `scatter_mode(...)` and the mode amplitudes by
    residue/overlap, on single particles and clusters. **One factorisation
    serves every incident mode and direction**, so a full S-matrix at one λ costs
@@ -182,40 +182,6 @@ with TM complex t a strict xfail at 1.3× its MEEP-only tolerance
 
 One study closes three gaps from §6 at once: a non-circular **cluster**, a
 **layered background** with driven observables, and the **new mode channel**.
-
-### v1.4 — 2.5D effective-index front end
-
-- `effective_index(stack, wavelength, pol, order)` from the v1.2 mode solver,
-  and a helper that turns a chip layout (vertical stack per region) into the 2D
-  problem: background `Stack` of n_eff values plus particles of n_eff.
-- In the library (R7). **The method is variational EIM (R10)**, the
-  approximation varFDTD is built on. One reference vertical profile Ψ_ref(z)
-  (the slab mode of a reference stack at a reference wavelength) is assumed
-  everywhere, and each region's ε₂D is the overlap of its real stack with
-  |Ψ_ref|², weighted by 1/ε in the TM-like case. The exact form is derived and
-  verified in the v1.4 spec. Reasons:
-  - **Plain EIM is undefined exactly where R1's scatterers sit.** A thin metal
-    antenna, a short pillar or any region with no core under it guides no slab
-    mode, so it has no local n_eff. The overlap is always defined.
-  - It is the same approximation as the stated comparison target.
-  - At complex λ only Ψ_ref needs continuing; the overlaps are plain integrals.
-
-  Plain EIM (a local slab mode per region, ε₂D = n_eff²) stays available as an
-  option for regions whose stack guides a mode. The reference stack and the
-  reference wavelength are explicit, required inputs, and each frozen comparison
-  records them.
-- **What it cannot do, stated in the docstrings and README:** out-of-plane
-  radiation (R8: documented, not estimated). A 2.5D model loses power scattered into the substrate and cover
-  in 3D, and for a scatterer beside a waveguide that loss is often the quantity
-  of interest. It also cannot see vertical-mode conversion.
-- **Validation.** The 2D solve is anchored by v1.2/v1.3. The **approximation**
-  itself has no closed form, and only a 3D solver can measure it. The deliverable
-  is a characterised error on one canonical case (e.g. an SOI strip with a
-  side-coupled pillar) against MEEP 3D, frozen like v1.0, with the error
-  reported as an error of the model, never as a tolerance of the code.
-- **Conventions it breaks, by construction:** n_eff(λ) is dispersive even for
-  non-dispersive materials, so scale covariance (§9) does not hold for the 2.5D
-  problem as a function of λ. It still holds for the 2D solve at fixed indices.
 
 ### Later, unscheduled
 
@@ -286,20 +252,11 @@ qnm-guide limitation in §4) were fixed on 2026-10-24.
 - **Mode counting.** A thick core has many guided orders. The S-matrix size and
   the residue sum must find *all* of them. A missed mode shows up only as a
   power-balance shortfall, so A6 is also the completeness check.
-- **2.5D overclaiming.** The error of the EIM approximation is a property of
-  the model, not of the code. The documentation must keep the two apart.
 
 ## 8. Still open
 
-The owner decisions are R1–R10 (§1). What is left is measured, not chosen:
-
-- **Negative ε₂D.** For strong local contrast the variational overlap can fall
-  below the cladding value or go negative. `Material.from_eps` can express that.
-  But the slab TE₀ case maps to `pol = 1`, where a lossless negative-ε region
-  supports surface-plasmon-like modes (compare v1.1's finding 2), and those may
-  be artefacts of the 2D model rather than physics. The v1.4 study checks this
-  against MEEP 3D before any such result is trusted, and the spec states what
-  happens when a region comes out negative.
+The owner decisions are R1–R18 (§1), R19–R20 in [slab-spec.md](slab-spec.md),
+and R25. Nothing chosen remains open; the external gaps are listed in §6.
 
 ## 9. Next step
 
