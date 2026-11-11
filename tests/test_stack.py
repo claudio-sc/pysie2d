@@ -58,7 +58,7 @@ def test_feature_path_with_half_space_features_is_bit_identical(k, eps_rel, pol)
 
 # --- fixtures --------------------------------------------------------------------
 
-N_SI, N_SIN = 3.476, 2.0
+N_SI, N_SLAB = 3.476, 2.0
 E_SI = (N_SI / N_CLAD) ** 2
 
 
@@ -73,7 +73,7 @@ def _rel(lam, n_clad, layers, n_bot):
 STACKS = {
     "SOI": (1550, 1.444, [(N_SI, 220)], 1.444),
     "air|Si|SiO2": (1550, 1.0, [(N_SI, 220)], 1.444),
-    "SiN@800": (800, 1.444, [(N_SIN, 400)], 1.444),
+    "n=2@800": (800, 1.444, [(N_SLAB, 400)], 1.444),
     "Si2000": (1550, 1.444, [(N_SI, 2000)], 1.444),
     "double": (1550, 1.444, [(N_SI, 220), (1.444, 300), (N_SI, 220)], 1.444),
 }
@@ -223,8 +223,8 @@ def _near_cutoff(n_clad, n_core, n_bot, m, pol, t):
 @pytest.mark.parametrize("pol", [2, 1])
 @pytest.mark.parametrize(
     "slab",
-    [(1.444, N_SI, 1.444, 1), (1.0, N_SIN, 1.444, 0)],
-    ids=["SOI-TE1", "air|SiN"],
+    [(1.444, N_SI, 1.444, 1), (1.0, N_SLAB, 1.444, 0)],
+    ids=["SOI-TE1", "air|n=2"],
 )
 def test_reflected_green_near_cutoff_matches_the_gamma_reference(slab, pol):
     # A pole 1e-6·k_out past the branch point (finding 2): the γ-reference
@@ -320,9 +320,9 @@ def test_stack_refuses_invalid_layers(layers, eps_bot):
 SLABS3 = {
     "SOI": (1550, 1.444, N_SI, 220, 1.444),
     "air|Si|SiO2": (1550, 1.0, N_SI, 220, 1.444),
-    "SiN@800": (800, 1.444, N_SIN, 400, 1.444),
+    "n=2@800": (800, 1.444, N_SLAB, 400, 1.444),
     "Si2000": (1550, 1.444, N_SI, 2000, 1.444),
-    "air|SiN300|SiO2": (1550, 1.0, N_SIN, 300, 1.444),
+    "air|n=2 300|SiO2": (1550, 1.0, N_SLAB, 300, 1.444),
 }
 
 
@@ -387,7 +387,7 @@ def test_guided_modes_refuse_complex_wavelength_and_loss():
 
 # --- GW7: the residue identity pins the normalisation ----------------------------
 
-GW7_STACKS = {**STACKS, "air|SiN300|SiO2": (1550, 1.0, [(N_SIN, 300)], 1.444)}
+GW7_STACKS = {**STACKS, "air|n=2 300|SiO2": (1550, 1.0, [(N_SLAB, 300)], 1.444)}
 
 
 @pytest.mark.parametrize("pol", [2, 1])
@@ -411,7 +411,7 @@ def test_residue_of_r_is_gamma_over_beta_n(case, pol):
 
 # --- GW5: transmitted G below the stack against upward shooting ------------------
 
-GW5_STACKS = {k: STACKS[k] for k in ("SOI", "air|Si|SiO2", "double", "SiN@800")}
+GW5_STACKS = {k: STACKS[k] for k in ("SOI", "air|Si|SiO2", "double", "n=2@800")}
 
 
 @pytest.mark.filterwarnings("ignore::scipy.integrate.IntegrationWarning")
@@ -533,7 +533,7 @@ def _shifted(geom, dz, rot_deg=0.0):
 
 
 SOI = Stack(((N_SI**2, 220.0),), N_CLAD**2)
-SIN = Stack(((N_SIN**2, 400.0),), N_CLAD**2)
+SLAB = Stack(((N_SLAB**2, 400.0),), N_CLAD**2)
 CIRC = Geometry.gielis(rad=80.0, n_pts=160, m=4)
 TRI = Geometry.gielis(rad=90.0, n_pts=200, m=3, n1=4.0, n2=6.0, n3=6.0)
 PARTICLES = {
@@ -548,8 +548,8 @@ PARTICLES = {
         0.3,
         (-170.0, 50.0),
     ),
-    "SiN triangle, 2 modes": (
-        SIN,
+    "n=2 triangle, 2 modes": (
+        SLAB,
         800.0,
         _shifted(TRI, 140.0, 17.0),
         N_SI,
@@ -570,7 +570,7 @@ def _solver(case, pol):
 GW9_STACKS = {
     "SOI": (SOI, N_CLAD, 1550.0),
     "air|Si|SiO2": (SOI, 1.0, 1550.0),
-    "SiN@800": (SIN, N_CLAD, 800.0),
+    "n=2@800": (SLAB, N_CLAD, 800.0),
     "double": (
         Stack(((N_SI**2, 220.0), (N_CLAD**2, 300.0), (N_SI**2, 220.0)), N_CLAD**2),
         N_CLAD,
@@ -605,7 +605,7 @@ def test_line_source_power_balance_over_a_bare_stack(case, pol):
 # SOI TM is left out: the symmetric slab's TM remainder decays as X^{-0.84}, not
 # the X^{-3/2} radiation tail (S9: 1.0e-1 at 40 µm), so 40 µm is not far enough.
 GW10_CASES = [("SOI", 2), ("air|Si|SiO2", 2), ("air|Si|SiO2", 1)]
-GW10_CASES += [("SiN@800", 2), ("SiN@800", 1), ("double", 2), ("double", 1)]
+GW10_CASES += [("n=2@800", 2), ("n=2@800", 1), ("double", 2), ("double", 1)]
 
 
 @pytest.mark.parametrize("case, pol", GW10_CASES, ids=str)
@@ -656,7 +656,7 @@ def test_dipole_and_particle_power_balance(case, pol):
     # loss in the particle and an x-asymmetric shape.
     solver, lam, src = _solver(case, pol)
     amps = solver.scatter_dipole(lam, *src).mode_amplitudes(0.0)
-    assert amps.balance() < 1e-14  # measured 4.0e-15 (SiN triangle TE)
+    assert amps.balance() < 1e-14  # measured 4.0e-15 (n=2 triangle TE)
 
 
 @pytest.mark.parametrize("pol", [2, 1])
@@ -681,7 +681,7 @@ def test_mode_incidence_conserves_power_and_is_reciprocal(case, pol):
 
 
 @pytest.mark.parametrize(
-    "stack, lam, bar", [(SOI, 1550.0, 1e-3), (SIN, 800.0, 2.4e-3)], ids=["SOI", "SiN"]
+    "stack, lam, bar", [(SOI, 1550.0, 1e-3), (SLAB, 800.0, 2.4e-3)], ids=["SOI", "n=2"]
 )
 def test_small_circle_s_matrix_tends_to_first_born(stack, lam, bar):
     # u_s ≈ k²(ε − 1)πa²·G(r, r_p)·u_inc(r_p) with the full stack G; its guided
@@ -707,7 +707,7 @@ def test_small_circle_s_matrix_tends_to_first_born(stack, lam, bar):
                     abs(amps.s_minus[n] - pre * np.exp(1j * mn.beta * xp)) / abs(pre),
                 )
         errs.append(err)
-    assert errs[1] < bar  # measured 5.0e-4 (SOI), 1.2e-3 (SiN)
+    assert errs[1] < bar  # measured 5.0e-4 (SOI), 1.2e-3 (n=2)
     assert 3.2 < errs[0] / errs[1] < 4.2  # measured 3.43–3.66
 
 
@@ -746,7 +746,7 @@ def _in_plane_source_power(k, rel, b, h):
     return k * k * (abs(b[0]) ** 2 + abs(b[1]) ** 2) / 8 + self_r.imag
 
 
-IN_PLANE_STACKS = {k: GW9_STACKS[k] for k in ("SOI", "air|Si|SiO2", "SiN@800")}
+IN_PLANE_STACKS = {k: GW9_STACKS[k] for k in ("SOI", "air|Si|SiO2", "n=2@800")}
 
 
 def _b_cases(mode):
@@ -878,13 +878,13 @@ def test_moment_is_tm_only():
 
 @pytest.mark.parametrize("pol", [2, 1])
 @pytest.mark.parametrize(
-    "stack, lam", [(SOI, 1550.0), (SIN, 800.0)], ids=["SOI", "SiN"]
+    "stack, lam", [(SOI, 1550.0), (SLAB, 800.0)], ids=["SOI", "n=2"]
 )
 def test_mode_sensitivity_reproduces_the_translation_law(stack, lam, pol):
     # Moving the particle by Δ along x at fixed x_ref multiplies the scattered
     # S_{n←m}^{fwd} by e^{i(β_m − β_n)Δ} and S^{bwd} by e^{i(β_m + β_n)Δ}
     # (slab-spec §2.9), so the derivatives are i(β_m ∓ β_n)·S_scat exactly and
-    # every power is stationary. SiN's two modes make the forward one nonzero.
+    # every power is stationary. n=2's two modes make the forward one nonzero.
     base = Geometry.gielis(rad=80.0, n_pts=160, m=4, z0=110.0)
     mat = Material(n_core=N_SI, n_clad=N_CLAD, pol=pol)
 

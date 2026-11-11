@@ -22,6 +22,8 @@ independent two-cylinder addition-theorem anchor, and non-circular external
 validation against two independent solvers (MEEP and dolfinx). Backgrounds
 extend to a half-space substrate and, since v1.2, an N-layer slab waveguide
 with its guided modes (see [A slab waveguide under the particle](#a-slab-waveguide-under-the-particle)).
+It is a 2-D scattering solver: it does not model planar circuit layouts or 3-D
+devices.
 
 ## Figures
 
@@ -492,7 +494,9 @@ s_col = solver.scatter_mode(1550.0, 0, +1, x_ref=0.0).mode_amplitudes(0.0)  # S-
   phase-referred to `x_ref`, and the full power account (up, down, absorbed,
   guided ±x). Under mode incidence they are the S-matrix column.
 - `scatter_dipole(..., moment=(p_x, p_z))` is an in-plane electric dipole (TM);
-  spin-locked moments couple one way.
+  spin-locked moments couple one way, the near-field interference effect of
+  Rodríguez-Fortuño et al., [Science 340, 328 (2013)](https://doi.org/10.1126/science.1233739),
+  and Petersen, Volz and Rauschenbeutel, [Science 346, 67 (2014)](https://doi.org/10.1126/science.1257671).
 - `mode_sensitivity(at, run)` differentiates any of these outputs by a central
   difference on the frozen node set; `examples/waveguide_antenna.py` uses it to
   shape a Gielis antenna for one-way coupling.

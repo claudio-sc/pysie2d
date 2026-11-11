@@ -74,7 +74,7 @@ def near_cutoff(label, lam, n_clad, n_core, n_bot, m):
 
 
 near_cutoff("SOI symmetric, SiO2|Si|SiO2 @1550", 1550, 1.444, 3.476, 1.444, 1)
-near_cutoff("air|SiN|SiO2 @1550 (true fundamental cutoff)", 1550, 1.0, 2.0, 1.444, 0)
+near_cutoff("air|n=2|SiO2 @1550 (true fundamental cutoff)", 1550, 1.0, 2.0, 1.444, 0)
 
 print("\n(b) Si 220 | SiO2 d_ox | Si 220 in SiO2 @1550: supermode splitting")
 nc = 1.444
@@ -102,7 +102,7 @@ for pol in (2, 1):
         print(line)
 
 print("\n(c) whose floor is it? Both references at t = 1e-6 and 1e-8, fold half-width 0.45 vs 0.2 (path s = 2)")
-for label, n_clad, n_core, n_bot, m in (("SOI sym TE1", 1.444, 3.476, 1.444, 1), ("air|SiN|SiO2 TE0", 1.0, 2.0, 1.444, 0)):
+for label, n_clad, n_core, n_bot, m in (("SOI sym TE1", 1.444, 3.476, 1.444, 1), ("air|n=2|SiO2 TE0", 1.0, 2.0, 1.444, 0)):
     k = 2 * np.pi * n_clad / 1550
     ef, es = (n_core / n_clad) ** 2, (n_bot / n_clad) ** 2
     k_out = max(k, k * np.sqrt(es))

@@ -72,7 +72,7 @@ downward wave is ∝ e^{−iαz}. Wavenumbers are background (`k = 2π n_clad/λ
   | stack | gap 100 nm | gap 20 nm | gap 5 nm |
   |---|---|---|---|
   | SOI 220 nm | ok (q·Σd = 46) | ok (214) | **NaN** (841) |
-  | SiN 400 nm | ok (81) | ok (385) | **NaN** (1525) |
+  | n=2 400 nm | ok (81) | ok (385) | **NaN** (1525) |
   | Si/SiO₂/Si 220/300/220 | ok (156) | **NaN** (719) | **NaN** (2828) |
 
   **The test that fails on the naive form** (roadmap §4 item 1) is therefore
@@ -88,7 +88,7 @@ downward wave is ∝ e^{−iαz}. Wavenumbers are background (`k = 2π n_clad/λ
 ### S2: guided poles, anchor A2 (`s2_poles.txt`)
 
 Five three-layer slabs (symmetric, asymmetric with an air cover, a 2 µm
-multimode core, a near-cutoff SiN) and a coupled double core.
+multimode core, a near-cutoff n=2) and a coupled double core.
 
 - **Real roots of D agree with the textbook** κd = mπ + atan(p_c/κ) +
   atan(p_s/κ) to 0–5e-16 relative, TE and TM, up to 9 modes.
@@ -102,7 +102,7 @@ multimode core, a near-cutoff SiN) and a coupled double core.
   1e-2 to 1e-3·β; 1e-4·β is the finite-difference floor, 2e-13).
 - SOI 220 nm in SiO₂ at 1550 nm: n_eff(TE₀) = 2.84778, n_eff(TM₀) = 2.05332.
 - The near-cutoff cases occur naturally. Si 2000 TM₈ has (β − k_out)/k = 4e-3;
-  SiN 400 TM₁ has 3.6e-2.
+  n=2 400 TM₁ has 3.6e-2.
 
 ### S3: reflected G with guided poles, anchor A3 (`s3_green.txt`)
 
@@ -143,7 +143,7 @@ because cos overflows first.
 t = 1e-1 … 1e-8. β is chosen first, then the core thickness comes from the closed
 form d = (mπ + atan(p_c/κ) + atan(p_s/κ))/κ. So the pole location is known by
 construction, not found. Two cases: TE₁ and TM₁ of a symmetric SOI slab, where
-k_out = k₁, and the fundamental mode of air|SiN|SiO₂, a true cutoff at k_bot.
+k_out = k₁, and the fundamental mode of air|n=2|SiO₂, a true cutoff at k_bot.
 
 - **The path does not notice.** G stays converged (s = 2 vs 1: ≤ 5e-14) and
   path-independent (δ/2 vs δ: ≤ 5e-14) at every t. M (2825–2841), T and the
@@ -201,7 +201,7 @@ splitting falls like e^{−γ_ox d_ox}.
 
 ### S5: small gaps (`s5_gap.txt`)
 
-Gaps of 10, 5 and 2 nm (z_min = 2·gap), D = 300 nm, on SOI, SiN (2 modes) and
+Gaps of 10, 5 and 2 nm (z_min = 2·gap), D = 300 nm, on SOI, n=2 (2 modes) and
 the double core, TE and TM. Points X ∈ {0, 50, 300} nm, Z ∈ {z_min, 4·z_min},
 G and ∂z′G.
 
@@ -212,7 +212,7 @@ G and ∂z′G.
   half-space at the same D and z_min. The poles add only the T = 1.5·β_max
   stretch. M ∝ 1/z_min, as in v0.9 (t14).
 - The naive transfer matrix is **already NaN on the path at a 10 nm gap**
-  for SiN and the double core, and at 5 nm for SOI. So S1's recursion is
+  for n=2 and the double core, and at 5 nm for SOI. So S1's recursion is
   required, not optional.
 - **R(q) on the whole path costs 0.05 ms (N = 0) to 0.8 ms (N = 21)**, linear
   in N. It is evaluated once per path and wavelength, against ~3.5 ms for one
@@ -296,10 +296,10 @@ A↑ = i(qb_x + α₁b_z) and A↓ = i(qb_x − α₁b_z), and they **must run o
 −k…k range**: they are not even in q once b_x b_z ≠ 0.
 
 - **The power balance is an equality to ≤ 5e-15** for b = (1,0), (0,1),
-  (1, 0.7−0.4i) and spin-locked, on SOI, air|Si|SiO₂ and SiN (2 modes), TE and
+  (1, 0.7−0.4i) and spin-locked, on SOI, air|Si|SiO₂ and n=2 (2 modes), TE and
   TM, at h₀ = 20 and 150 nm.
 - **The spin-locked dipole sends P⁺/(P⁺+P⁻) = 1.0000 one way** on single-mode
-  slabs, at both heights. On the 2-mode SiN slab it is 0.88–0.95: the lock
+  slabs, at both heights. On the 2-mode n=2 slab it is 0.88–0.95: the lock
   matches mode 0's γ₁, so mode 1 still couples both ways. Guided shares reach
   57–78 % at 20 nm, against 28–37 % for the scalar source (S9).
 - **The far-x field matches the closed-form c_m^± in both directions**, with
@@ -346,7 +346,7 @@ and (i/2)τ d below, with u↑ and d the boundary sums of the representation:
 P_up = (1/2π)∫|u↑ + R d|²/4 dθ and P_down = (1/2π)∫ Re(Y_b)|τ d|²/4 dq.
 
 - **Dipole + particle power balance ≤ 1e-15**: a circle, a lossy circle, and a
-  rotated (x-asymmetric) lossy triangle over SOI and over the 2-mode SiN slab,
+  rotated (x-asymmetric) lossy triangle over SOI and over the 2-mode n=2 slab,
   TE and TM.
 - **Mode incidence:** Σ|S|² + P_up + P_down + P_abs = 1 to ≤ 4.4e-16, with
   power-normalised modes ũ = u/√(βN) and x_ref = 37 nm.
@@ -367,9 +367,9 @@ TE, circle at (23, 60) nm, n = 2 in SiO₂. First Born with the **full** stack G
 u_s ≈ k²(ε − 1)πa²·G(r, r_p)u_inc(r_p), whose guided part gives S − δ in closed form.
 
 - **The BIE S-matrix converges to Born**: 5.0e-4 at a = 2 nm on SOI, and
-  1.2e-3 on the 2-mode SiN slab, all four entries and both directions.
+  1.2e-3 on the 2-mode n=2 slab, all four entries and both directions.
 - **The rate is (ka)²(A + B ln ka)**, the 2D self-interaction. Ratios per
-  halving of a are 3.61, 3.63, 3.66 on SOI and 3.36, 3.43, 3.49 on SiN, against
+  halving of a are 3.61, 3.63, 3.66 on SOI and 3.36, 3.43, 3.49 on n=2, against
   4 for a pure a² law.
 
 ## Plan for the rest of the study

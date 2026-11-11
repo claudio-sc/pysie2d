@@ -3,9 +3,9 @@ from pysie2d import *
 from pysie2d.beyn import beyn_modes
 import pysie2d.cluster as C
 warnings.simplefilter("ignore")
-NC=1.444; LAM=1550.0; SIN=Stack(((4.0,400.0),),NC**2)
+NC=1.444; LAM=1550.0; SLAB=Stack(((4.0,400.0),),NC**2)
 gs=[Geometry.gielis(rad=90.0,n_pts=100,m=3,n1=4.0,n2=6.0,n3=6.0,x0=600.0*(p-1.5),z0=140.0) for p in range(4)]
-cl=Cluster(gs); s0=ClusterBIESolver(cl,[Material(n_core=1.5,n_clad=NC,pol=1)]*4,1,SIN); pr=s0.at_wavelength(LAM)
+cl=Cluster(gs); s0=ClusterBIESolver(cl,[Material(n_core=1.5,n_clad=NC,pol=1)]*4,1,SLAB); pr=s0.at_wavelength(LAM)
 iso=lambda e: np.vstack([pr._top[0],pr._interior(0,np.sqrt(e),e)])
 bm=beyn_modes(iso,-1.6-0.2j,-1.1-0.002j,n_quad_per_side=32,n_probe=12); pole=bm.eigenvalues[np.argmin(np.abs(bm.eigenvalues.imag))]
 print("pole",pole, "sigma",np.linalg.svd(iso(pole),compute_uv=False)[-1])
@@ -16,7 +16,7 @@ for name,getb in (("plane",lambda: s0._rhs_plane_wave(LAM,0.0)),("random",lambda
   for d in (0.0,1e-12,1e-10,1e-6):
     e=pole+d*np.exp(0.7j); mats=[Material.from_eps(e*NC**2,n_clad=NC,pol=1)]*4; b=getb()
     print(f"{name} d={d:.0e}: mat.eps-e={abs(mats[0].eps-e):.1e} nc-principal={abs(mats[0].nc-np.sqrt(e)):.1e} sigmamin(M_p)/max={(lambda s:s[-1]/s[0])(np.linalg.svd(iso(mats[0].eps),compute_uv=False)):.1e}")
-    M=ClusterBIESolver(cl,mats,1,SIN)._assemble(LAM); xd=np.linalg.solve(M,b)
+    M=ClusterBIESolver(cl,mats,1,SLAB)._assemble(LAM); xd=np.linalg.solve(M,b)
     fac=pr._factor([(m.nc,m.eps) for m in mats]); x,a=pr._apply(fac,b)
     be=lambda x:np.linalg.norm(M@x-b)/(np.linalg.norm(M)*np.linalg.norm(x))
     print(f"   alpha={a:.1e} err={np.linalg.norm(x-xd)/np.linalg.norm(xd):.1e} be={be(x):.1e} residual_diff={np.linalg.norm((b-M@x)-pr._residual(fac,b,x))/np.linalg.norm(b):.1e} cond(G)={np.linalg.cond(fac.reduced):.1e}")

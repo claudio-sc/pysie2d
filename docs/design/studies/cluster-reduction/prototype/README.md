@@ -19,11 +19,11 @@ Scripts find their sibling modules and data files next to themselves, whatever t
 | test_zero.py | TM: ε=0 is an exact eigenvalue of M (σ_min ∝ |ε|) |
 | test_reciprocity.py | boundary form of the paper's eq. 34: w_m^T b(r') = κ_m F_m(r') to 1e-14 |
 
-## Particle over the SiN slab
+## Particle over the n=2 slab
 
 | file | what it measures |
 |---|---|
-| test_stack.py | rotated Gielis triangle 140 nm above 400 nm SiN in SiO2, 1550 nm TM: modes, nn-convergence, timings (importable: definitions only) |
+| test_stack.py | rotated Gielis triangle 140 nm above 400 nm n=2 in SiO2, 1550 nm TM: modes, nn-convergence, timings (importable: definitions only) |
 | test_expand.py, test_expand2.py | mode expansion of the guided amplitude vs exact driven solves; test_expand2.py writes expand2.npz |
 | test_lump.py, chart_data.py | remainder models (quadratic, lumped at −ε_b); chart data. Read expand2.npz |
 | test_channels.py | power account of each eigenvector (balance to 1e-14) and guided fraction |

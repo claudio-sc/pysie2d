@@ -241,7 +241,7 @@ are `i(β_m ∓ β_n)·S_scat` exactly, and `d|S|²/dΔ = 0`.
 |---|---|---|
 | N = 0 recursion vs `fresnel_r`, `_tau_half_space` | 0 (bitwise) | s1 |
 | lossless energy \|R\|² + (Re Y_b/Y₁)\|α₁τ\|² = 1 | 2.0e-15 | s1 |
-| naive transfer matrix on a real path | NaN from q·Σd ≈ 709 (SOI at a 5 nm gap; SiN, double core at 10–20 nm) | s1, s5 |
+| naive transfer matrix on a real path | NaN from q·Σd ≈ 709 (SOI at a 5 nm gap; n=2, double core at 10–20 nm) | s1, s5 |
 | roots vs closed form | ≤ 4.8e-16 relative, up to 9 modes; three-way counts agree | s2 |
 | two residue routes | 4e-15 | s2 |
 | path vs reference, 5 stacks, TE/TM, G and ∂z′G | ≤ 4e-10 (reference floor, spread 2.5e-10) | s3 |
@@ -258,7 +258,7 @@ are `i(β_m ∓ β_n)·S_scat` exactly, and `d|S|²/dΔ = 0`.
 | mode incidence Σ\|S\|² + P_rad + P_abs = 1 | ≤ 4.4e-16 | s12 |
 | reciprocity t_{n←m}(L→R) = t_{m←n}(R→L) | ≤ 1.1e-16 | s12 |
 | in-plane + particle balance (∇u_s by FD, h = 0.25 nm) | ≤ 2e-11, FD-limited (h⁴) | s12b |
-| Born limit, a = 2 nm | 5.0e-4 (SOI), 1.2e-3 (SiN); ratio per halving 3.36–3.66 | s10 |
+| Born limit, a = 2 nm | 5.0e-4 (SOI), 1.2e-3 (n=2); ratio per halving 3.36–3.66 | s10 |
 | interface continuity of the in-layer field | FD-limited 6e-7 (e = 1e-6 nm); z_top layer vs cover 3e-15 | nearfield |
 
 ## 4. Findings that shape the code
@@ -453,7 +453,7 @@ ported from `sproto.R_ref`, `g_ref`, `g_ref_gamma`, `s7.T_ref`, `gt_ref` and
 | GW12 | s12 / s12b cases | scalar 1e-14 (1.0e-15); in-plane measure-then-10×, stop above 1e-11 |
 | GW13 | s12 | 5e-15 (4.4e-16) |
 | GW14 | s12 | 2e-15 (1.1e-16) |
-| GW15 | s10, a = 4, 2 nm | error at 2 nm ≤ 1e-3 (SOI 5.0e-4) and ≤ 2.4e-3 (SiN 1.2e-3); ratio per halving in [3.2, 4.2] (3.36–3.66) |
+| GW15 | s10, a = 4, 2 nm | error at 2 nm ≤ 1e-3 (SOI 5.0e-4) and ≤ 2.4e-3 (n=2 1.2e-3); ratio per halving in [3.2, 4.2] (3.36–3.66) |
 | GW16 | free circle grid of 64 angles; ∇u_s vs FD h = 0.25 nm | pattern measure-then-10×, stop above 1e-12; gradient ≤ 10× the FD floor measured in the commit |
 | GW17 | SOI, circle, Δ along x | measure-then-10×, stop above 1e-8; d\|S\|²/dΔ likewise |
 | GW18 | s = 1.7, SOI + circle, mode incidence and dipole | measure-then-10×, stop above 1e-12 |

@@ -1,12 +1,12 @@
 """Route 1 for ordinary driven cluster solves: same answer as the full solve, cheaper per permittivity."""
 import numpy as np, sys, time, warnings
 from scipy.linalg import lu_factor, lu_solve
-from perf import interior_rows, SIN, nclad, lam, pol, k_bg
+from perf import interior_rows, SLAB, nclad, lam, pol, k_bg
 from pysie2d import Geometry, Material, Cluster, ClusterBIESolver
 warnings.simplefilter("ignore")
 P, nn, pitch = int(sys.argv[1]) if len(sys.argv) > 1 else 4, 100, 600.0
 geoms = [Geometry.gielis(rad=90.0, n_pts=nn, m=3, n1=4.0, n2=6.0, n3=6.0, x0=pitch*(p-(P-1)/2), z0=140.0) for p in range(P)]
-cs = ClusterBIESolver(Cluster(geoms), [Material.from_eps(-2.0*nclad**2, n_clad=nclad, pol=pol)]*P, pol=pol, background=SIN)
+cs = ClusterBIESolver(Cluster(geoms), [Material.from_eps(-2.0*nclad**2, n_clad=nclad, pol=pol)]*P, pol=pol, background=SLAB)
 full0 = cs._assemble(lam)
 sl = [slice(2*nn*p, 2*nn*(p+1)) for p in range(P)]
 rng = np.random.default_rng(0)
