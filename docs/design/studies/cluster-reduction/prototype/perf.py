@@ -33,7 +33,7 @@ def best(fn, n=3):
 
 lam, pol, nclad = 1550.0, 1, 1.444
 k_bg = 2*np.pi*nclad/lam
-SIN = Stack(((2.0**2, 400.0),), nclad**2)
+SLAB = Stack(((2.0**2, 400.0),), nclad**2)
 eps = -2.0 + 0.1j; ri = 1j*np.sqrt(-eps)
 if __name__ == "__main__":
     print(f"cores: {os.cpu_count()}  (single-threaded timings; ratios are the point)")
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     for nn in (100, 200, 400, 800, 1600):
         geom = Geometry.gielis(rad=90.0, n_pts=nn, m=3, n1=4.0, n2=6.0, n3=6.0, z0=250.0)
         mat = Material.from_eps(eps*nclad**2, n_clad=nclad, pol=pol)
-        s_free, s_slab = BIESolver(geom, mat), BIESolver(geom, mat, background=SIN)
+        s_free, s_slab = BIESolver(geom, mat), BIESolver(geom, mat, background=SLAB)
         # sanity: trimmed inside rows == bottom half of the package's own matrix (same branch on passive side)
         m_pkg = BIESolver(geom, Material.from_eps((-2.0+0.1j)*nclad**2, n_clad=nclad, pol=pol)).assemble(lam)
         assert np.allclose(interior_rows(pol, geom, k_bg, np.sqrt(-2.0+0.1j), -2.0+0.1j), m_pkg[nn:], rtol=0, atol=1e-13)

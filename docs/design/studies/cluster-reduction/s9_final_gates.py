@@ -47,7 +47,7 @@ lo,hi=T.BOX[2]; v=T._prepared(T._circles(nn=64),2).eigenpermittivities(lo,hi,n_q
 print(f" dist {d(c.eps/T.NC**2,v.eps):.1e}")
 print("-- B4 slab and glass pole fits")
 geom=T._rotated_triangle()
-for name,bg,obs in (("SiN slab",T.BACKGROUNDS["sin"],"s0"),("SiN slab",T.BACKGROUNDS["sin"],"field")):
+for name,bg,obs in (("n=2 slab",T.BACKGROUNDS["slab"],"s0"),("n=2 slab",T.BACKGROUNDS["slab"],"field")):
     p=T._prepared([geom],1,T.LAM,T.NC,bg); box=((-1.6-0.2j)*T.NC**2,(-1.1-0.002j)*T.NC**2)
     r=p.eigenpermittivities(*box,n_probe=12); tg=r.eps[np.argmin(np.abs(r.eps.imag))]/T.NC**2
     def f(e):

@@ -8,15 +8,15 @@ boundary values send to particle p's outside rows (free space + slab). Delta doe
 import numpy as np, sys, time, warnings
 sys.path.insert(0, ".")
 from scipy.linalg import lu_factor, lu_solve, eig
-from perf import interior_rows, SIN, nclad, lam, pol, k_bg
+from perf import interior_rows, SLAB, nclad, lam, pol, k_bg
 from pysie2d import Geometry, Material, BIESolver, Cluster, ClusterBIESolver
 from pysie2d.beyn import beyn_modes, newton_refine
 warnings.simplefilter("ignore")
 ri = lambda e: 1j*np.sqrt(-complex(e))
 P, nn, z0 = 4, 100, 140.0
 pitch = float(sys.argv[1]) if len(sys.argv) > 1 else 300.0
-BG = None if (len(sys.argv) > 2 and sys.argv[2] == "free") else SIN
-print("background:", "free space" if BG is None else "SiN slab")
+BG = None if (len(sys.argv) > 2 and sys.argv[2] == "free") else SLAB
+print("background:", "free space" if BG is None else "n=2 slab")
 print(f"pitch {pitch:.0f} nm (gap ~{pitch-190:.0f} nm)")
 geoms = [Geometry.gielis(rad=90.0, n_pts=nn, m=3, n1=4.0, n2=6.0, n3=6.0, x0=pitch*(p-(P-1)/2), z0=z0) for p in range(P)]
 mat = Material.from_eps(-2.0*nclad**2, n_clad=nclad, pol=pol)

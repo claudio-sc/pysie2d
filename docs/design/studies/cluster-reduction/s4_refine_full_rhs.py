@@ -15,7 +15,7 @@ def solve_full_rhs(pr, r, e):
     y = np.linalg.solve(pr.G(e), rhs)
     return np.concatenate([a[p] - R[p] @ y[pr.offs[p]:pr.offs[p + 1]] for p in range(len(pr.gs))])
 gs = [Geometry.gielis(rad=90.0, n_pts=100, m=3, n1=4.0, n2=6.0, n3=6.0, x0=600.0 * (p - 1.5), z0=140.0) for p in range(4)]
-pr = Pair(gs, 1, 1550.0, n_clad=nclad, bg=SIN)
+pr = Pair(gs, 1, 1550.0, n_clad=nclad, bg=SLAB)
 iso, _ = modes(lambda e: pr.small(0, e), -1.6 - 0.2j, -1.1 - 0.002j, nq=32, npb=12); em0 = iso[np.argmin(np.abs(iso.imag))]
 rng = np.random.default_rng(0); b = np.zeros(pr.cl.n_dof, complex)
 for p, g in enumerate(gs):

@@ -34,7 +34,7 @@ air|Si 220|SiO2          TM: 1 poles, M = 2853, T/k = 2.84, δ/k = 0.400, min cl
     X=  1500 Z=  100 ∂z: |ref|=2.48e-04  path−ref: s=.5 8e-12  s=1 2e-12  s=2 2e-12   δ/2 vs δ: 5e-15
     X=    40 Z=  400 G : |ref|=4.50e-02  path−ref: s=.5 4e-12  s=1 5e-13  s=2 5e-13   δ/2 vs δ: 7e-16
     X=    40 Z=  400 ∂z: |ref|=2.08e-04  path−ref: s=.5 3e-12  s=1 7e-13  s=2 7e-13   δ/2 vs δ: 1e-15
-SiN 400 @800 (2 modes)   TE: 2 poles, M = 2809, T/k = 1.96, δ/k = 0.353, min clearance/δ = 0.87
+n=2 400 @800 (2 modes)   TE: 2 poles, M = 2809, T/k = 1.96, δ/k = 0.353, min clearance/δ = 0.87
     X=     0 Z=   20 G : |ref|=1.85e-02  path−ref: s=.5 3e-11  s=1 3e-11  s=2 3e-11   δ/2 vs δ: 2e-14
     X=     0 Z=   20 ∂z: |ref|=3.37e-04  path−ref: s=.5 9e-12  s=1 9e-12  s=2 9e-12   δ/2 vs δ: 1e-14
     X=   300 Z=   20 G : |ref|=6.25e-02  path−ref: s=.5 6e-12  s=1 6e-12  s=2 6e-12   δ/2 vs δ: 8e-15
@@ -43,7 +43,7 @@ SiN 400 @800 (2 modes)   TE: 2 poles, M = 2809, T/k = 1.96, δ/k = 0.353, min cl
     X=  1500 Z=  100 ∂z: |ref|=2.07e-04  path−ref: s=.5 4e-12  s=1 4e-12  s=2 4e-12   δ/2 vs δ: 5e-14
     X=    40 Z=  400 G : |ref|=5.11e-03  path−ref: s=.5 1e-11  s=1 1e-11  s=2 1e-11   δ/2 vs δ: 9e-15
     X=    40 Z=  400 ∂z: |ref|=6.16e-05  path−ref: s=.5 4e-12  s=1 4e-12  s=2 4e-12   δ/2 vs δ: 9e-15
-SiN 400 @800 (2 modes)   TM: 2 poles, M = 2807, T/k = 1.91, δ/k = 0.353, min clearance/δ = 0.87
+n=2 400 @800 (2 modes)   TM: 2 poles, M = 2807, T/k = 1.91, δ/k = 0.353, min clearance/δ = 0.87
     X=     0 Z=   20 G : |ref|=7.51e-02  path−ref: s=.5 3e-11  s=1 3e-11  s=2 3e-11   δ/2 vs δ: 6e-15
     X=     0 Z=   20 ∂z: |ref|=2.38e-03  path−ref: s=.5 2e-12  s=1 2e-12  s=2 2e-12   δ/2 vs δ: 1e-15
     X=   300 Z=   20 G : |ref|=5.69e-02  path−ref: s=.5 3e-11  s=1 3e-11  s=2 3e-11   δ/2 vs δ: 9e-15

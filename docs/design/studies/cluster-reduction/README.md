@@ -58,7 +58,7 @@ identity above is why that does not apply to `G`.
 
 | Check | Result | Source |
 |---|---|---|
-| Plane wave, 4 mixed particles (shape, `nn`, material); free, glass, PEC, SiN; both pols | `x` 4e-14 to 1.4e-13, far field ≤ 1.6e-15 | `s5` H |
+| Plane wave, 4 mixed particles (shape, `nn`, material); free, glass, PEC, n=2; both pols | `x` 4e-14 to 1.4e-13, far field ≤ 1.6e-15 | `s5` H |
 | Gap ladder to gap/a = 0.04, free and slab | `x` ≤ 4.7e-13 | `s1` A |
 | `P` up to 64 with different radii | `x` ≤ 1.1e-13 | `s1` B |
 | Polished eigenpermittivities, `G` vs `M` | ≤ 8e-16 TM circles (`s3`); ≤ 4.6e-15 triangles, free and slab (prototype) | `s3`, `prototype_reexp_*` |
@@ -128,7 +128,7 @@ flawed run remains in `results/s3_anchor_refine_first_run.txt`, section F′.
 | Two circles, Graf addition theorem, TE | 9e-15 (d = 1000), 7.9e-14 (d = 400), 6.6e-11 (d = 300) | `s2` D, unpolished |
 | Same, TM, polished | 7e-16 to 7.7e-16 (d = 1000), 2.9e-14 (d = 400), 3.1e-10 (d = 300) | `s3` |
 | PEC mirror: every PEC mode in the circle + image pair | ≤ 1.9e-15, both pols, h = 200, 500 | `s8` L |
-| SiN slab: pole fitted to passive driven solves vs ε-Beyn | 5.9e-7 to 1.3e-5 | `s8` M |
+| n=2 slab: pole fitted to passive driven solves vs ε-Beyn | 5.9e-7 to 1.3e-5 | `s8` M |
 
 At d = 300 the limit is Graf's own truncation: order 10 against 12 differs by
 1.3e-8 in TM. The slab fit needs no contour and no branch choice, and its driven

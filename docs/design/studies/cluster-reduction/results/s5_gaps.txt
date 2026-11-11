@@ -6,8 +6,8 @@
  glass half-space  2   [24, 39, 32, 23]     118/828        4.7e-14      1.4e-15  6.1e-01  (rhs interior leak 6e-16)
  PEC               1   [20, 35, 27, 18]     100/828        1.4e-13      8.1e-16  7.9e-01  (rhs interior leak 9e-16)
  PEC               2   [20, 35, 27, 18]     100/828        4.9e-14      7.9e-16  7.7e-01  (rhs interior leak 5e-16)
- SiN slab          1   [24, 39, 33, 23]     119/828        4.2e-14      1.0e-15  5.6e-01  (rhs interior leak 6e-16)
- SiN slab          2   [25, 39, 33, 23]     120/828        4.3e-14      1.6e-15  6.1e-01  (rhs interior leak 5e-16)
+ n=2 slab          1   [24, 39, 33, 23]     119/828        4.2e-14      1.0e-15  5.6e-01  (rhs interior leak 6e-16)
+ n=2 slab          2   [25, 39, 33, 23]     120/828        4.3e-14      1.6e-15  6.1e-01  (rhs interior leak 5e-16)
 
 === I. rank vs particle size: 4 circles at pitch 2.5a, TE, n=2, λ=600, nn = 12 points per interior wavelength
      a      x    nn  ranks                 r_max/2nn   R0/N        dense/ε   route1 shared/ε  ratio  err

@@ -20,7 +20,7 @@ for pol in (1,2):
   for nm,bg in T.BACKGROUNDS.items():
     m=T._mixed_materials(pol); s=ClusterBIESolver(cl,m,pol,bg); dn=s.scatter(T.LAM,13.0); f=s.at_wavelength(T.LAM).scatter(m,13.0); A,_=f.far_field(181); B,_=dn.far_field(181)
     print(f" pol {pol} {nm}: x {R(f.ei,dn.ei):.1e} ff {np.max(np.abs(A-B))/np.max(np.abs(B)):.1e}")
-m=T._mixed_materials(1); s=ClusterBIESolver(cl,m,1,T.BACKGROUNDS["sin"]); pr=s.at_wavelength(T.LAM)
+m=T._mixed_materials(1); s=ClusterBIESolver(cl,m,1,T.BACKGROUNDS["slab"]); pr=s.at_wavelength(T.LAM)
 print(f" dipole {R(pr.scatter_dipole(m,100.,500.).ei,s.scatter_dipole(T.LAM,100.,500.).ei):.1e} in-plane {R(pr.scatter_dipole(m,100.,500.,moment=(1.,.5j)).ei,s.scatter_dipole(T.LAM,100.,500.,moment=(1.,.5j)).ei):.1e} mode {R(pr.scatter_mode(m,0,1,x_ref=0.).ei,s.scatter_mode(T.LAM,0,1,x_ref=0.).ei):.1e}")
 m2=T._mixed_materials(2); s2=ClusterBIESolver(cl,m2,2); w=1550.0+40.0j; print(f" complex wavelength {R(s2.at_wavelength(w).scatter(m2).ei,s2.scatter(w).ei):.1e}")
 for pol in (1,2):

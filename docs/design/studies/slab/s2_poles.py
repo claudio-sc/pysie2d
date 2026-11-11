@@ -19,9 +19,9 @@ def case(lam, n_clad, layers, n_bot):
 cases = {
     "SOI 220 @1550 (sym)": (1550, 1.444, [(3.476, 220)], 1.444),
     "air|Si 220|SiO2 @1550": (1550, 1.0, [(3.476, 220)], 1.444),
-    "SiN 400 @800 (sym)": (800, 1.444, [(2.0, 400)], 1.444),
+    "n=2 400 @800 (sym)": (800, 1.444, [(2.0, 400)], 1.444),
     "Si 2000 @1550 (multimode)": (1550, 1.444, [(3.476, 2000)], 1.444),
-    "air|SiN 300|SiO2 @1550 (near cutoff)": (1550, 1.0, [(2.0, 300)], 1.444),
+    "air|n=2 300|SiO2 @1550 (near cutoff)": (1550, 1.0, [(2.0, 300)], 1.444),
 }
 
 print("three-layer slabs: D roots vs closed form vs winding count")
