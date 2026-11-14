@@ -92,6 +92,7 @@ def test_cross_section_spectrum_matches_frozen(frozen, observable):
     )
 
 
+@pytest.mark.slow
 def test_absorption_matches_frozen(frozen):
     # C_abs is split out because in the lossless cases it is *exactly* zero,
     # where a relative tolerance is meaningless — this is §5's null test, and

@@ -812,6 +812,7 @@ _ROUTES = {
 }
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("route", list(_ROUTES))
 def test_ellipse_routes_reproduce_the_mie_modes_of_one_circle(route):
     """The closed form of the rectangle test, restricted to the ellipse.
@@ -832,6 +833,7 @@ def test_ellipse_routes_reproduce_the_mie_modes_of_one_circle(route):
     assert _distance(expected, res.eps) < 5e-14
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("route", ["ellipse", "adaptive"])
 def test_ellipse_routes_match_the_graf_addition_theorem(route):
     """Coupled modes, d = 400 nm, against Mie coefficients and Graf.
