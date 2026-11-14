@@ -12,9 +12,6 @@ clusters, in a homogeneous background, over a half-space, or over a layered
 stack. Convergence is spectral, each feature is checked against a reference
 independent of the solver wherever one exists, and the public API is typed.
 
-It is a 2-D scattering solver: it does not model planar circuit layouts or 3-D
-devices.
-
 ![Near-field map](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/nearfield_map.png)
 
 ## Install

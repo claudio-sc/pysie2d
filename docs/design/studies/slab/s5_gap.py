@@ -1,4 +1,4 @@
-"""S5: small gaps with guided poles present (roadmap risk §7.2).
+"""S5: small gaps with guided poles present (the small-gap risk).
 
 The evanescent coupling is strongest at small gaps, where the Sommerfeld tail is
 longest (38/z_min). Checks: (a) G on the path vs the real-axis reference at

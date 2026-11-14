@@ -1,4 +1,4 @@
-"""v1.2 slab waveguide: an N-layer Stack background (slab-spec.md §5, gates GW1–GW18).
+"""v1.2: an N-layer Stack background (slab-spec.md §5, gates GW1–GW18).
 
 Each gate's bar is 10× the value measured in the commit that added it, and the
 measured number is quoted beside it. Independent anchors: the three-layer

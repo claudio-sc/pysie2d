@@ -1,4 +1,4 @@
-"""Guided-mode S-parameters of a non-circular cluster against MEEP (roadmap A9).
+"""Guided-mode S-parameters of a non-circular cluster against MEEP (slab-spec A9).
 
 The frozen values are MEEP eigenmode coefficients for two Si Gielis particles
 (a rounded triangle and a rounded square) 200 nm above an SOI slab, extrapolated

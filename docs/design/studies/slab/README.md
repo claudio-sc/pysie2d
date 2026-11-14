@@ -1,7 +1,7 @@
-# Slab-waveguide study (v1.2, roadmap §9 steps 1–3)
+# Slab study (v1.2)
 
 Throwaway prototypes behind the v1.2 code-spec
-([waveguide-roadmap.md](../../waveguide-roadmap.md)). They are not package code
+([slab-spec.md](../../slab-spec.md)). They are not package code
 and not lint-checked (`docs/design/studies` is excluded from ruff). They import
 only `pysie2d.layered` (its α sheet, `fresnel_r`, `_tau_half_space` and the path
 constants). Run from this directory:
@@ -75,7 +75,7 @@ downward wave is ∝ e^{−iαz}. Wavenumbers are background (`k = 2π n_clad/λ
   | n=2 400 nm | ok (81) | ok (385) | **NaN** (1525) |
   | Si/SiO₂/Si 220/300/220 | ok (156) | **NaN** (719) | **NaN** (2828) |
 
-  **The test that fails on the naive form** (roadmap §4 item 1) is therefore
+  **The test that fails on the naive form** (the stable-recursion requirement) is therefore
   R on the actual path for SOI at a 5 nm gap: finite and correct by the
   recursion, NaN by the transfer matrix.
 - **Either cure is exact.** R is homogeneous of degree 0 in the transfer
@@ -241,7 +241,7 @@ u_m = u_m(z_top)e^{−γ₁h}. Equating residues gives
   fails by 74 %.
 - Power: the x-flux of a mode is ∝ β_m·∫p|u_m|² = β_m N_m for real profiles,
   so the residue is γ₁u_m(z_top)²/P_m up to the physical constants. This is
-  the roadmap's `∝ u_m(z₀)/P_m`.
+  anchor A4's `∝ u_m(z₀)/P_m`.
 
 ### S9: line-dipole emission into the modes, anchor A4 (`s9_dipole.txt`)
 
@@ -374,8 +374,8 @@ u_s ≈ k²(ε − 1)πa²·G(r, r_p)u_inc(r_p), whose guided part gives S − �
 
 ## Plan for the rest of the study
 
-Items S4–S6 measure the §7 risks and finish roadmap §9 step 1's scope. S7–S9
-are §9 step 2 (pin the §3 formulas), and S10 is step 3's floor for A5. Each
+Items S4–S6 measure the risks (near cutoff, small gaps, loss). S7–S9 pin the
+formulas the code-spec uses, and S10 is the floor for A5. Each
 script states its check before it runs.
 
 | # | Script | Question | Pass condition / output |
@@ -400,8 +400,8 @@ are gates of the v1.2 code-spec, not study items.
   stays unresolved at round-off is a numerical double root.
 - **What a near-degenerate pair means for S-parameters (a spec decision).**
   For two cores behind 1 µm of oxide (TE, Δβ/β = 1.3e-5) the beat length π/Δβ is
-  already about 14 mm. At chip scale the supermode basis is meaningless and the
-  core-localised one is physical. Options for the R9 code-spec: report the
+  already about 14 mm. At millimetre scale the supermode basis is meaningless and the
+  core-localised one is physical. Options for the code-spec (R9): report the
   group's combined residue by one contour around the pair; switch to a localised
   basis; or warn and refuse. This is not measured further here.
 - **The overlap form of c_m^±.** S9a fixes the guided part of G, so the
@@ -410,5 +410,5 @@ are gates of the v1.2 code-spec, not study items.
   integral is BIE wiring (φ, χ conventions). It is pinned by A6/A7 in the code-spec
   gates, not in a study.
 - **The slow TM far-x rate** on SiO₂-clad stacks (S9a).
-- **A fixed hump suffices for real λ.** Whether it still does for slab QNMs is
-  the low-priority later item (holomorphy §5), and it is not studied here.
+- **A fixed hump suffices for real λ.** Whether it would for slab QNMs (holomorphy §5)
+  is outside R2 and not studied here.

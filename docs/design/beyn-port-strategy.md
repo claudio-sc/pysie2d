@@ -15,7 +15,7 @@ solver.
 **Is not:** a port of the research QNM *pipeline*. The research code's value is
 concentrated in ~27 KB of algorithm (`contour.py` plus the bordered-Newton core);
 the surrounding ~400 KB is Dask orchestration, surrogate dispatch, sweep
-management, and slab/waveguide physics. None of that belongs in pysie2d.
+management, and slab physics. None of that belongs in pysie2d.
 
 The scope boundary is already written down: pysie2d covers "the part that can be
 validated end-to-end against a closed-form reference." QNM extraction for a
