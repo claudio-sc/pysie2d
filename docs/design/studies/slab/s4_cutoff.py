@@ -1,4 +1,4 @@
-"""S4: near-cutoff poles (roadmap risk §7.1) and near-degenerate poles (mode counting).
+"""S4: near-cutoff poles (the near-cutoff risk) and near-degenerate poles (mode counting).
 
 (a) A mode is placed at (β − k_out)/k = t exactly, t = 1e-1 … 1e-8: pick β, then the
     core thickness from the closed form d = (mπ + atan(p_c/κ) + atan(p_s/κ))/κ. So the

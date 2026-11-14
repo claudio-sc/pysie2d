@@ -20,8 +20,8 @@ Mapping to analytic Mie coefficients (Bohren & Huffman ch. 8):
 - `pol = 2` (TE, `E_y`) ↔ `b_n` ↔ efficiency keys `Q_*_TE`.
 - `pol = 1` (TM, `H_y`) ↔ `a_n` ↔ efficiency keys `Q_*_TM`.
 
-> **⚠ The TE/TM labels here are the opposite of the waveguide/nanowire
-> literature's.** This repo names the polarisation after the field *component*
+> **⚠ The TE/TM labels here are the opposite of much of the nanowire
+> literature.** This repo names the polarisation after the field *component*
 > along the axis being E (TE ≡ `E_y` ∥ axis), following the original
 > formulation. Much of the nanowire and anapole literature — including the
 > eigen-eps note `manuscripts/anapole-design-rules/note.tex` — names it after the

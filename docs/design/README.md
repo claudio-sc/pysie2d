@@ -6,10 +6,9 @@ why. They are kept because the *reasoning* is expensive to reconstruct — not
 because they describe the current tree. Where a number or a status line here
 disagrees with the repo, the repo wins.
 
-For using the package, read [README.md](../../README.md),
-[docs/conventions.md](../conventions.md) and [docs/qnm-guide.md](../qnm-guide.md).
-The live list of what is shipped and what is next is the roadmap in
-[CLAUDE.md](../../CLAUDE.md).
+For using the package, read [README.md](../../README.md) and the guides in
+[docs/](..), starting with [conventions.md](../conventions.md). What has shipped
+is in [CHANGELOG.md](../../CHANGELOG.md).
 
 | Document | What it is | How to treat it |
 |---|---|---|
@@ -34,5 +33,4 @@ The live list of what is shipped and what is next is the roadmap in
 | [layered-spec.md](layered-spec.md) | v0.9 code-spec for the half-space background, with its §8 builder contract. | **Historical. The authority on intent.** Implemented in v0.9. |
 | [studies/transmitted/README.md](studies/transmitted/README.md) | The v1.1 transmitted-field prototypes (t1–t5). | Historical. The source of the v1.1 gate numbers. |
 | [transmitted-spec.md](transmitted-spec.md) | v1.1 code-spec for the field below a half-space, with its §8 builder contract. | **Historical. The authority on intent.** Shipped as v1.1.0. |
-| [waveguide-roadmap.md](waveguide-roadmap.md) | The v1.2–v1.3 roadmap for waveguide-coupled clusters: goal, physics, milestones, anchors A1–A9, owner decisions R1–R18 and R25. | **Live.** Above the code-specs. §9 is the resume point. |
-| [slab-spec.md](slab-spec.md) | v1.2 code-spec for the N-layer `Stack`: guided modes, mode and in-plane-dipole sources, complex mode amplitudes with the power account, the sensitivity helper, with its §8 builder contract. Study: [studies/slab/](studies/slab/README.md). | **Live**, draft 1. Builder-ready pending owner review of T1–T9. |
+| [slab-spec.md](slab-spec.md) | v1.2 code-spec for the N-layer `Stack`: goal, owner decisions R1–R20, anchors A1–A9, guided modes, mode and in-plane-dipole sources, complex mode amplitudes with the power account, the sensitivity helper, with its §8 builder contract. Study: [studies/slab/](studies/slab/README.md). | **Historical. The authority on intent.** Shipped as v1.2.0. |

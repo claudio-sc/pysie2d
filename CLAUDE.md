@@ -248,19 +248,17 @@ Built per the builder contract in §8 of
 `docs/conventions.md` §16. Its finding 1, a v0.9 `c_sca_up` defect over
 low-index substrates, shipped as v1.0.1.
 
-**v1.2–v1.3 — waveguide-coupled clusters, on `v1.2-slab-waveguide`.** The
-roadmap is [waveguide-roadmap.md](docs/design/waveguide-roadmap.md) (owner decisions
-R1–R10): v1.2 N-layer `Stack`, guided modes, mode source and S-parameters by
-residue; v1.3 MEEP validation of the waveguide coupling. The 2.5D front end once
-planned as v1.4 is out of scope (owner, 2026-11-11, roadmap R25). Code-spec: [slab-spec.md](docs/design/slab-spec.md), study
+**v1.2–v1.3 — a layered stack background.** v1.2: N-layer `Stack`, guided
+modes, mode source and mode amplitudes by residue; v1.3: MEEP validation of the
+coupling into guided modes. Owner decisions and anchors are in the code-spec,
+[slab-spec.md](docs/design/slab-spec.md) §D; study
 [studies/slab/](docs/design/studies/slab/README.md). v1.2 is implemented on the
 branch (gates GW1–GW18, conventions §17). One owner-approved change to the spec
 (2026-10-26): P_down over a stack uses S12's sine-mapped rule, not the v1.1 flux
 rule, which stalls at 1e-6 in TM. Shipped as v1.2.0 and v1.2.1. v1.3 merged
 2026-11-02 (no release: test and docs only): MEEP S-parameters of a Gielis pair
 200 nm above SOI, frozen in `tests/test_external_waveguide.py`. TM complex t is
-a strict xfail at 1.3× its MEEP-only tolerance (a res-40 rung would decide it);
-the MEEP LDOS run (R6) moved out.
+a strict xfail at 1.3× its MEEP-only tolerance.
 
 **Cluster reduction: many materials at one wavelength.** Shipped as package v1.3.0
 (2026-11-06). The roadmap's "v1.3", the MEEP validation,
