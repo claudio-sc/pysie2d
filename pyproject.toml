@@ -59,6 +59,11 @@ convention = "google"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `slow` marks the test functions that cost 2 s or more locally across their
+# parameters: 25 functions, about 78 % of the suite's time. Draft PRs run
+# `-m "not slow"`; PRs ready for review and pushes to main run everything.
+# A plain `uv run pytest` runs everything too.
+markers = ["slow: costs 2 s or more; runs before merging, not on every draft push"]
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]

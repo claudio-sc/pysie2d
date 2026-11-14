@@ -154,6 +154,7 @@ def assemble(rad, lam, shape, arc_length, pol):
     ).assemble(lam)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("s", EXACT_RATIOS)
 @pytest.mark.parametrize("shape, arc_length, _atol", _params(SHAPES))
 @pytest.mark.parametrize("pol", [1, 2])
@@ -183,6 +184,7 @@ def test_matrix_is_bit_identical_under_binary_scaling(s, shape, arc_length, _ato
     assert np.array_equal(m1, m2)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("s", INEXACT_RATIOS)
 @pytest.mark.parametrize("shape, arc_length, atol", _params(SHAPES))
 @pytest.mark.parametrize("pol", [1, 2])

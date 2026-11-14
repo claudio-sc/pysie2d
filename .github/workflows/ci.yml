@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+    # ready_for_review is the switch to the full tier (see "Pick the tier").
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# A new push to a PR supersedes the run in flight; a push to main never does.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
@@ -12,21 +19,65 @@ jobs:
       MPLBACKEND: Agg
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+
+      # Three tiers. Merging to main publishes to PyPI and version-release does
+      # not wait for this workflow, so the full tier must pass on the PR itself:
+      #   docs  - every changed file is documentation: ruff and the snippet
+      #           examples only, whatever the PR state.
+      #   fast  - a draft PR with code changes: everything but `slow` tests and
+      #           the merge-only examples.
+      #   full  - a PR ready for review, or a push to main: everything.
+      # docs/ counts as documentation, including docs/design/studies, which
+      # neither ruff nor pytest touches.
+      - name: Pick the tier
+        id: tier
+        env:
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            tier=full
+          elif ! git diff --name-only "$BASE" HEAD \
+              | grep -qvE '^(docs/.*|figures/.*|.*\.md|CITATION\.cff|LICENSE)$'; then
+            tier=docs
+          elif [ "$DRAFT" = "true" ]; then
+            tier=fast
+          else
+            tier=full
+          fi
+          echo "tier=$tier" >> "$GITHUB_OUTPUT"
+          echo "::notice::CI tier: $tier"
+
       - run: uv sync --frozen
       - run: uv run ruff format --check .
       - run: uv run ruff check .
-      - run: uv run pytest
-      # The examples generate the figures and back every snippet in the README
-      # and the guides in docs/. They import the public API directly, but
-      # nothing in pytest touches them, so a rename in the façade would rot the
-      # documentation silently. The snippet scripts assert the numbers the
-      # guides quote. All of them together run in about a minute.
+
+      - name: Fast tests
+        if: steps.tier.outputs.tier == 'fast'
+        run: uv run pytest -m "not slow"
+      - name: All tests
+        if: steps.tier.outputs.tier == 'full'
+        run: uv run pytest
+
+      # The examples import the public API directly, but nothing in pytest
+      # touches them, so a rename in the façade would rot them silently. Scripts
+      # carrying a "# ci: merge-only" line (the figures, the optimisation demo)
+      # run in the full tier only; every other script runs in every tier.
       - name: Run the examples
+        env:
+          TIER: ${{ steps.tier.outputs.tier }}
         run: |
           for script in examples/*.py; do
+            if [ "$TIER" != "full" ] && grep -q '^# ci: merge-only' "$script"; then
+              echo "skip $script (merge-only)"
+              continue
+            fi
             echo "::group::$script"
             uv run python "$script"
             echo "::endgroup::"

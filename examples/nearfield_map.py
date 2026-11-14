@@ -1,3 +1,4 @@
+# ci: merge-only (a figure or a long run; see examples/CLAUDE.md)
 """Near-field map of a Gielis star under plane-wave illumination.
 
 Evaluates the field on a 2-D grid around an ``m = 6`` Gielis superformula

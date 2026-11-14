@@ -1,3 +1,4 @@
+# ci: merge-only (a figure or a long run; see examples/CLAUDE.md)
 """Purcell map: relative LDOS around a Gielis star near a resonance.
 
 For every source position on a 2-D grid, the relative local density of states

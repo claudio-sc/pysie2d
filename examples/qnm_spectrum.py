@@ -1,3 +1,4 @@
+# ci: merge-only (a figure or a long run; see examples/CLAUDE.md)
 """Quasi-normal-mode spectrum of a circular cylinder, against analytic Mie poles.
 
 Extracts QNMs with :class:`pysie2d.QNMSolver` from seven search boxes — four TE,

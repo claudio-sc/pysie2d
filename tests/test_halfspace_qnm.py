@@ -50,6 +50,7 @@ PEC_CASES = [
 ]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("pol,gap,lo,hi", PEC_CASES)
 def test_pec_poles_are_a_subset_of_the_mirror_cluster_poles(pol, gap, lo, hi):
     mat = _mat(pol)
@@ -68,6 +69,7 @@ def test_pec_poles_are_a_subset_of_the_mirror_cluster_poles(pol, gap, lo, hi):
     assert half.sigma_ratio.max() < 1e-12
 
 
+@pytest.mark.slow
 def test_pec_cluster_has_modes_the_half_space_excludes():
     # Guards the subset test: at gap 60 the TE mirror cluster has a second pole
     # (482.98+50.65i, of the symmetry a conductor forbids) that the half-space
@@ -122,6 +124,7 @@ def _refined(geo, mat, background, lo, hi, depth):
 
 # The ×1.5 path breaks the δ·D ≤ 6 cap on purpose (δ·D reaches 9–12), which is the
 # point of the variation and exactly what SommerfeldPrecisionWarning reports.
+@pytest.mark.slow
 @pytest.mark.filterwarnings("ignore::pysie2d.SommerfeldPrecisionWarning")
 @pytest.mark.parametrize("pol,gap,lo,hi", DEPTH_CASES)
 @pytest.mark.parametrize(

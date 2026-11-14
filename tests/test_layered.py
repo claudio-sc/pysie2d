@@ -167,6 +167,7 @@ CONTINUATION_CASES = [
 ]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("name,wavelength,eps,pol", CONTINUATION_CASES)
 def test_complex_k_matches_chebyshev_continuation_of_the_real_reference(
     name, wavelength, eps, pol

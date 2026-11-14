@@ -70,6 +70,7 @@ def frozen(request):
     return spec, ours
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("observable", ["c_sca", "c_ext"])
 def test_cross_section_spectrum_matches_frozen(frozen, observable):
     # The core assertion: the whole spectrum, pointwise, against a reference
