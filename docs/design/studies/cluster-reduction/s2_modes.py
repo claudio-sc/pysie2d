@@ -4,7 +4,7 @@ import numpy as np
 from scipy.linalg import lu_factor, lu_solve
 from scipy.special import hankel1, jn_zeros
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "prototype"))
-from perf import interior_rows, SIN, nclad
+from perf import interior_rows, SLAB, nclad
 from pysie2d import BIESolver, Geometry, Material, Cluster, ClusterBIESolver
 from pysie2d.beyn import beyn_modes
 from pysie2d.reference.mie import an, bn, efficiencies
@@ -121,7 +121,7 @@ for d in (400.0, 1000.0, 3000.0):
 print("\n=== F. cancellation: x = a − R y when ε nears an isolated-particle pole (M_p singular, cluster M regular)")
 pol = 1; lam1, n1 = 1550.0, nclad
 gs = [Geometry.gielis(rad=90.0, n_pts=100, m=3, n1=4.0, n2=6.0, n3=6.0, x0=600.0 * (p - 1.5), z0=140.0) for p in range(4)]
-pr = Pair(gs, pol, lam1, n_clad=n1, bg=SIN)
+pr = Pair(gs, pol, lam1, n_clad=n1, bg=SLAB)
 iso, _ = modes(lambda e: pr.small(0, e), -1.6 - 0.2j, -1.1 - 0.002j, nq=32, npb=12)
 em0 = iso[np.argmin(np.abs(iso.imag))]
 print(f"isolated pole used: {em0:.8f}")

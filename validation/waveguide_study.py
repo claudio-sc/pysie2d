@@ -1,4 +1,4 @@
-"""v1.3: the MEEP waveguide study in three single-core batches.
+"""v1.3: the MEEP slab study in three single-core batches.
 
 Run from the repo root under uv; each job is a subprocess in the MEEP conda
 environment, one at a time, one core::

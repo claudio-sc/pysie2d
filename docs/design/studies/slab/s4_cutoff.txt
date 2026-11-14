@@ -15,7 +15,7 @@ SOI symmetric, SiO2|Si|SiO2 @1550: mode m = 1 near cutoff, k_out = k1
     t=1e-06 d=  245.69nm  found q/γ/wind_q/wind_γ=1/2/1/2  |β_γ−β|/β=0e+00  |Res|/k=2.00e-06  Res circle vs N/D'=2e-11  pole/|G|≤1.9e-02  M=2837 clr=0.87  path−ref=8e-10 s2−s1=2e-14 δ/2−δ=2e-14
     t=1e-08 d=  245.17nm  found q/γ/wind_q/wind_γ=1/2/1/1  |β_γ−β|/β=0e+00  |Res|/k=2.00e-08  Res circle vs N/D'=6e-10  pole/|G|≤2.0e-03  M=2837 clr=0.87  path−ref=4e-09 s2−s1=1e-14 δ/2−δ=1e-14
 
-air|SiN|SiO2 @1550 (true fundamental cutoff): mode m = 0 near cutoff, k_out = k_bot
+air|n=2|SiO2 @1550 (true fundamental cutoff): mode m = 0 near cutoff, k_out = k_bot
   TE
     t=1e-01 d=  262.19nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=1e-16  |Res|/k=2.26e-01  Res circle vs N/D'=2e-16  pole/|G|≤1.1e+00  M=2838 clr=0.87  path−ref=2e-11 s2−s1=3e-14 δ/2−δ=3e-14
     t=1e-02 d=  145.69nm  found q/γ/wind_q/wind_γ=1/1/1/1  |β_γ−β|/β=0e+00  |Res|/k=1.42e-01  Res circle vs N/D'=2e-15  pole/|G|≤6.8e-01  M=2832 clr=0.87  path−ref=4e-12 s2−s1=4e-15 δ/2−δ=4e-15
@@ -50,7 +50,7 @@ air|SiN|SiO2 @1550 (true fundamental cutoff): mode m = 0 near cutoff, k_out = k_
   SOI sym TE1       t=1e-06 X= 1500 Z= 100: path − g_ref (.45/.2) = 8e-09/1e-07   path − g_ref_gamma (.45/.2) = 4e-10/2e-10
   SOI sym TE1       t=1e-08 X=    0 Z=  20: path − g_ref (.45/.2) = 2e-08/7e-04   path − g_ref_gamma (.45/.2) = 8e-09/3e-08
   SOI sym TE1       t=1e-08 X= 1500 Z= 100: path − g_ref (.45/.2) = 5e-08/2e-03   path − g_ref_gamma (.45/.2) = 4e-09/2e-08
-  air|SiN|SiO2 TE0  t=1e-06 X=    0 Z=  20: path − g_ref (.45/.2) = 8e-09/3e-07   path − g_ref_gamma (.45/.2) = 7e-10/4e-08
-  air|SiN|SiO2 TE0  t=1e-06 X= 1500 Z= 100: path − g_ref (.45/.2) = 3e-09/1e-07   path − g_ref_gamma (.45/.2) = 2e-10/1e-08
-  air|SiN|SiO2 TE0  t=1e-08 X=    0 Z=  20: path − g_ref (.45/.2) = 4e-07/5e+00   path − g_ref_gamma (.45/.2) = 3e-08/7e-09
-  air|SiN|SiO2 TE0  t=1e-08 X= 1500 Z= 100: path − g_ref (.45/.2) = 2e-04/2e+00   path − g_ref_gamma (.45/.2) = 1e-08/3e-09
+  air|n=2|SiO2 TE0  t=1e-06 X=    0 Z=  20: path − g_ref (.45/.2) = 8e-09/3e-07   path − g_ref_gamma (.45/.2) = 7e-10/4e-08
+  air|n=2|SiO2 TE0  t=1e-06 X= 1500 Z= 100: path − g_ref (.45/.2) = 3e-09/1e-07   path − g_ref_gamma (.45/.2) = 2e-10/1e-08
+  air|n=2|SiO2 TE0  t=1e-08 X=    0 Z=  20: path − g_ref (.45/.2) = 4e-07/5e+00   path − g_ref_gamma (.45/.2) = 3e-08/7e-09
+  air|n=2|SiO2 TE0  t=1e-08 X= 1500 Z= 100: path − g_ref (.45/.2) = 2e-04/2e+00   path − g_ref_gamma (.45/.2) = 1e-08/3e-09

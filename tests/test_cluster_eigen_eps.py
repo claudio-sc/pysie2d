@@ -35,7 +35,7 @@ BACKGROUNDS = {
     "free": None,
     "glass": HalfSpace(2.25, z_int=0.0),
     "pec": HalfSpace.pec(),
-    "sin": Stack(((4.0, 400.0),), NC**2),
+    "slab": Stack(((4.0, 400.0),), NC**2),
 }
 
 
@@ -162,7 +162,7 @@ def test_dipole_and_guided_mode_excitations_equal_the_dense_solve():
     """The other two excitations share the solve; their right-hand sides must agree."""
     cl = Cluster(_mixed())
     mats = _mixed_materials(1)
-    solver = ClusterBIESolver(cl, mats, 1, BACKGROUNDS["sin"])
+    solver = ClusterBIESolver(cl, mats, 1, BACKGROUNDS["slab"])
     prepared = solver.at_wavelength(LAM)
     # Round-off: measured 7.5e-14, 6.9e-14 and 5.3e-14 below, so ~7× headroom.
     bound = 5e-13
@@ -190,7 +190,7 @@ def test_dipole_and_guided_mode_excitations_equal_the_dense_solve():
     ("pitch", "nn", "name", "cond"),
     [
         (300.0, 100, "free", 4.4e2),
-        (250.0, 200, "sin", 9.3e2),
+        (250.0, 200, "slab", 9.3e2),
         (240.0, 400, "free", 1.9e3),
         (234.0, 800, "free", 3.8e3),
     ],
@@ -286,7 +286,7 @@ def test_foreign_materials_are_refused():
 
 
 def _slab_quartet() -> tuple[ClusterEigenEps, complex, list[Geometry]]:
-    """Four triangles over SiN, and an isolated-particle mode (a pole of D, not M)."""
+    """Four triangles over n=2, and an isolated-particle mode (a pole of D, not M)."""
     gs = [
         Geometry.gielis(
             rad=90.0,
@@ -302,7 +302,7 @@ def _slab_quartet() -> tuple[ClusterEigenEps, complex, list[Geometry]]:
     ]
     mat = Material(n_core=1.5, n_clad=NC, pol=1)
     prepared = ClusterBIESolver(
-        Cluster(gs), [mat] * 4, 1, BACKGROUNDS["sin"]
+        Cluster(gs), [mat] * 4, 1, BACKGROUNDS["slab"]
     ).at_wavelength(LAM)
 
     def isolated(e: complex) -> np.ndarray:
@@ -334,7 +334,7 @@ def test_refinement_rescues_the_cancellation_near_an_isolated_pole(
     prepared, pole, gs = _slab_quartet()
     eps = pole + distance * np.exp(0.7j)
     mats = [Material.from_eps(eps * NC**2, n_clad=NC, pol=1)] * 4
-    dense = ClusterBIESolver(Cluster(gs), mats, 1, BACKGROUNDS["sin"]).scatter(LAM)
+    dense = ClusterBIESolver(Cluster(gs), mats, 1, BACKGROUNDS["slab"]).scatter(LAM)
 
     assert _rel(prepared.scatter(mats).ei, dense.ei) < 2e-12
 
@@ -614,7 +614,7 @@ def test_mode_over_a_slab_is_a_pole_of_the_driven_response():
     on the real axis would miss.
     """
     geom = _rotated_triangle()
-    stack = BACKGROUNDS["sin"]
+    stack = BACKGROUNDS["slab"]
     prepared = _prepared([geom], 1, LAM, NC, stack)
     res = prepared.eigenpermittivities(
         (-1.6 - 0.2j) * NC**2, (-1.1 - 0.002j) * NC**2, n_probe=12

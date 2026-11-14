@@ -44,18 +44,18 @@ for pol, lo, hi, parity in ((2, 11.0 - 1.4j, 13.8 - 0.1j, "odd (E_y=0 on the mir
         print(f"pol={pol} h={h:.0f} [{parity}]: PEC {a.size} modes, mirror pair {b.size}; every PEC mode in the pair to {nearest(a, b):.1e}", flush=True)
 
 print("\n=== M. pole from the passive driven response: Material.from_eps, ScatterResult, no contour, no branch choice")
-nc = 1.444; L = 1550.0; SIN = Stack(((4.0, 400.0),), nc**2)
+nc = 1.444; L = 1550.0; SLAB = Stack(((4.0, 400.0),), nc**2)
 def shifted(g, dz, rot=17.0):
     c, s = np.cos(np.deg2rad(rot)), np.sin(np.deg2rad(rot)); r = lambda x, z: (c * x - s * z, s * x + c * z)
     f, gg = r(g.f, g.g); df, dg = r(g.df, g.dg); ddf, ddg = r(g.ddf, g.ddg)
     return Geometry(f=f, g=gg + dz, df=df, dg=dg, ddf=ddf, ddg=ddg, rad=g.rad, z0=dz)
 geom = shifted(Geometry.gielis(rad=90.0, n_pts=160, m=3, n1=4.0, n2=6.0, n3=6.0), 140.0)
-op = Op([geom], 1, L, n_clad=nc, bg=SIN)
+op = Op([geom], 1, L, n_clad=nc, bg=SLAB)
 em = modes(op, -1.6 - 0.2j, -1.1 - 0.002j, nq=32, npb=12)
 print("ε-Beyn over the slab (polished):", np.round(em, 8))
 target = em[np.argmin(np.abs(em.imag))]
 def s0(e):
-    r = BIESolver(geom, Material.from_eps(e * nc**2, n_clad=nc, pol=1), background=SIN).scatter(L, 0.0)
+    r = BIESolver(geom, Material.from_eps(e * nc**2, n_clad=nc, pol=1), background=SLAB).scatter(L, 0.0)
     return r.mode_amplitudes(x_ref=0.0).s_plus[0]
 for im, half, npts, deg in ((1e-3, 0.03, 15, 3), (1e-3, 0.06, 21, 4), (1e-4, 0.03, 21, 4), (1e-4, 0.06, 31, 5)):
     es = target.real + np.linspace(-half, half, npts) + 1j * im

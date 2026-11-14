@@ -1,4 +1,4 @@
-background: SiN slab
+background: n=2 slab
 pitch 300 nm (gap ~110 nm)
 isolated outside rows == cluster self block: True
 neighbour coupling rank per particle (1e-13): [35, 57, 57, 35]  -> reduced size 184 vs full 800

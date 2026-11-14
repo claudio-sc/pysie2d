@@ -11,12 +11,12 @@
   air|Si 220|SiO2          TE b=(1,0)               : |u − guided|/Σ|c| at +10µm 1.5e-02  −10µm 1.5e-02  +40µm 2.5e-03  −40µm 2.5e-03
   air|Si 220|SiO2          TE b=(0,1)               : |u − guided|/Σ|c| at +10µm 2.0e-02  −10µm 2.0e-02  +40µm 2.8e-03  −40µm 2.8e-03
   air|Si 220|SiO2          TE spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 1.3e-02  −10µm 3.3e-02  +40µm 3.1e-03  −40µm 4.3e-03
-  SiN 400 @800 (2 modes)   TM b=(1,0)               : |u − guided|/Σ|c| at +10µm 1.1e-02  −10µm 1.1e-02  +40µm 1.4e-03  −40µm 1.4e-03
-  SiN 400 @800 (2 modes)   TM b=(0,1)               : |u − guided|/Σ|c| at +10µm 4.1e-03  −10µm 4.1e-03  +40µm 3.9e-04  −40µm 3.9e-04
-  SiN 400 @800 (2 modes)   TM spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 8.9e-03  −10µm 1.2e-02  +40µm 1.2e-03  −40µm 1.6e-03
-  SiN 400 @800 (2 modes)   TE b=(1,0)               : |u − guided|/Σ|c| at +10µm 4.2e-03  −10µm 4.2e-03  +40µm 5.3e-04  −40µm 5.3e-04
-  SiN 400 @800 (2 modes)   TE b=(0,1)               : |u − guided|/Σ|c| at +10µm 5.8e-03  −10µm 5.8e-03  +40µm 7.1e-04  −40µm 7.1e-04
-  SiN 400 @800 (2 modes)   TE spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 7.4e-04  −10µm 7.9e-03  +40µm 8.8e-05  −40µm 9.8e-04
+  n=2 400 @800 (2 modes)   TM b=(1,0)               : |u − guided|/Σ|c| at +10µm 1.1e-02  −10µm 1.1e-02  +40µm 1.4e-03  −40µm 1.4e-03
+  n=2 400 @800 (2 modes)   TM b=(0,1)               : |u − guided|/Σ|c| at +10µm 4.1e-03  −10µm 4.1e-03  +40µm 3.9e-04  −40µm 3.9e-04
+  n=2 400 @800 (2 modes)   TM spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 8.9e-03  −10µm 1.2e-02  +40µm 1.2e-03  −40µm 1.6e-03
+  n=2 400 @800 (2 modes)   TE b=(1,0)               : |u − guided|/Σ|c| at +10µm 4.2e-03  −10µm 4.2e-03  +40µm 5.3e-04  −40µm 5.3e-04
+  n=2 400 @800 (2 modes)   TE b=(0,1)               : |u − guided|/Σ|c| at +10µm 5.8e-03  −10µm 5.8e-03  +40µm 7.1e-04  −40µm 7.1e-04
+  n=2 400 @800 (2 modes)   TE spin-locked to mode 0 : |u − guided|/Σ|c| at +10µm 7.4e-04  −10µm 7.9e-03  +40µm 8.8e-05  −40µm 9.8e-04
 
 (b) power balance Im[(b*·∇)(b·∇')G] = P_up + P_down + Σ(P⁺ + P⁻), and the directionality
   SOI 220 @1550            TM b=(1,0)          h₀=   20: |Δ|/P = 3.1e-15  guided  67.7 %  P⁺/(P⁺+P⁻) = 0.5000
@@ -51,19 +51,19 @@
   air|Si 220|SiO2          TE b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 2.2e-16  guided  16.7 %  P⁺/(P⁺+P⁻) = 0.2615
   air|Si 220|SiO2          TE b=spin-locked    h₀=   20: |Δ|/P = 4.1e-15  guided  72.6 %  P⁺/(P⁺+P⁻) = 1.0000
   air|Si 220|SiO2          TE b=spin-locked    h₀=  150: |Δ|/P = 6.6e-16  guided  15.8 %  P⁺/(P⁺+P⁻) = 1.0000
-  SiN 400 @800 (2 modes)   TM b=(1,0)          h₀=   20: |Δ|/P = 9.6e-16  guided  58.8 %  P⁺/(P⁺+P⁻) = 0.5000
-  SiN 400 @800 (2 modes)   TM b=(1,0)          h₀=  150: |Δ|/P = 2.1e-16  guided  31.9 %  P⁺/(P⁺+P⁻) = 0.5000
-  SiN 400 @800 (2 modes)   TM b=(0,1)          h₀=   20: |Δ|/P = 7.3e-16  guided  12.1 %  P⁺/(P⁺+P⁻) = 0.5000
-  SiN 400 @800 (2 modes)   TM b=(0,1)          h₀=  150: |Δ|/P = 2.0e-16  guided   2.8 %  P⁺/(P⁺+P⁻) = 0.5000
-  SiN 400 @800 (2 modes)   TM b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 2.2e-15  guided  43.5 %  P⁺/(P⁺+P⁻) = 0.3694
-  SiN 400 @800 (2 modes)   TM b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 1.6e-15  guided  20.0 %  P⁺/(P⁺+P⁻) = 0.3912
-  SiN 400 @800 (2 modes)   TM b=spin-locked    h₀=   20: |Δ|/P = 3.7e-16  guided  27.9 %  P⁺/(P⁺+P⁻) = 0.9132
-  SiN 400 @800 (2 modes)   TM b=spin-locked    h₀=  150: |Δ|/P = 0.0e+00  guided  10.5 %  P⁺/(P⁺+P⁻) = 0.8750
-  SiN 400 @800 (2 modes)   TE b=(1,0)          h₀=   20: |Δ|/P = 1.7e-16  guided  69.7 %  P⁺/(P⁺+P⁻) = 0.5000
-  SiN 400 @800 (2 modes)   TE b=(1,0)          h₀=  150: |Δ|/P = 0.0e+00  guided  22.4 %  P⁺/(P⁺+P⁻) = 0.5000
-  SiN 400 @800 (2 modes)   TE b=(0,1)          h₀=   20: |Δ|/P = 1.6e-16  guided  14.2 %  P⁺/(P⁺+P⁻) = 0.5000
-  SiN 400 @800 (2 modes)   TE b=(0,1)          h₀=  150: |Δ|/P = 1.1e-16  guided   3.6 %  P⁺/(P⁺+P⁻) = 0.5000
-  SiN 400 @800 (2 modes)   TE b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 4.1e-16  guided  47.4 %  P⁺/(P⁺+P⁻) = 0.3448
-  SiN 400 @800 (2 modes)   TE b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 0.0e+00  guided  15.2 %  P⁺/(P⁺+P⁻) = 0.3591
-  SiN 400 @800 (2 modes)   TE b=spin-locked    h₀=   20: |Δ|/P = 3.9e-16  guided  29.9 %  P⁺/(P⁺+P⁻) = 0.9549
-  SiN 400 @800 (2 modes)   TE b=spin-locked    h₀=  150: |Δ|/P = 0.0e+00  guided   9.2 %  P⁺/(P⁺+P⁻) = 0.9377
+  n=2 400 @800 (2 modes)   TM b=(1,0)          h₀=   20: |Δ|/P = 9.6e-16  guided  58.8 %  P⁺/(P⁺+P⁻) = 0.5000
+  n=2 400 @800 (2 modes)   TM b=(1,0)          h₀=  150: |Δ|/P = 2.1e-16  guided  31.9 %  P⁺/(P⁺+P⁻) = 0.5000
+  n=2 400 @800 (2 modes)   TM b=(0,1)          h₀=   20: |Δ|/P = 7.3e-16  guided  12.1 %  P⁺/(P⁺+P⁻) = 0.5000
+  n=2 400 @800 (2 modes)   TM b=(0,1)          h₀=  150: |Δ|/P = 2.0e-16  guided   2.8 %  P⁺/(P⁺+P⁻) = 0.5000
+  n=2 400 @800 (2 modes)   TM b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 2.2e-15  guided  43.5 %  P⁺/(P⁺+P⁻) = 0.3694
+  n=2 400 @800 (2 modes)   TM b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 1.6e-15  guided  20.0 %  P⁺/(P⁺+P⁻) = 0.3912
+  n=2 400 @800 (2 modes)   TM b=spin-locked    h₀=   20: |Δ|/P = 3.7e-16  guided  27.9 %  P⁺/(P⁺+P⁻) = 0.9132
+  n=2 400 @800 (2 modes)   TM b=spin-locked    h₀=  150: |Δ|/P = 0.0e+00  guided  10.5 %  P⁺/(P⁺+P⁻) = 0.8750
+  n=2 400 @800 (2 modes)   TE b=(1,0)          h₀=   20: |Δ|/P = 1.7e-16  guided  69.7 %  P⁺/(P⁺+P⁻) = 0.5000
+  n=2 400 @800 (2 modes)   TE b=(1,0)          h₀=  150: |Δ|/P = 0.0e+00  guided  22.4 %  P⁺/(P⁺+P⁻) = 0.5000
+  n=2 400 @800 (2 modes)   TE b=(0,1)          h₀=   20: |Δ|/P = 1.6e-16  guided  14.2 %  P⁺/(P⁺+P⁻) = 0.5000
+  n=2 400 @800 (2 modes)   TE b=(0,1)          h₀=  150: |Δ|/P = 1.1e-16  guided   3.6 %  P⁺/(P⁺+P⁻) = 0.5000
+  n=2 400 @800 (2 modes)   TE b=(1, 0.7−0.4i)  h₀=   20: |Δ|/P = 4.1e-16  guided  47.4 %  P⁺/(P⁺+P⁻) = 0.3448
+  n=2 400 @800 (2 modes)   TE b=(1, 0.7−0.4i)  h₀=  150: |Δ|/P = 0.0e+00  guided  15.2 %  P⁺/(P⁺+P⁻) = 0.3591
+  n=2 400 @800 (2 modes)   TE b=spin-locked    h₀=   20: |Δ|/P = 3.9e-16  guided  29.9 %  P⁺/(P⁺+P⁻) = 0.9549
+  n=2 400 @800 (2 modes)   TE b=spin-locked    h₀=  150: |Δ|/P = 0.0e+00  guided   9.2 %  P⁺/(P⁺+P⁻) = 0.9377

@@ -71,7 +71,7 @@ TRIANGLE = {"rad": 130.0, "m": 3, "n1": 4.0, "n2": 5.0, "n3": 5.0}
 
 Chosen for its *smallest radius of curvature*, 54 nm, against the README star's
 ~7 nm. MEEP's error on v1.0's star was 9.6× its error on a circle from the
-near-cusps alone; v1.3 tests the waveguide coupling, not the Yee grid on a cusp,
+near-cusps alone; v1.3 tests coupling into slab modes, not the Yee grid on a cusp,
 so the cluster is non-circular but nowhere sharp. ``m = 3`` closes only because
 ``a = b``.
 """

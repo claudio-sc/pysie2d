@@ -55,9 +55,9 @@
   SOI 220     gap=100.0: q_max·Σd =      46  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 7.0e-14
   SOI 220     gap= 20.0: q_max·Σd =     214  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 1.5e-12
   SOI 220     gap=  5.0: q_max·Σd =     841  naive NaN from q·Σd =    709  stable finite: True  max rel Δ where finite = 1.0e+00
-  SiN 400     gap=100.0: q_max·Σd =      81  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 3.5e-13
-  SiN 400     gap= 20.0: q_max·Σd =     385  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 7.2e-12
-  SiN 400     gap=  5.0: q_max·Σd =    1525  naive NaN from q·Σd =    710  stable finite: True  max rel Δ where finite = 1.0e+00
+  n=2 400     gap=100.0: q_max·Σd =      81  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 3.5e-13
+  n=2 400     gap= 20.0: q_max·Σd =     385  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 7.2e-12
+  n=2 400     gap=  5.0: q_max·Σd =    1525  naive NaN from q·Σd =    710  stable finite: True  max rel Δ where finite = 1.0e+00
   Si/SiO2/Si  gap=100.0: q_max·Σd =     156  naive NaN from q·Σd =    nan  stable finite: True  max rel Δ where finite = 1.6e-13
   Si/SiO2/Si  gap= 20.0: q_max·Σd =     719  naive NaN from q·Σd =    710  stable finite: True  max rel Δ where finite = 1.0e+00
   Si/SiO2/Si  gap=  5.0: q_max·Σd =    2828  naive NaN from q·Σd =    710  stable finite: True  max rel Δ where finite = 1.0e+00

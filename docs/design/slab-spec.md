@@ -1,12 +1,12 @@
-# v1.2 slab waveguide — code-spec
+# v1.2 layered stack background — code-spec
 
-Status: **builder-ready, 2026-10-25.** The owner decisions are R1–R18 in
-[waveguide-roadmap.md](waveguide-roadmap.md) §1, with R16 revised below. The
+Status: **implemented, shipped as v1.2.0.** The owner decisions (R) and the
+validation anchors (A) are listed in §D. The
 formulas in §2 are each verified in the study,
 [studies/slab/](studies/slab/README.md) S1–S12, and the measured numbers are
 in §3. The builder contract is §8.
 
-Branch: `v1.2-slab-waveguide`. **Additive**: no existing signature changes
+**Additive**: no existing signature changes
 meaning, and `HalfSpace` results are bit-identical.
 
 Scope in one line: an N-layer dielectric `Stack` background under particles
@@ -18,19 +18,58 @@ finite-difference sensitivity helper. The R12 shape optimisation is an
 
 ## D. Decisions
 
+### Goal
+
+The scattering problem of particles evanescently coupled to a planar layered
+background: how a scatterer above a dielectric slab sends light into the slab's
+guided modes and into radiation, as in the directional coupling of dipoles and
+nanoantennas to guided modes (Rodríguez-Fortuño et al.,
+[Science 340, 328 (2013)](https://doi.org/10.1126/science.1233739); Petersen,
+Volz and Rauschenbeutel,
+[Science 346, 67 (2014)](https://doi.org/10.1126/science.1257671)). In
+cross-section a slab is a three-layer background, so the stack adds poles to
+the reflected Green function and nothing else
+([sommerfeld-holomorphy.md](sommerfeld-holomorphy.md) §5).
+
 ### Owner decisions this spec implements
 
-R1 (particles outside the core), R2 (no slab QNMs), R5 (N layers), R11
-(cross-section first), R12 (first objective: the dipole's +x guided
-efficiency), R13 (complex amplitudes + powers), R14 (`x_ref` required), R15
-(near-degenerate pairs refused), R17 (Gielis now, optimiser in `examples/`),
-R18 (in-plane electric dipoles). R4 is dropped.
+| # | Decision (owner, 2026-10-23 and 2026-10-25) |
+|---|---|
+| R1 | **Scatterers stay outside the core.** No particle intersects or sits inside a layer of the stack. |
+| R2 | **No slab QNMs.** The slab-coupled response is read from the driven mode amplitudes. |
+| R3 | The v1.1 transmitted field (generic τ, `P_down` by interface flux) is a prerequisite. |
+| R5 | **A general N-layer `Stack`**, with the gates run on the three-layer case first. |
+| R6 | v1.3 compares the mode amplitudes with MEEP eigenmode coefficients. |
+| R9 | The amplitude API (layout over mode and direction, phase reference) is settled in this spec. |
+| R11 | **Cross-section only.** A wire, infinite along y, above a slab, which is exact in 2-D. |
+| R12 | **First objective: dipole power into one direction of TE₀**, with an antenna shape, normalised to the dipole's total power so that it is a true efficiency; the power balance (A6) checks every evaluation. |
+| R13 | **Complex amplitudes c_m^± plus power fractions** (settles R9). |
+| R14 | **The phase reference plane `x_ref` is a required argument.** \|S\|² does not depend on it. |
+| R15 | **Near-degenerate guided pairs are detected and refused.** Bracketed roots are checked against an argument-principle count, and an unresolved pair raises with its beat length (study S4). |
+| R16′ | **A finite-difference sensitivity helper, not an adjoint** (revised from R16, an adjoint gradient). An adjoint whose ∂M/∂p is a central difference costs the same 2 assemblies per parameter as differencing the objective; a real saving would need analytic kernel shape derivatives. |
+| R17 | **Gielis shapes**, and the optimisation loop is an `examples/` script; the library provides the objective and its gradient. |
+| R18 | **In-plane electric dipoles** (p_x, p_z, any complex mix) as derivative sources of G in TM (`pol = 1`), so that spin-locked directional coupling is expressible. |
+
+R4, particles on both sides of the stack, was dropped (owner, 2026-10-25).
 
 | # | Decision (owner, 2026-10-25) |
 |---|---|
-| R16′ | **R16 revised:** a finite-difference sensitivity helper, not an adjoint. An adjoint whose ∂M/∂p is a central difference costs the same 2 assemblies per parameter as differencing the objective. A real saving needs analytic kernel shape derivatives, which move to the Fourier-shape milestone. |
 | R19 | **The near field inside the layers is in scope.** `eval_field` works at every z outside the particles and off the interfaces. |
 | R20 | **Names accepted:** `Stack`, `Stack.guided_modes`, `GuidedMode`, `BIESolver.scatter_mode`, `ScatterResult.mode_amplitudes`, `ModeAmplitudes`, `scatter_dipole(..., moment=)`, `NearDegenerateModesError`. |
+
+### Validation anchors (non-negotiable 3)
+
+| # | Anchor | Independent because |
+|---|---|---|
+| A1 | `Stack` with all layers equal to the cover → v0.8 bit-identity; with one layer → v0.9 `HalfSpace` bit-identity | regression |
+| A2 | R(q) poles = β_m of the closed-form slab dispersion relation; profiles u_m closed form | closed form |
+| A3 | Reflected G against the real-axis QUADPACK reference with explicit pole indentation | second quadrature, different path, residues added by hand |
+| A4 | Line-dipole emission into mode m: the residue amplitude equals the closed form `∝ u_m(z₀)/P_m`, both polarisations | closed form |
+| A5 | Small-cylinder limit: `S` of a circle → the Born closed form from the Mie polarisability and the mode field, at the predicted rate | analytic Mie plus analytic mode |
+| A6 | Power balance as an equality (lossless, lossy, metal), every term from a different integral | energy conservation |
+| A7 | Reciprocity on an asymmetric cluster: `S_{n←m}` from the left equals `S_{m←n}` from the right | Lorentz reciprocity |
+| A8 | Scale covariance with every layer thickness scaled | conventions §9 |
+| A9 | v1.3: MEEP eigenmode coefficients on a non-circular cluster | external solver |
 
 ### Technical decisions taken by this spec (flagged for owner review)
 
@@ -38,8 +77,8 @@ R18 (in-plane electric dipoles). R4 is dropped.
 |---|---|---|
 | T1 | `Stack.guided_modes(wavelength, pol, n_clad)` takes the cover index as a third argument. | The cover is `Material.n_clad`; a stack does not know it. |
 | T2 | **Guided outputs need a lossless stack at real λ.** `guided_modes`, `mode_amplitudes`, `scatter_mode` and the `c_guided` key raise or are absent (T8) otherwise. The field, LDOS and the other cross-sections accept loss and complex λ. | A lossy or complex-λ guided mode is not an output channel at x → ±∞. |
-| T3 | **Layers and the bottom must have Re ε > 0** when given as constants. A callable is checked at evaluation. `ValueError` otherwise. A bare metal substrate stays `HalfSpace`. | The mode solver brackets on the dielectric window; plasmonic layers have poles outside it and are a later item. |
-| T4 | **The R12 example uses pol = 2 (slab TE₀ in cross-section) with the scalar line source**, with directionality from the antenna's asymmetry. In-plane electric dipoles couple to pol = 1 (slab TM₀) in cross-section; spin-locked TM₀ is a second objective in the same script. | E_y is driven only by a y-directed current. The in-plane dipole reaches slab TE₀ only in the v1.4 top view. |
+| T3 | **Layers and the bottom must have Re ε > 0** when given as constants. A callable is checked at evaluation. `ValueError` otherwise. A bare metal substrate stays `HalfSpace`. | The mode solver brackets on the dielectric window; plasmonic layers have poles outside it and are out of scope. |
+| T4 | **The R12 example uses pol = 2 (slab TE₀ in cross-section) with the scalar line source**, with directionality from the antenna's asymmetry. In-plane electric dipoles couple to pol = 1 (slab TM₀) in cross-section; spin-locked TM₀ is a second objective in the same script. | E_y is driven only by a y-directed current. The in-plane dipole reaches slab TE₀ only outside the cross-section plane. |
 | T5 | `QNMSolver(..., background=Stack)` raises `ValueError` (R2). | Slab QNMs are out of scope. |
 | T6 | The stack is **normalised at evaluation**: adjacent equal layers merge, trailing layers equal to the bottom merge into it, leading layers equal to the cover (`ε_rel == 1`) are dropped and `z_top` moves down. With no layer left, the call routes to the `HalfSpace` code (or to no background), bit-identically. | It removes r = 0 interfaces, where the interior and outer sheets can disagree (0/0), and it makes A1 exact. |
 | T7 | `moment=` is accepted for pol = 1 only. pol = 2 with `moment` raises `ValueError`. | R18: TM. The TE form would be a magnetic dipole, with another constant to pin. |
@@ -241,7 +280,7 @@ are `i(β_m ∓ β_n)·S_scat` exactly, and `d|S|²/dΔ = 0`.
 |---|---|---|
 | N = 0 recursion vs `fresnel_r`, `_tau_half_space` | 0 (bitwise) | s1 |
 | lossless energy \|R\|² + (Re Y_b/Y₁)\|α₁τ\|² = 1 | 2.0e-15 | s1 |
-| naive transfer matrix on a real path | NaN from q·Σd ≈ 709 (SOI at a 5 nm gap; SiN, double core at 10–20 nm) | s1, s5 |
+| naive transfer matrix on a real path | NaN from q·Σd ≈ 709 (SOI at a 5 nm gap; n=2, double core at 10–20 nm) | s1, s5 |
 | roots vs closed form | ≤ 4.8e-16 relative, up to 9 modes; three-way counts agree | s2 |
 | two residue routes | 4e-15 | s2 |
 | path vs reference, 5 stacks, TE/TM, G and ∂z′G | ≤ 4e-10 (reference floor, spread 2.5e-10) | s3 |
@@ -258,7 +297,7 @@ are `i(β_m ∓ β_n)·S_scat` exactly, and `d|S|²/dΔ = 0`.
 | mode incidence Σ\|S\|² + P_rad + P_abs = 1 | ≤ 4.4e-16 | s12 |
 | reciprocity t_{n←m}(L→R) = t_{m←n}(R→L) | ≤ 1.1e-16 | s12 |
 | in-plane + particle balance (∇u_s by FD, h = 0.25 nm) | ≤ 2e-11, FD-limited (h⁴) | s12b |
-| Born limit, a = 2 nm | 5.0e-4 (SOI), 1.2e-3 (SiN); ratio per halving 3.36–3.66 | s10 |
+| Born limit, a = 2 nm | 5.0e-4 (SOI), 1.2e-3 (n=2); ratio per halving 3.36–3.66 | s10 |
 | interface continuity of the in-layer field | FD-limited 6e-7 (e = 1e-6 nm); z_top layer vs cover 3e-15 | nearfield |
 
 ## 4. Findings that shape the code
@@ -453,7 +492,7 @@ ported from `sproto.R_ref`, `g_ref`, `g_ref_gamma`, `s7.T_ref`, `gt_ref` and
 | GW12 | s12 / s12b cases | scalar 1e-14 (1.0e-15); in-plane measure-then-10×, stop above 1e-11 |
 | GW13 | s12 | 5e-15 (4.4e-16) |
 | GW14 | s12 | 2e-15 (1.1e-16) |
-| GW15 | s10, a = 4, 2 nm | error at 2 nm ≤ 1e-3 (SOI 5.0e-4) and ≤ 2.4e-3 (SiN 1.2e-3); ratio per halving in [3.2, 4.2] (3.36–3.66) |
+| GW15 | s10, a = 4, 2 nm | error at 2 nm ≤ 1e-3 (SOI 5.0e-4) and ≤ 2.4e-3 (n=2 1.2e-3); ratio per halving in [3.2, 4.2] (3.36–3.66) |
 | GW16 | free circle grid of 64 angles; ∇u_s vs FD h = 0.25 nm | pattern measure-then-10×, stop above 1e-12; gradient ≤ 10× the FD floor measured in the commit |
 | GW17 | SOI, circle, Δ along x | measure-then-10×, stop above 1e-8; d\|S\|²/dΔ likewise |
 | GW18 | s = 1.7, SOI + circle, mode incidence and dipole | measure-then-10×, stop above 1e-12 |
@@ -479,12 +518,12 @@ ported from `sproto.R_ref`, `g_ref`, `g_ref_gamma`, `s7.T_ref`, `gt_ref` and
 7. `feat: mode sensitivity helper`: `mode_sensitivity`, the frozen-map check
    shared with `QNMResult.sensitivity` (factored, not copied); GW17.
 8. `test: scale covariance over a stack`: GW18.
-9. `docs: slab waveguide`: conventions §17 (§6 list),
+9. `docs: layered stack`: conventions §17 (§6 list),
    `examples/waveguide_antenna.py` (R12 per T4: Gielis antenna, scalar source,
    pol = 2, maximise `efficiency(0, +1)` with `scipy.optimize.minimize`
    (L-BFGS-B) on `mode_sensitivity` gradients, bounds: gap ≥ 10 nm, Gielis
    closure caught as a penalty; `--tm-inplane` for the spin-locked variant),
-   README feature line, docs/validation.md rows GW1–GW18, CLAUDE.md roadmap
+   README feature line, docs/validation.md rows GW1–GW18, CLAUDE.md
    status.
 
 Each commit passes the full suite. Run each new gate's measurement once before

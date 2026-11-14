@@ -213,19 +213,8 @@ Also recorded there:
    v0.8.2** (PR #24): `nc` is now the principal root of the complex ε.
 8. `Material.from_eps(eps, n_clad, pol)` **ships in v0.9** (owner, 2026-10-06).
    The design is in §8.6.
-9. **The heater figure is parked (2026-10-06) and is not a v0.9 deliverable.** The
-   v0.9 figure is the QNM-vs-gap trajectory over silver (owner, 2026-10-06), as
-   specified in §8.7. The heater design below is kept for a later release.
-
-   The parked design (LDOS only) is a heater cross-section at 1550 nm:
-   - Si half-space substrate under an SiO₂ cover (n = 1.444);
-   - a rounded-square (Gielis) SiN core 200 nm above the substrate;
-   - a horizontally elongated tungsten heater 1 µm above the SiN;
-   - relative-LDOS maps in two panels, TE and TM.
-
-   Particle sizes are still to be fixed with the owner. The figure also needs
-   a 2-D caveat: these are line-source LDOS values, not the guided mode along
-   the heater axis.
+9. **The v0.9 figure is the QNM-vs-gap trajectory over silver** (owner,
+   2026-10-06), as specified in §8.7. An earlier LDOS-map figure was dropped.
 10. Result keys with a background (owner, 2026-10-06): `cross_sections()` returns
     `{'c_sca_up', 'c_abs'}` and `efficiencies()` returns `{'qsca_up', 'qabs'}`.
     The v0.8 keys are absent rather than raising, and the docstrings say why.

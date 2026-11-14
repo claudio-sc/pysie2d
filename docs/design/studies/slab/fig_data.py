@@ -121,7 +121,7 @@ for pol, tag in ((2, "TE"), (1, "TM")):
     print("F5", tag, "modes", len(poles))
 out["f5"] = f5
 
-# --- F6: directional coupler, Si/SiO2 300/Si, TE ------------------------------------
+# --- F6: two coupled slabs, Si/SiO2 300/Si, TE: supermode beating -----------
 st6 = S.Stack([ESI, 1.0, ESI], [220.0, 300.0, 220.0], 1.0)
 poles6 = S.guided_poles_gamma(st6, k, 2)
 x6 = np.linspace(0, 40000, 801)

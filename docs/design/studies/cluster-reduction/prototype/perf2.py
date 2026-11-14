@@ -1,7 +1,7 @@
 import numpy as np, sys, time, warnings
 sys.path.insert(0, ".")
 from scipy.linalg import lu_factor
-from perf import interior_rows, best, SIN, nclad, lam, pol, k_bg
+from perf import interior_rows, best, SLAB, nclad, lam, pol, k_bg
 from epsbeyn import EpsOperator, solve_box
 def shifted(geom, dz, rot_deg=17.0):
     c, s = np.cos(np.deg2rad(rot_deg)), np.sin(np.deg2rad(rot_deg))
@@ -13,7 +13,7 @@ warnings.simplefilter("ignore")
 # (1) smallest contour that still finds the slab modes
 nn = 160
 geom = shifted(Geometry.gielis(rad=90.0, n_pts=nn, m=3, n1=4.0, n2=6.0, n3=6.0), 140.0)
-op = EpsOperator(geom, pol, lam, n_clad=nclad, background=SIN, branch="upper")
+op = EpsOperator(geom, pol, lam, n_clad=nclad, background=SLAB, branch="upper")
 boxes = [(-6.0-1.0j, -1.15-0.004j), (-0.87-1.0j, -0.05-0.004j)]
 ref = np.array([e for lo, hi in boxes for e in solve_box(op, lo, hi, nq=48, n_probe=16)[0]])
 print(f'reference (48 per side): {ref.size} modes')
@@ -32,7 +32,7 @@ print("\n P  | dof  | full cluster+slab | inside blocks | LU       | memory MB")
 for P in (1, 2, 4, 8):
     geoms = [Geometry.gielis(rad=90.0, n_pts=100, m=3, n1=4.0, n2=6.0, n3=6.0, x0=400.0*p, z0=250.0) for p in range(P)]
     mats = [Material.from_eps((-2.0+0.1j)*nclad**2, n_clad=nclad, pol=pol)]*P
-    cs = ClusterBIESolver(Cluster(geoms), mats, pol=pol, background=SIN)
+    cs = ClusterBIESolver(Cluster(geoms), mats, pol=pol, background=SLAB)
     t_full = best(lambda: cs._assemble(lam), 2)
     t_int = best(lambda: [interior_rows(pol, g, k_bg, 1j*np.sqrt(2.0-0.1j), -2.0+0.1j) for g in geoms], 2)
     m = cs._assemble(lam); t_lu = best(lambda: lu_factor(m), 2)

@@ -8,7 +8,7 @@ boundary values send to particle p's outside rows (free space + slab). Delta doe
 import numpy as np, sys, time, warnings
 sys.path.insert(0, ".")
 from scipy.linalg import lu_factor, lu_solve, eig
-from perf import interior_rows, SIN, nclad, lam, pol, k_bg
+from perf import interior_rows, SLAB, nclad, lam, pol, k_bg
 from pysie2d import Geometry, Material, BIESolver, Cluster, ClusterBIESolver
 from pysie2d.beyn import beyn_modes, newton_refine
 warnings.simplefilter("ignore")
@@ -18,13 +18,13 @@ pitch = float(sys.argv[1]) if len(sys.argv) > 1 else 300.0
 print(f"pitch {pitch:.0f} nm (gap ~{pitch-190:.0f} nm)")
 geoms = [Geometry.gielis(rad=90.0, n_pts=nn, m=3, n1=4.0, n2=6.0, n3=6.0, x0=pitch*(p-(P-1)/2), z0=z0) for p in range(P)]
 mat = Material.from_eps(-2.0*nclad**2, n_clad=nclad, pol=pol)
-cs = ClusterBIESolver(Cluster(geoms), [mat]*P, pol=pol, background=SIN)
+cs = ClusterBIESolver(Cluster(geoms), [mat]*P, pol=pol, background=SLAB)
 full0 = cs._assemble(lam)
 sl = [cs.cluster.slice(p) for p in range(P)]
 ext = [np.arange(s.start, s.start+nn) for s in sl]          # outside rows of particle p
 inn = [np.arange(s.start+nn, s.stop) for s in sl]           # inside rows of particle p
 # isolated particle over the slab: identical particles at one height -> one M_p serves all
-top1 = BIESolver(geoms[0], mat, background=SIN).assemble(lam)[:nn]
+top1 = BIESolver(geoms[0], mat, background=SLAB).assemble(lam)[:nn]
 print("isolated outside rows == cluster self block:",
       np.allclose(top1, full0[np.ix_(ext[0], np.arange(sl[0].start, sl[0].stop))], atol=1e-13))
 def M1(e):
