@@ -2,6 +2,51 @@
 
 <!-- version list -->
 
+## v1.4.0 (2026-11-14)
+
+### Documentation
+
+- Back the contour options with a CI-run example
+  ([`a1534cb`](https://github.com/claudio-sc/pysie2d/commit/a1534cba719cffc050cac21946008bbd260c4076))
+
+- Beyn contour study
+  ([`1cc5d1e`](https://github.com/claudio-sc/pysie2d/commit/1cc5d1e6582f48adb4c8a6e8c4aba743cf065574))
+
+- Generalise the TE/TM naming note
+  ([`d36aab6`](https://github.com/claudio-sc/pysie2d/commit/d36aab6b5c3ad2b81d742c31a6ce77f5284fd776))
+
+- Make the slab code-spec self-contained
+  ([`317cb73`](https://github.com/claudio-sc/pysie2d/commit/317cb739f957f180f64009ff3525d400eca7db03))
+
+- Record cluster reduction as v1.3.0
+  ([`8f7d3fd`](https://github.com/claudio-sc/pysie2d/commit/8f7d3fdbf9c2971fd9844c3d0e7da2b1cd001ab5))
+
+- Scope the slab work as scattering physics
+  ([`4bf0f3b`](https://github.com/claudio-sc/pysie2d/commit/4bf0f3bb03c271496f9bc931cb3b5ff22196f080))
+
+- Separate roadmap v1.3 from package v1.3.0
+  ([`09b6f6e`](https://github.com/claudio-sc/pysie2d/commit/09b6f6e1f0919b5fc99842c3b82bd0f3fa572183))
+
+- Split the README into guides under docs/
+  ([`95b63a1`](https://github.com/claudio-sc/pysie2d/commit/95b63a1d73680a53547e0dfdad507341f3583331))
+
+- Wrap the MEEP note in the Stack check
+  ([`6876e24`](https://github.com/claudio-sc/pysie2d/commit/6876e241977b690ff381869c051d0dc85d061c3b))
+
+### Features
+
+- Ellipse and adaptive contours for ClusterEigenEps
+  ([`f82bf6b`](https://github.com/claudio-sc/pysie2d/commit/f82bf6b6ccb9d5898d341fc1c6a8140b5c3e8edf))
+
+- Ellipse, adaptive and interpolated Beyn contours
+  ([`f8da4dd`](https://github.com/claudio-sc/pysie2d/commit/f8da4dd022cd5ec8767b1edc331d72f2f0e43aa4))
+
+### Performance Improvements
+
+- Share interior rows across identical particles
+  ([`fa731fa`](https://github.com/claudio-sc/pysie2d/commit/fa731fa1a75c161488609a9c97623ee3ddf29a37))
+
+
 ## v1.3.0 (2026-11-06)
 
 ### Code Style
