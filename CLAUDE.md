@@ -89,10 +89,18 @@ after a release rather than editing that version line by hand.
 - Commits use conventional-commit form; semantic-release parses them to compute
   the version and build `CHANGELOG.md`.
 
-## Figures
+## Figures and examples
 
-The `examples/` scripts generate the README figures. Their conventions
-live in [examples/CLAUDE.md](examples/CLAUDE.md).
+The README stays short: what the package does, install, one snippet, and links.
+Feature documentation lives flat in `docs/` (`scattering.md`, `qnm-guide.md`,
+`mode-sensitivity.md`, `clusters.md`, `layered-backgrounds.md`). Every snippet
+in the README and those guides is an excerpt of a script in `examples/` that
+asserts the numbers the guide quotes; CI runs them in every tier, so keep them
+to a few seconds and never mark them `# ci: merge-only`. Change a snippet and its
+script together. The README uses absolute links, since PyPI renders it.
+
+The `examples/` scripts also generate the figures. Their conventions live in
+[examples/CLAUDE.md](examples/CLAUDE.md).
 
 ## Git workflow
 
@@ -111,6 +119,22 @@ only one that can destroy work that is not yours.
 `main`, and on nothing else, so **a branch with no PR gets no CI**. Open one
 (draft is fine) as soon as the branch holds a commit worth checking, not at the
 end. Short body, no signature.
+
+**CI has three tiers**, picked per run (`ci.yml`, "Pick the tier"):
+
+- **docs**: every changed file is under `docs/` or `figures/`, a `*.md`,
+  `CITATION.cff` or `LICENSE`. Ruff and the snippet examples only.
+- **fast**: a draft PR that changes anything else. Ruff, `pytest -m "not slow"`
+  and the snippet examples.
+- **full**: a PR marked ready for review, and every push to `main`. The whole
+  suite and every example.
+
+So keep a PR in draft while iterating and mark it ready when it is a merge
+candidate: that run is the one that must be green before merging, because
+`version-release.yml` publishes without waiting for CI. A new push to a PR
+cancels its run in flight. Mark a new test `@pytest.mark.slow` when it costs 2 s
+or more across its parameters, and give an example a `# ci: merge-only` first
+line when it draws a figure or takes more than a few seconds.
 
 **Merge to `main` — ask, every time.** Any `feat:` or `fix:` on the branch bumps
 the version and ships it to PyPI. Consequences that follow from that:
@@ -248,23 +272,20 @@ Built per the builder contract in §8 of
 `docs/conventions.md` §16. Its finding 1, a v0.9 `c_sca_up` defect over
 low-index substrates, shipped as v1.0.1.
 
-**v1.2–v1.4 — waveguide-coupled clusters, on `v1.2-slab-waveguide`.** The
-roadmap is [waveguide-roadmap.md](docs/design/waveguide-roadmap.md) (owner decisions
-R1–R10): v1.2 N-layer `Stack`, guided modes, mode source and S-parameters by
-residue; v1.3 MEEP validation of the waveguide coupling; v1.4 a variational-EIM
-2.5D front end. Code-spec: [slab-spec.md](docs/design/slab-spec.md), study
+**v1.2–v1.3 — a layered stack background.** v1.2: N-layer `Stack`, guided
+modes, mode source and mode amplitudes by residue; v1.3: MEEP validation of the
+coupling into guided modes. Owner decisions and anchors are in the code-spec,
+[slab-spec.md](docs/design/slab-spec.md) §D; study
 [studies/slab/](docs/design/studies/slab/README.md). v1.2 is implemented on the
 branch (gates GW1–GW18, conventions §17). One owner-approved change to the spec
 (2026-10-26): P_down over a stack uses S12's sine-mapped rule, not the v1.1 flux
 rule, which stalls at 1e-6 in TM. Shipped as v1.2.0 and v1.2.1. v1.3 merged
 2026-11-02 (no release: test and docs only): MEEP S-parameters of a Gielis pair
 200 nm above SOI, frozen in `tests/test_external_waveguide.py`. TM complex t is
-a strict xfail at 1.3× its MEEP-only tolerance (a res-40 rung would decide it);
-the MEEP LDOS run (R6) moved out. Next: v1.4, starting with a 3D MEEP sizing run
-of the canonical case before the code-spec.
+a strict xfail at 1.3× its MEEP-only tolerance.
 
 **Cluster reduction: many materials at one wavelength.** Shipped as package v1.3.0
-(2026-11-06), ahead of the v1.4 milestone. The roadmap's "v1.3", the MEEP validation,
+(2026-11-06). The roadmap's "v1.3", the MEEP validation,
 released nothing, so that number was still free. Code-spec:
 [cluster-reduction-spec.md](docs/design/cluster-reduction-spec.md), study
 [studies/cluster-reduction/](docs/design/studies/cluster-reduction/README.md).

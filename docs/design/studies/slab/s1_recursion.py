@@ -73,7 +73,7 @@ for name, st in {"SOI 220": S.Stack([SI], [220], 1.0), "Ag 500 film": S.Stack([A
 print("(f) the naive form overflows on a real path: Σ|Im α_j|·d_j > 709 on the tail")
 # tail end q_max = T + 38/z_min (layered.TAIL_DECAY); T ≈ 1.5·β_max ≲ 1.5·k_core
 for name, st in {"SOI 220": S.Stack([SI], [220], 1.0),
-                 "SiN 400": S.Stack([e(2.0)], [400], 1.0),
+                 "n=2 400": S.Stack([e(2.0)], [400], 1.0),
                  "Si/SiO2/Si": S.Stack([SI, 1.0, SI], [220, 300, 220], 1.0)}.items():
     for gap in (100.0, 20.0, 5.0):
         z_min = 2 * gap

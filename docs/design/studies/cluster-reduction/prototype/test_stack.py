@@ -10,11 +10,11 @@ def shifted(geom, dz, rot_deg=17.0):
     rot = lambda x, z: (c*x - s*z, s*x + c*z)
     f, g = rot(geom.f, geom.g); df, dg = rot(geom.df, geom.dg); ddf, ddg = rot(geom.ddf, geom.ddg)
     return Geometry(f=f, g=g+dz, df=df, dg=dg, ddf=ddf, ddg=ddg, rad=geom.rad, z0=dz)
-SIN = Stack(((2.0**2, 400.0),), N_CLAD**2)
+SLAB = Stack(((2.0**2, 400.0),), N_CLAD**2)
 if __name__ == "__main__":
     boxes = [(-6.0-1.0j, -1.15-0.004j), (-0.87-1.0j, -0.05-0.004j)]
     res = {}
-    for label, bg in (("free space", None), ("SiN slab", SIN)):
+    for label, bg in (("free space", None), ("n=2 slab", SLAB)):
         for nn in (160, 240):
             geom = shifted(Geometry.gielis(rad=90.0, n_pts=nn, m=3, n1=4.0, n2=6.0, n3=6.0), 140.0)
             op = EpsOperator(geom, pol, lam, n_clad=N_CLAD, background=bg, branch="upper")
@@ -30,7 +30,7 @@ if __name__ == "__main__":
             print(f"[{label} nn={nn}] t_exterior_rows_once={op.t_top:.2f}s  t_interior_rows/node={t_bot:.3f}s  "
                   f"Beyn total={t_all:.1f}s for {2*4*32} nodes;  modes:")
             for e in found: print(f"    {e.real:+.8f} {e.imag:+.3e}i")
-    for label in ("free space", "SiN slab"):
+    for label in ("free space", "n=2 slab"):
         a, b = res[(label, 160)], res[(label, 240)]
         if a.size == b.size:
             print(f"{label}: max |eps(nn=240)-eps(nn=160)| = {np.max(np.abs(a-b)):.1e}")

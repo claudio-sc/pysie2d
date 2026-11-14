@@ -218,14 +218,14 @@ def smatrix(ctx, M, x_ref=0.0):
 if __name__ == "__main__":
     nc = 1.444
     SOI = S.Stack([(3.476 / nc) ** 2], [220.0], 1.0)
-    SIN = S.Stack([(2.0 / nc) ** 2], [400.0], 1.0)
+    SLAB = S.Stack([(2.0 / nc) ** 2], [400.0], 1.0)
     circ = Geometry.gielis(rad=80.0, n_pts=160, m=4, n1=2.0, n2=2.0, n3=2.0)
     tri = Geometry.gielis(rad=90.0, n_pts=200, m=3, n1=4.0, n2=6.0, n3=6.0)
     cases = [
         ("SOI, Si circle r80 gap30", SOI, 1550, shifted(circ, 110.0), 3.476, 0.0, (150.0, 60.0)),
         ("SOI, lossy circle (epsi 0.8)", SOI, 1550, shifted(circ, 110.0), 3.476, 0.8, (150.0, 60.0)),
         ("SOI, rotated triangle", SOI, 1550, shifted(tri, 140.0, 17.0), 2.0, 0.3, (-170.0, 50.0)),
-        ("SiN@800 2 modes, triangle", SIN, 800, shifted(tri, 140.0, 17.0), 3.476, 0.0, (-170.0, 50.0)),
+        ("n=2@800 2 modes, triangle", SLAB, 800, shifted(tri, 140.0, 17.0), 3.476, 0.0, (-170.0, 50.0)),
     ]
     print("(a), (b) dipole + particle")
     keep = []

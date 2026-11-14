@@ -1,4 +1,4 @@
-"""S5: small gaps with guided poles present (roadmap risk §7.2).
+"""S5: small gaps with guided poles present (the small-gap risk).
 
 The evanescent coupling is strongest at small gaps, where the Sommerfeld tail is
 longest (38/z_min). Checks: (a) G on the path vs the real-axis reference at
@@ -22,7 +22,7 @@ def case(lam, n_clad, layers, n_bot):
 
 cases = {
     "SOI 220": (1550, 1.444, [(3.476, 220)], 1.444),
-    "SiN 400 @800": (800, 1.444, [(2.0, 400)], 1.444),
+    "n=2 400 @800": (800, 1.444, [(2.0, 400)], 1.444),
     "Si/SiO2/Si": (1550, 1.444, [(3.476, 220), (1.444, 300), (3.476, 220)], 1.444),
 }
 D = 300.0  # a 100 nm-radius particle plus margin: the box the path serves

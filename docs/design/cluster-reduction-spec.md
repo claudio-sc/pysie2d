@@ -190,7 +190,7 @@ cites that number and its reason. Never widen one to pass.
 | A1 | `_interior_rows` `array_equal` to `assemble_matrix(...)[nn:]`: `pol` 1, 2; real ε > 0 (Cephes), complex ε, complex `k_bg` | new |
 | A2 | Self-exterior rows do not depend on material: `array_equal` over three materials | new |
 | A3 | `_exterior_rows` `array_equal` to `_assemble`'s exterior rows, all four backgrounds, ragged `nn` | new |
-| A4 | `ClusterEigenEps.scatter` vs `ClusterBIESolver.scatter`: `x`, far field, on mixed particles; free, glass, PEC, SiN; both pols | `x` ≤ 1.4e-13, far field ≤ 1.6e-15 |
+| A4 | `ClusterEigenEps.scatter` vs `ClusterBIESolver.scatter`: `x`, far field, on mixed particles; free, glass, PEC, n=2; both pols | `x` ≤ 1.4e-13, far field ≤ 1.6e-15 |
 | A5 | Gap ladder to gap/a = 0.04 with `nn` from the envelope | ≤ 4.7e-13 |
 | A6 | Independent anchor: `ClusterEigenEps.scatter` far field vs `reference.two_cylinder` | as `test_two_cylinder.py` |
 | A7 | One-particle cluster equals `BIESolver.scatter` | new |

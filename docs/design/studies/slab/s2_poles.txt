@@ -7,10 +7,10 @@ three-layer slabs: D roots vs closed form vs winding count
       m=0: n_eff=2.8308824381  |1/R(β)|=9.6e-16  |D'(β)|·k=4.99e-02  |Res R|/k=4.089e-01  (β−k_out)/k=1.39e+00  |Im D/Re D'|=1.1e-17
   air|Si 220|SiO2 @1550                  TM: n_D=1 n_cf=1 winding=1  max rel |β_D − β_cf| = 2.3e-16
       m=0: n_eff=1.8908180079  |1/R(β)|=1.1e-15  |D'(β)|·k=2.15e-02  |Res R|/k=2.364e-01  (β−k_out)/k=4.47e-01  |Im D/Re D'|=2.7e-17
-  SiN 400 @800 (sym)                     TE: n_D=2 n_cf=2 winding=2  max rel |β_D − β_cf| = 1.4e-16
+  n=2 400 @800 (sym)                     TE: n_D=2 n_cf=2 winding=2  max rel |β_D − β_cf| = 1.4e-16
       m=0: n_eff=1.8825090109  |1/R(β)|=6.9e-16  |D'(β)|·k=4.30e-01  |Res R|/k=4.412e-02  (β−k_out)/k=3.04e-01  |Im D/Re D'|=5.1e-18
       m=1: n_eff=1.5488509768  |1/R(β)|=1.6e-15  |D'(β)|·k=1.41e-01  |Res R|/k=6.240e-02  (β−k_out)/k=7.26e-02  |Im D/Re D'|=5.7e-18
-  SiN 400 @800 (sym)                     TM: n_D=2 n_cf=2 winding=2  max rel |β_D − β_cf| = 1.5e-16
+  n=2 400 @800 (sym)                     TM: n_D=2 n_cf=2 winding=2  max rel |β_D − β_cf| = 1.5e-16
       m=0: n_eff=1.8408843086  |1/R(β)|=5.5e-16  |D'(β)|·k=4.17e-01  |Res R|/k=4.299e-02  (β−k_out)/k=2.75e-01  |Im D/Re D'|=2.3e-18
       m=1: n_eff=1.4959900993  |1/R(β)|=9.1e-16  |D'(β)|·k=1.31e-01  |Res R|/k=4.689e-02  (β−k_out)/k=3.60e-02  |Im D/Re D'|=1.1e-18
   Si 2000 @1550 (multimode)              TE: n_D=9 n_cf=9 winding=9  max rel |β_D − β_cf| = 3.5e-16
@@ -33,9 +33,9 @@ three-layer slabs: D roots vs closed form vs winding count
       m=6: n_eff=2.2510318439  |1/R(β)|=6.9e-15  |D'(β)|·k=3.03e-01  |Res R|/k=4.616e-02  (β−k_out)/k=5.59e-01  |Im D/Re D'|=2.2e-21
       m=7: n_eff=1.7787903388  |1/R(β)|=2.8e-15  |D'(β)|·k=9.62e-02  |Res R|/k=8.752e-02  (β−k_out)/k=2.32e-01  |Im D/Re D'|=4.4e-18
       m=8: n_eff=1.4501208750  |1/R(β)|=1.5e-14  |D'(β)|·k=1.40e-01  |Res R|/k=7.688e-03  (β−k_out)/k=4.24e-03  |Im D/Re D'|=1.5e-18
-  air|SiN 300|SiO2 @1550 (near cutoff)   TE: n_D=1 n_cf=1 winding=1  max rel |β_D − β_cf| = 1.3e-16
+  air|n=2 300|SiO2 @1550 (near cutoff)   TE: n_D=1 n_cf=1 winding=1  max rel |β_D − β_cf| = 1.3e-16
       m=0: n_eff=1.6285988632  |1/R(β)|=7.6e-16  |D'(β)|·k=3.90e-02  |Res R|/k=2.135e-01  (β−k_out)/k=1.85e-01  |Im D/Re D'|=2.0e-18
-  air|SiN 300|SiO2 @1550 (near cutoff)   TM: n_D=1 n_cf=1 winding=1  max rel |β_D − β_cf| = 1.5e-16
+  air|n=2 300|SiO2 @1550 (near cutoff)   TM: n_D=1 n_cf=1 winding=1  max rel |β_D − β_cf| = 1.5e-16
       m=0: n_eff=1.4713829904  |1/R(β)|=3.7e-16  |D'(β)|·k=4.22e-02  |Res R|/k=6.686e-02  (β−k_out)/k=2.74e-02  |Im D/Re D'|=6.0e-18
 coupled double core (no closed form): D roots vs winding count, simple poles
   Si/SiO2 300/Si TE: n_D=2 winding=2  n_eff = ['2.86745438', '2.82681838']  min |D'|·k = 1.34e-01

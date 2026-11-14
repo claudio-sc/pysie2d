@@ -49,7 +49,7 @@ def field_b(st, k, pol, b, x, z, h0, path):
 cases = {
     "SOI 220 @1550": (1550, 1.444, [(3.476, 220)], 1.444),
     "air|Si 220|SiO2": (1550, 1.0, [(3.476, 220)], 1.444),
-    "SiN 400 @800 (2 modes)": (800, 1.444, [(2.0, 400)], 1.444),
+    "n=2 400 @800 (2 modes)": (800, 1.444, [(2.0, 400)], 1.444),
 }
 
 print("(a) far-x field of −(b·∇')G vs the guided closed form, both directions (h₀ = 50, observer h = 100 nm)")

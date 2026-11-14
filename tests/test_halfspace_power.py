@@ -59,6 +59,7 @@ def test_upward_far_field_over_pec_equals_the_mirror_cluster(pol, wavelength, n_
     assert np.abs(amp - ref).max() / np.abs(ref).max() < RTOL_FAR
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("pol", [2, 1])
 @pytest.mark.parametrize("kind,angle", [("dipole", 0.0), ("plane", 25.0)])
 @pytest.mark.parametrize("wavelength,n_clad", CASES)
@@ -205,6 +206,7 @@ def _p_down(solver, wavelength, xs, zs):
 RTOL_BALANCE_SUBSTRATE = 1e-12
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("pol", [2, 1])
 @pytest.mark.parametrize(
     "background",

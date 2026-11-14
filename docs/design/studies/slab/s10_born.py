@@ -17,7 +17,7 @@ from s12_particle import Ctx, shifted
 
 nc = 1.444
 cases = {"SOI 220 @1550": (S.Stack([(3.476 / nc) ** 2], [220.0], 1.0), 1550),
-         "SiN 400 @800 (2 modes)": (S.Stack([(2.0 / nc) ** 2], [400.0], 1.0), 800)}
+         "n=2 400 @800 (2 modes)": (S.Stack([(2.0 / nc) ** 2], [400.0], 1.0), 800)}
 zp, xp, n_part = 60.0, 23.0, 2.0
 for name, (st, lam) in cases.items():
     k = 2 * np.pi * nc / lam

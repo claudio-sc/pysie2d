@@ -3,7 +3,7 @@ import os, sys, time, warnings
 import numpy as np
 from scipy.linalg import lu_factor, lu_solve
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "prototype"))
-from perf import interior_rows, SIN, nclad, lam, pol, k_bg
+from perf import interior_rows, SLAB, nclad, lam, pol, k_bg
 from pysie2d import Geometry, Material, Cluster, ClusterBIESolver
 warnings.simplefilter("ignore")
 E = -2.0 + 0.1j            # background-relative, passive, so k_core is complex: the Amos path
@@ -76,7 +76,7 @@ def mat_of(P, cl):
 print("=== A. rank vs gap (P=4, identical; nn from the gap envelope; worst rank is a middle particle)")
 print(" bg   pitch  gap/a   nn   ranks          R0 / N      full/ε   red/ε  ratio  err(x)")
 a = 90.0
-for name, bg in (("free", None), ("slab", SIN)):
+for name, bg in (("free", None), ("slab", SLAB)):
     for pitch, nn in ((1200, 100), (600, 100), (400, 100), (300, 100), (250, 200), (240, 400), (234, 800)):
         gs = geoms(4, nn, pitch)
         cl = Cluster(gs); a_ = max(np.hypot(g.f - g.x0, g.g - g.z0).max() for g in gs)
@@ -89,7 +89,7 @@ for name, bg in (("free", None), ("slab", SIN)):
 
 print("\n=== B. cost vs P (nn=100, pitch 600). Non-identical: radii differ, so no shared factorisation")
 print(" bg     P      N   R0 | today: assemble+solve | setup: compress | per ε: exterior cached full | route1 distinct | route1 shared | one-off route1 | matrix MB vs Y+U MB")
-for name, bg, Ps in (("free", None, (4, 8, 16, 32, 64)), ("slab", SIN, (4, 8, 16, 32))):
+for name, bg, Ps in (("free", None, (4, 8, 16, 32, 64)), ("slab", SLAB, (4, 8, 16, 32))):
     for P in Ps:
         gs = geoms(P, 100, 600.0, jitter=1.0)
         cl = Cluster(gs); cs = ClusterBIESolver(cl, mat_of(P, cl), pol=pol, background=bg); b = rhs(cl)
@@ -109,7 +109,7 @@ for name, bg, Ps in (("free", None, (4, 8, 16, 32, 64)), ("slab", SIN, (4, 8, 16
         del full0, full_i
 
 print("\n=== C. what truncation buys and costs (P=8, nn=100, pitch 600, slab)")
-gs = geoms(8, 100, 600.0); cl = Cluster(gs); cs = ClusterBIESolver(cl, mat_of(8, cl), pol=pol, background=SIN)
+gs = geoms(8, 100, 600.0); cl = Cluster(gs); cs = ClusterBIESolver(cl, mat_of(8, cl), pol=pol, background=SLAB)
 full0 = cs._assemble(lam); b = rhs(cl); xf, _ = full_solve(full0, cl, b, E)
 for tol in (1e-13, 1e-10, 1e-8, 1e-6, 1e-4):
     U, Y, rk = compress(full0, cl, tol)

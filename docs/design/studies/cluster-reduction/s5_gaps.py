@@ -48,7 +48,7 @@ SHAPES = lambda: [
     Geometry.gielis(rad=110.0, n_pts=140, m=0, x0=640.0, z0=230.0, a=1.0, b=0.8),
 ]
 BGS = (("free", None), ("glass half-space", HalfSpace(2.25, z_int=0.0)), ("PEC", HalfSpace.pec()),
-       ("SiN slab", Stack(((4.0, 400.0),), nc**2)))
+       ("n=2 slab", Stack(((4.0, 400.0),), nc**2)))
 print(" background        pol  ranks              R0/N       |x_r-x_d|/|x_d|  |Δamp|/|amp|  ‖a‖/‖x‖")
 for name, bg in BGS:
     for pol in (1, 2):

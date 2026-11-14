@@ -1,6 +1,6 @@
 # Figures
 
-The `examples/` scripts generate the README figures, and they are part of
+The `examples/` scripts generate the figures in the README and `docs/`, and they are part of
 the package's public face. **Load the `dataviz` skill before writing or changing
 any plotting code** — take its color formula, accessibility checks, and mark
 specs; ignore the dashboard/KPI material, which does not apply here.
@@ -28,3 +28,6 @@ Conventions specific to these figures:
 - Axes carry units (nm). Both polarisations should be distinguishable without
   relying on colour alone.
 - `MPLBACKEND=Agg` in CI; figures must render headless.
+- Every figure script starts with a `# ci: merge-only` line, so CI runs it only
+  in the full tier (PRs ready for review, pushes to main). A script without the
+  line runs on every push, so keep those to a few seconds.

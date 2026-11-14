@@ -1,7 +1,7 @@
 import numpy as np, sys, time, warnings
 sys.path.insert(0, ".")
 from scipy.linalg import lu_factor, lu_solve
-from perf import interior_rows, SIN, nclad, lam, pol, k_bg
+from perf import interior_rows, SLAB, nclad, lam, pol, k_bg
 from pysie2d import Geometry, Material, BIESolver, Cluster, ClusterBIESolver
 warnings.simplefilter("ignore")
 ri = lambda e: 1j*np.sqrt(-complex(e))
@@ -15,7 +15,7 @@ print(" P  | full size | full point | reduced size | reduced point | one-off com
 for P in (4, 8, 16):
     geoms = [Geometry.gielis(rad=90.0, n_pts=nn, m=3, n1=4.0, n2=6.0, n3=6.0, x0=pitch*(p-(P-1)/2), z0=z0) for p in range(P)]
     mat = Material.from_eps(-2.0*nclad**2, n_clad=nclad, pol=pol)
-    full0 = ClusterBIESolver(Cluster(geoms), [mat]*P, pol=pol, background=SIN)._assemble(lam)
+    full0 = ClusterBIESolver(Cluster(geoms), [mat]*P, pol=pol, background=SLAB)._assemble(lam)
     sl = [slice(2*nn*p, 2*nn*(p+1)) for p in range(P)]
     def Mfull(ev):
         m = full0.copy()

@@ -1,4 +1,4 @@
-"""v1.3's waveguide case, defined once for MEEP and for pysie2d.
+"""v1.3's slab case, defined once for MEEP and for pysie2d.
 
 Like ``gielis.py`` for shapes: numpy only, so the MEEP driver (conda) and the
 reference (uv) read the same slab, materials and wavelength grid without either

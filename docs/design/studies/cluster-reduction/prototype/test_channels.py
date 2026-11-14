@@ -10,7 +10,7 @@ print("mode eps_m                   P_TM0(+x)  P_TM0(-x)  P_up     P_down   -P_a
 for e in modes:
     u, s, vh = np.linalg.svd(T.op.M(e)); v = vh[-1].conj()
     r = ScatterResult(v, T.geom, Material.from_eps(e*T.N_CLAD**2, n_clad=T.N_CLAD, pol=T.pol), T.lam, 0.0,
-                      T.SIN, excitation="plane_wave")
+                      T.SLAB, excitation="plane_wave")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         a = r.mode_amplitudes(x_ref=0.0)

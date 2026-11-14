@@ -1,6 +1,6 @@
 """v1.3: S-parameters of a non-circular cluster beside an SOI slab, in MEEP.
 
-The external anchor A9 of the waveguide roadmap (§5): the guided-mode
+The external anchor A9 of the v1.2 code-spec (slab-spec.md §D): the guided-mode
 amplitudes pysie2d computes by residue of the Sommerfeld integral, measured
 here by an FDTD eigenmode source and eigenmode-coefficient monitors. MEEP
 shares none of the machinery: no Green function, no Sommerfeld path, no

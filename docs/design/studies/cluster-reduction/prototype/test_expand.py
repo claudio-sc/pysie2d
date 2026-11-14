@@ -1,7 +1,7 @@
 import numpy as np, sys, time
 sys.path.insert(0, ".")
 from epsbeyn import EpsOperator, solve_box
-from test_stack import shifted, SIN, N_CLAD, lam, pol
+from test_stack import shifted, SLAB, N_CLAD, lam, pol
 from pysie2d import Geometry, Material
 from pysie2d.solver import ScatterResult
 from pysie2d.sources import plane_wave_rhs
@@ -9,7 +9,7 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 nn = 160
 geom = shifted(Geometry.gielis(rad=90.0, n_pts=nn, m=3, n1=4.0, n2=6.0, n3=6.0), 140.0)
-op = EpsOperator(geom, pol, lam, n_clad=N_CLAD, background=SIN, branch="upper")
+op = EpsOperator(geom, pol, lam, n_clad=N_CLAD, background=SLAB, branch="upper")
 # where did the second member of the lower pair go?
 for lo, hi in ((-0.95-0.5j, -0.40-0.0005j), (-1.15-0.05j, -0.87-0.0005j)):
     try:
@@ -25,7 +25,7 @@ kbg = 2*np.pi*N_CLAD/lam
 b = plane_wave_rhs(nn, 0.0, kbg, geom.f, geom.g)
 b[:nn] += op.solver._reflection(lam).plane_wave(0.0, geom.f, geom.g)
 def s_tm0(x, eps_rel):
-    r = ScatterResult(x, geom, Material.from_eps(eps_rel*N_CLAD**2, n_clad=N_CLAD, pol=pol), lam, 0.0, SIN,
+    r = ScatterResult(x, geom, Material.from_eps(eps_rel*N_CLAD**2, n_clad=N_CLAD, pol=pol), lam, 0.0, SLAB,
                       excitation="plane_wave")
     return r.mode_amplitudes(x_ref=0.0).s_plus[0]
 # residues of the driven observable at each mode: L(v) (u^H b) / (u^H M'(eps_m) v)

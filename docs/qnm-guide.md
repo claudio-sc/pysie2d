@@ -23,7 +23,26 @@ modes are inside**. Finding ten modes in one box costs the same as finding one.
 
 Everything below assumes the running example: a circular cylinder of radius
 200 nm, `n_core = 3.0` in vacuum, discretised at `n_pts = 200`.
-`examples/qnm_spectrum.py` produces the whole spectrum figure from these pieces.
+`examples/qnm_spectrum.py` produces the whole spectrum figure from these pieces,
+and `examples/qnm_basic.py` runs the snippet above with its numbers asserted.
+
+Quasi-normal modes of that cylinder in the complex wavelength plane, extracted
+from seven search boxes and plotted over the analytic Mie poles (open marks
+analytic, filled extracted). The axes are log-log so that each iso-`Q` contour
+is a straight line, since `Q = Re λ / (2 Im λ)`:
+
+![QNM spectrum](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/qnm_spectrum.png)
+
+The same physics, one contour. A single rectangle spanning 600 nm of `Re λ`
+returns **all eleven** TE modes inside it, counting the doubly degenerate pairs,
+from one call and 128 matrix assemblies. Only the probe count has to exceed the
+mode count. Grey marks are poles outside the box (three of them leak a rank
+direction in, hence `rank = 14` against 11 modes; see §2):
+
+![Wide-window QNM extraction](https://raw.githubusercontent.com/claudio-sc/pysie2d/main/figures/qnm_wide_window.png)
+
+`QNMResult.sensitivity` differentiates every mode with respect to a shape or
+material parameter; see [mode-sensitivity.md](mode-sensitivity.md).
 
 ---
 
