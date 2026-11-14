@@ -6,10 +6,9 @@ why. They are kept because the *reasoning* is expensive to reconstruct — not
 because they describe the current tree. Where a number or a status line here
 disagrees with the repo, the repo wins.
 
-For using the package, read [README.md](../../README.md),
-[docs/conventions.md](../conventions.md) and [docs/qnm-guide.md](../qnm-guide.md).
-The live list of what is shipped and what is next is the roadmap in
-[CLAUDE.md](../../CLAUDE.md).
+For using the package, read [README.md](../../README.md) and the guides in
+[docs/](..), starting with [conventions.md](../conventions.md). What has shipped
+is in [CHANGELOG.md](../../CHANGELOG.md).
 
 | Document | What it is | How to treat it |
 |---|---|---|

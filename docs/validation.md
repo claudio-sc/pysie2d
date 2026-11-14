@@ -215,8 +215,13 @@ evidence.
   which subpixel averaging cannot rescue. Measured separately, the cusps cost
   9.6× and the `n_core = 2.0` contrast 4.2×; their product is the observed 40×
   gap against MEEP's own circle.
-- **Cross-sections only.** Near field, LDOS and Purcell factor have analytic
+- **Cross-sections, plus two narrow external checks.** Beyond the star's
+  spectra, MEEP checks only the substrate-induced shift of one QNM pair over
+  glass and the guided-mode reflection and transmission of one particle pair
+  over a dielectric slab. Near field, LDOS and Purcell factor have analytic
   circular anchors but no external non-circular check.
+- **Eigenpermittivities over a dielectric half-space or a `Stack`** are checked
+  only against this package's own driven solves.
 
 ## 6. Reproducing the external runs
 

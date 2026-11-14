@@ -1,6 +1,6 @@
 # Figures
 
-The `examples/` scripts generate the README figures, and they are part of
+The `examples/` scripts generate the figures in the README and `docs/`, and they are part of
 the package's public face. **Load the `dataviz` skill before writing or changing
 any plotting code** — take its color formula, accessibility checks, and mark
 specs; ignore the dashboard/KPI material, which does not apply here.
