@@ -20,10 +20,15 @@ import pytest
 
 from pysie2d.beyn import (
     EMPTY_CANCELLATION,
+    INTERP_PEAK_OVER_SAMPLES,
     RANK_GAP_FLOOR,
+    _EllipseInterpolant,
     beyn_modes,
+    beyn_modes_adaptive,
     beyn_poles,
     contour_moments,
+    ellipse_contour_quad,
+    ellipse_faber_basis,
     newton_refine,
     probe_matrix,
     rect_contour_quad,
@@ -279,6 +284,42 @@ def test_rank_survives_disparate_residues():
     )
 
 
+def test_finer_contour_does_not_cost_accuracy():
+    """Refining the contour must not make the eigenvalues worse.
+
+    Four poles sit just outside the box. Their weight in A₀ falls as the
+    contour is refined, and on the way down it passes through every value
+    between O(1) and round-off. A rank rule with a fixed floor drops such a
+    pole while it still weighs far more than round-off, and because this pencil
+    is not normal — its eigenvectors are not orthogonal — the dropped pole
+    contaminates the ones inside at about its own weight *(measured with the
+    former 1e-8 floor: 7.3e-14 at 16 nodes per side, then 2.1e-10 at 24 and
+    1.5e-8 at 32)*. The pencils of ``make_pencil`` cannot show this: their
+    factors are unitary, so a dropped pole is orthogonal to the rest.
+    """
+    rng = np.random.default_rng(1)
+    n_dim = 80
+    inside = np.array([0.3 + 0.2j, -0.5 + 0.1j, 0.1 - 0.3j, 0.85 + 0.0j, -0.2 + 0.42j])
+    near = np.array([1.12 + 0.1j, -0.3 + 0.62j, 0.4 - 0.6j, -1.2 - 0.2j])
+    n_far = n_dim - inside.size - near.size
+    far = 3.0 * np.exp(2j * np.pi * rng.random(n_far)) * (1.0 + rng.random(n_far))
+    roots = np.concatenate([inside, near, far])
+    q = rng.standard_normal((n_dim, n_dim)) + 1j * rng.standard_normal((n_dim, n_dim))
+    q_inv = np.linalg.inv(q)
+
+    def m_builder(lam):
+        return (q * (roots - lam)) @ q_inv
+
+    for n_side in (16, 24, 32, 64):
+        res = beyn_modes(m_builder, -1.0 - 0.5j, 1.0 + 0.5j, n_quad_per_side=n_side)
+        assert res.n_modes == inside.size
+        worst = max(np.min(np.abs(res.eigenvalues - root)) for root in inside)
+        # 1e-12: *(measured 7.3e-14, 5.2e-14, 2.7e-14 and 1.9e-14)*, round-off
+        # through a pencil whose eigenvector matrix has condition ~1e2. The
+        # failure this guards against is four to six decades above the bound.
+        assert worst < 1.0e-12
+
+
 def test_linear_pencil_is_quadrature_exact():
     """A simple pole of a linear pencil is recovered exactly at any node count.
 
@@ -395,7 +436,12 @@ def test_newton_refine_polishes_the_vector_with_the_eigenvalue():
     """
     exact = 2.0 + 0.1j
     m_builder, dm_builder = make_pencil([exact], nonlinear=True)
-    coarse = beyn_modes(m_builder, Z_LO, Z_HI, n_quad_per_side=3)
+    # rank_tol = 1e-8 cuts the subspace to the one pole inside, which is what
+    # leaves the vector coarse. The default rank rule also keeps the two
+    # quadrature-error directions at 1e-8 and 1e-9, and on this pencil — whose
+    # null vector does not depend on λ — that returns the vector at round-off
+    # *(measured 4.8e-17)* with nothing left to polish.
+    coarse = beyn_modes(m_builder, Z_LO, Z_HI, n_quad_per_side=3, rank_tol=1.0e-8)
     v0 = coarse.vectors[:, 0]
 
     refined = newton_refine(
@@ -477,3 +523,328 @@ def test_threaded_node_failure_still_warns_in_the_caller():
         contour_moments(failing_builder, pts, wts, v_probe, max_workers=8)
 
     assert f"{pts.size // 3} of {pts.size}" in str(record[0].message)
+
+
+def test_ellipse_weights_reproduce_cauchy():
+    """The trapezoid rule on the ellipse reproduces Cauchy's formula.
+
+    The same three properties as the rectangle, on the ellipse inscribed in the
+    same box (centre 2, semi-axes 1 and 1). Geometric convergence is the fourth:
+    doubling the nodes squares the error, which is what a trapezoid rule does on
+    an analytic periodic integrand and nothing else does.
+    """
+    errors = []
+    for n_nodes in (16, 32):
+        pts, wts = ellipse_contour_quad(Z_LO, Z_HI, n_nodes)
+        # The trapezoid rule integrates the constant exactly: Σ dλ/dt over a
+        # full period is a sum of roots of unity *(measured 5.7e-17)*.
+        assert abs(wts.sum()) < 1.0e-15
+        errors.append(max(abs(np.sum(wts / (pts - z)) - 1.0) for z in CAUCHY_INSIDE))
+
+    # *(measured 1.1e-4 at 16 nodes and 1.2e-8 at 32, the square to within the
+    # constant)*; the points 0.57 from the centre set the rate.
+    assert errors[1] < 1.0e-7
+    assert errors[0] / errors[1] > 1.0e3
+
+    # No singularity anywhere near: round-off *(measured 1.8e-17 at 32)*.
+    for z_out in CAUCHY_OUTSIDE:
+        assert abs(np.sum(wts / (pts - z_out))) < 1.0e-13
+
+
+def test_ellipse_rule_nests_under_doubling():
+    """The nodes at n are every other node at 2n, at half the weight.
+
+    This is the whole basis of the adaptive contour: a rule that did not nest
+    would have to discard its solves at every refinement. Exact equality, not
+    closeness — the shared nodes are the same floating-point numbers, so the
+    matrices assembled at them are reused as they are.
+    """
+    pts, wts = ellipse_contour_quad(Z_LO, Z_HI, 16)
+    pts2, wts2 = ellipse_contour_quad(Z_LO, Z_HI, 32)
+
+    assert np.array_equal(pts2[::2], pts)
+    assert np.array_equal(wts2[::2], 0.5 * wts)
+
+
+# Inside the rectangle and outside its inscribed ellipse: (0.8)² + (0.8)² > 1
+# in units of the semi-axes.
+CORNER_ROOT = 2.8 + 0.8j
+
+
+def test_adaptive_contour_converges_and_reuses_every_solve():
+    """Doubling stops when the eigenvalues do, and no node is assembled twice.
+
+    Three claims. The corner root is not reported: the contour is the ellipse.
+    The reported change bounds the true error from above, because it is the
+    error of the previous level and the levels converge geometrically
+    *(measured: change 3.3e-12, true error 1.3e-13)*. And the builder is called
+    once per node of the final contour plus once to size the probe — 33 calls
+    for 32 nodes — which is the statement that nesting was used and not merely
+    available.
+    """
+    want = np.array([1.5 - 0.3j, 2.5 + 0.4j])
+    m_builder, _ = make_pencil([*want, CORNER_ROOT], nonlinear=True)
+    calls = itertools.count()
+
+    def counted(lam):
+        next(calls)
+        return m_builder(lam)
+
+    res = beyn_modes_adaptive(counted, Z_LO, Z_HI, tol=1.0e-9)
+
+    assert res.converged
+    assert res.modes.n_modes == 2
+    assert next(calls) == res.n_nodes + 1
+
+    errors = np.array([np.min(np.abs(res.modes.eigenvalues - w)) for w in want])
+    # 1e-9 is the tolerance asked for; the measured error is four decades
+    # inside it because the stop is tested on the previous, coarser level.
+    assert errors.max() < 1.0e-9
+    assert res.change.max() <= 1.0e-9
+    assert errors.max() <= res.change.max()
+
+
+def test_adaptive_contour_matches_the_same_contour_from_scratch():
+    """Halving the old sums and adding the new nodes is the same integral.
+
+    Not bit-identical — the nodes are summed in a different order — but equal
+    to round-off *(measured 1.4e-15 on the eigenvalues, 1.1e-16 on the
+    cancellation)*. A wrong weight on either half would show at O(1).
+    """
+    m_builder, _ = make_pencil([1.5 - 0.3j, 2.5 + 0.4j], nonlinear=True)
+
+    res = beyn_modes_adaptive(m_builder, Z_LO, Z_HI, tol=1.0e-9)
+
+    pts, wts = ellipse_contour_quad(Z_LO, Z_HI, res.n_nodes)
+    a0, a1, cancellation = contour_moments(
+        m_builder, pts, wts, probe_matrix(N_DIM, 12, 0)
+    )
+    ref = beyn_poles(a0, a1, cancellation, Z_LO, Z_HI, contour="ellipse")
+
+    assert np.allclose(res.modes.eigenvalues, ref.eigenvalues, atol=1.0e-13)
+    assert abs(res.modes.cancellation - ref.cancellation) < 1.0e-13
+
+
+def test_adaptive_contour_reports_an_empty_ellipse_as_converged():
+    """Nothing inside, twice in a row, is an answer and not a failure."""
+    m_builder, _ = make_pencil([CORNER_ROOT])
+
+    res = beyn_modes_adaptive(m_builder, Z_LO, Z_HI)
+
+    assert res.converged
+    assert res.modes.n_modes == 0
+    assert res.change.size == 0
+
+
+def test_adaptive_contour_says_when_it_ran_out_of_nodes():
+    """Hitting ``n_max`` returns the best result with ``converged`` False.
+
+    A tolerance below round-off can never be met, so this is the path taken;
+    the result is still the finest contour, and the flag is what tells the
+    caller not to read ``change`` as a bound that was satisfied.
+    """
+    m_builder, _ = make_pencil([1.5 - 0.3j, 2.5 + 0.4j], nonlinear=True)
+
+    res = beyn_modes_adaptive(m_builder, Z_LO, Z_HI, tol=1.0e-30, n_max=64)
+
+    assert not res.converged
+    assert res.n_nodes == 64
+    assert res.modes.n_modes == 2
+
+
+def test_adaptive_contour_still_raises_on_a_saturated_probe():
+    """A level that cannot be reduced is skipped, but the last one is not.
+
+    Coarse levels often show no rank gap and are passed over. A probe with
+    fewer columns than there are eigenvalues shows none at any level, and that
+    must surface as the same error the fixed contour raises.
+    """
+    m_builder, _ = make_pencil(
+        [1.4 - 0.3j, 1.7 + 0.2j, 2.1 - 0.1j, 2.5 + 0.4j, 2.6 - 0.3j]
+    )
+
+    with pytest.raises(ValueError, match="saturated"):
+        beyn_modes_adaptive(m_builder, Z_LO, Z_HI, n_probe=3, n_max=64)
+
+
+def test_unknown_contour_is_rejected():
+    """A misspelt contour must not fall through to the rectangle filter."""
+    a0 = np.eye(4, 2, dtype=complex)
+    with pytest.raises(ValueError, match="contour must be"):
+        beyn_poles(a0, a0, 1.0, Z_LO, Z_HI, contour="circle")
+
+
+# ── Interpolation route ─────────────────────────────────────────────────────
+
+
+def test_faber_basis_is_what_it_claims_on_the_ellipse():
+    """On λ(t) the basis is ``e^{ikt} + qᵏ e^{−ikt}``, and on a circle ``(u/a)ᵏ``.
+
+    The closed form is derived from the Chebyshev–Joukowski identity, not from
+    the recurrence, so agreement checks the recurrence and its k = 2 start,
+    where ψ₀ enters as 2. A wrong start shifts every even degree at O(q).
+    """
+    z_lo, z_hi = 500.0 + 1.0j, 1100.0 + 50.0j
+    a, b = 300.0, 24.5
+    q = (a - b) / (a + b)
+    t = 2.0 * np.pi * np.arange(32) / 32
+    pts, _ = ellipse_contour_quad(z_lo, z_hi, 32)
+    k = np.arange(20)[:, None]
+    want = np.exp(1j * k * t) + q**k * np.exp(-1j * k * t)
+    got = ellipse_faber_basis(pts, z_lo, z_hi, 20)
+    # Degree 0 is 1 by convention; the closed form gives 2 there.
+    assert np.array_equal(got[0], np.ones(32))
+    # Round-off on O(1) values through 20 steps of a stable recurrence.
+    assert np.allclose(got[1:], want[1:], atol=1.0e-12)
+
+    # The circle: q = 0, monomials in units of the radius, no special case.
+    lam = np.array([2.3 + 0.1j, 1.6 - 0.7j])
+    assert np.allclose(
+        ellipse_faber_basis(lam, Z_LO, Z_HI, 6),
+        (lam - 2.0)[None, :] ** k[:6],
+        atol=1e-15,
+    )
+
+
+def test_interpolation_matrix_is_well_conditioned_on_an_elongated_box():
+    """A 600 × 49 box, the shape S5 gained on, at 16 and 64 nodes.
+
+    *(measured: condition 2.55 and 2.28)*. A monomial basis in ``λ − centre``
+    on the same nodes is beyond 1e16 by 64; 10 is four times the measured
+    value and still says "a Fourier matrix", which is the claim.
+    """
+    z_lo, z_hi = 500.0 + 1.0j, 1100.0 + 50.0j
+    for n in (16, 64):
+        pts, _ = ellipse_contour_quad(z_lo, z_hi, n)
+        assert np.linalg.cond(ellipse_faber_basis(pts, z_lo, z_hi, n).T) < 10.0
+
+
+def test_interpolation_is_exact_on_a_polynomial_pencil():
+    """A pencil linear in λ is fitted exactly, so only round-off is left.
+
+    *(measured: fit error 2.0e-16 at the first doubling, eigenvalue error
+    1.9e-15)*. The bounds are a decade above, and five decades below what a
+    wrong basis or a mis-merged sample stack would leave.
+    """
+    want = np.array([1.5 - 0.3j, 2.5 + 0.4j])
+    m_builder, _ = make_pencil(want)
+
+    res = beyn_modes_adaptive(m_builder, Z_LO, Z_HI, interpolate=True)
+
+    assert res.converged
+    assert res.fit_error < 1.0e-14
+    errors = [np.min(np.abs(res.modes.eigenvalues - w)) for w in want]
+    assert max(errors) < 1.0e-13
+
+
+def test_interpolated_route_converges_and_assembles_each_node_once():
+    """The genuinely nonlinear pencil, through the polynomial.
+
+    The builder is called exactly ``n_nodes`` times: the samples size the probe,
+    so there is no extra call, unlike the direct route's ``n_nodes + 1``. The
+    corner root stays out, as on the direct ellipse. *(measured: 32 nodes, error
+    3.3e-13, change 7.3e-13, fit error 2.4e-13)*.
+    """
+    want = np.array([1.5 - 0.3j, 2.5 + 0.4j])
+    m_builder, _ = make_pencil([*want, CORNER_ROOT], nonlinear=True)
+    calls = itertools.count()
+
+    def counted(lam):
+        next(calls)
+        return m_builder(lam)
+
+    res = beyn_modes_adaptive(counted, Z_LO, Z_HI, tol=1.0e-9, interpolate=True)
+
+    assert res.converged
+    assert res.modes.n_modes == 2
+    assert next(calls) == res.n_nodes
+    errors = np.array([np.min(np.abs(res.modes.eigenvalues - w)) for w in want])
+    # The tolerance asked for; measured four decades inside it.
+    assert errors.max() < 1.0e-9
+    assert np.isfinite(res.fit_error)
+
+
+def test_interpolated_route_rejects_a_noise_eigenvalue_by_the_stopping_test():
+    """A pole 0.05 outside the ellipse, and a contour on the polynomial too fine.
+
+    At 1024 nodes the pole's weight on the contour is ``1.05^−1024 ≈ 2e-22``,
+    below round-off, but a direction at 5e-13 stays in A₀. On M it lies
+    within PLATEAU_GAP of the plateau and is dropped. On the 32-node
+    polynomial the plateau is lower (2e-14), the direction clears the gap, and
+    the level reports a third eigenvalue at 2.9995+0.0072j *(measured)*. The
+    first half shows that trap is real; the second shows the adaptive driver
+    does not fall into it, because the noise eigenvalue moves between levels
+    (2.9795, 2.9995, 2.9973 at 768, 1024, 2048 fine nodes) and two levels must
+    agree.
+    """
+    want = np.array([1.5 - 0.3j, 2.5 + 0.4j])
+    m_builder, _ = make_pencil([*want, 3.05 + 0.0j], nonlinear=True)
+
+    pts, _ = ellipse_contour_quad(Z_LO, Z_HI, 32)
+    poly = _EllipseInterpolant(pts, np.array([m_builder(z) for z in pts]), Z_LO, Z_HI)
+    fine, fine_w = ellipse_contour_quad(Z_LO, Z_HI, 1024)
+    a0, a1, canc = contour_moments(poly, fine, fine_w, probe_matrix(N_DIM, 12, 0))
+    one_level = beyn_poles(a0, a1, canc, Z_LO, Z_HI, contour="ellipse")
+    assert one_level.n_modes == 3
+
+    res = beyn_modes_adaptive(
+        m_builder, Z_LO, Z_HI, tol=1.0e-9, interpolate=True, n_max=512, n_fine=1024
+    )
+    assert res.converged
+    assert res.modes.n_modes == 2
+    errors = [np.min(np.abs(res.modes.eigenvalues - w)) for w in want]
+    assert max(errors) < 1.0e-9
+
+
+def test_interpolation_memory_cap_refuses_a_first_level_that_does_not_fit():
+    """Too little memory for ``n_start`` samples is an error, not a silent cut."""
+    m_builder, _ = make_pencil([1.5 - 0.3j])
+    with pytest.raises(ValueError, match="interp_memory"):
+        beyn_modes_adaptive(m_builder, Z_LO, Z_HI, interpolate=True, interp_memory=1e3)
+
+
+def test_interpolation_memory_cap_ends_the_doubling():
+    """A budget that holds 32 samples and not 64 makes 32 the last level.
+
+    The budget is exactly the peak at 32, so the boundary itself is tested:
+    ``≤`` admits it, and 64 is refused. ``tol = 1e-30`` cannot be met, so the
+    result must come back unconverged, at 32, rather than as an error.
+    """
+    m_builder, _ = make_pencil([1.5 - 0.3j, 2.5 + 0.4j], nonlinear=True)
+    budget = INTERP_PEAK_OVER_SAMPLES * 16.0 * 32 * N_DIM**2
+
+    res = beyn_modes_adaptive(
+        m_builder, Z_LO, Z_HI, tol=1.0e-30, interpolate=True, interp_memory=budget
+    )
+
+    assert res.n_nodes == 32
+    assert not res.converged
+    assert res.modes.n_modes == 2
+
+
+def test_interpolation_needs_a_fine_contour_at_least_as_fine_as_the_sampling():
+    """A polynomial integrated more coarsely than it was sampled wastes the fit."""
+    m_builder, _ = make_pencil([1.5 - 0.3j])
+    with pytest.raises(ValueError, match="n_fine"):
+        beyn_modes_adaptive(m_builder, Z_LO, Z_HI, interpolate=True, n_fine=128)
+
+
+def test_fixed_ellipse_is_the_adaptive_contour_at_one_level():
+    """``beyn_modes(contour="ellipse")`` integrates ``4·n_quad_per_side`` nodes.
+
+    Same nodes, same weights, same probe as the adaptive driver's level at that
+    count, so the eigenvalues agree to round-off *(measured 1.4e-15 for the
+    nested sum against the direct one)*; and the corner root is out.
+    """
+    want = np.array([1.5 - 0.3j, 2.5 + 0.4j])
+    m_builder, _ = make_pencil([*want, CORNER_ROOT], nonlinear=True)
+
+    fixed = beyn_modes(m_builder, Z_LO, Z_HI, n_quad_per_side=8, contour="ellipse")
+    pts, wts = ellipse_contour_quad(Z_LO, Z_HI, 32)
+    a0, a1, canc = contour_moments(m_builder, pts, wts, probe_matrix(N_DIM, 12, 0))
+    ref = beyn_poles(a0, a1, canc, Z_LO, Z_HI, contour="ellipse")
+
+    assert fixed.n_modes == 2
+    assert np.allclose(fixed.eigenvalues, ref.eigenvalues, atol=1.0e-13)
+    with pytest.raises(ValueError, match="contour must be"):
+        beyn_modes(m_builder, Z_LO, Z_HI, contour="circle")

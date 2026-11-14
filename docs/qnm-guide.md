@@ -232,6 +232,35 @@ identify modes by continuing a labelled circle mode along a smooth deformation,
 and treat a kink or jump in its trajectory as a defect signal
 ([conventions](conventions.md) §8).
 
+### Letting the contour choose its node count
+
+Three opt-in keywords of `QNMSolver.modes` replace the guess of
+`n_quad_per_side`:
+
+```python
+res = qnm.modes(z_lo, z_hi, contour="ellipse")                  # same nodes, ellipse
+res = qnm.modes(z_lo, z_hi, contour="ellipse", adaptive=True)   # doubles to tol
+res = qnm.modes(z_lo, z_hi, contour="ellipse", adaptive=True, interpolate=True)
+```
+
+- **`contour="ellipse"`** integrates on the ellipse inscribed in the box. At
+  equal node count it is about as accurate as the rectangle with twice the
+  nodes, but it **leaves the corners out**: draw the box so that no mode you
+  want sits in a corner. `edge_margin` then measures the distance to the
+  ellipse.
+- **`adaptive=True`** doubles the ellipse's nodes, reusing every assembly,
+  until no mode moves by more than `tol` (nm) between two levels. If `n_max`
+  is reached first it warns and returns the finest contour.
+- **`interpolate=True`** fits a polynomial in λ through the assembled matrices
+  and runs the contour on that. It pays on a wide box with many modes (64
+  assemblies against 512 on a 600 × 49 nm box holding eleven TE modes). It
+  gains nothing on a narrow box around one mode, and it stores every sampled
+  matrix, so at large `n_pts` it is refused unless the memory budget is
+  raised through `pysie2d.beyn.beyn_modes_adaptive(interp_memory=...)`.
+
+The defaults are unchanged: without these keywords `modes` runs the rectangle
+exactly as before.
+
 ---
 
 ## 5. A worked example
