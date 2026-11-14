@@ -89,9 +89,16 @@ N_SIDE_COARSE = 4
 
 @pytest.fixture(scope="module")
 def te_simple_contour_limited():
-    """The simple anchor on a coarse contour: 7.0e-6 nm out, all of it contour."""
+    """The simple anchor on a coarse contour: 7.0e-6 nm out, all of it contour.
+
+    ``rank_tol = 1e-6`` keeps the pole and the two directions at 3e-4 and drops
+    the three below, at 3e-8 to 7e-10. Those three are what the coarse rule
+    gets wrong, and keeping them repairs it: this same contour is 3.5e-9 nm out
+    with them and 7.0e-6 without *(measured)*. The refinement tests need the
+    coarse answer, so the cut is made explicitly here.
+    """
     return qnm_solver(pol=2).modes(
-        *BOX_TE_SIMPLE, n_quad_per_side=N_SIDE_CONTOUR_LIMITED
+        *BOX_TE_SIMPLE, n_quad_per_side=N_SIDE_CONTOUR_LIMITED, rank_tol=1.0e-6
     )
 
 
@@ -522,3 +529,73 @@ def test_left_null_vector_is_not_the_right_one(te_simple_refined):
     # vector and the two directions are far from parallel.
     assert np.linalg.norm(m - m.T) / np.linalg.norm(m) > 1.0
     assert abs(np.vdot(u, v.conj())) < 0.5
+
+
+# ── Ellipse, adaptive stop and interpolation through the façade ─────────────
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"contour": "ellipse"},
+        {"contour": "ellipse", "adaptive": True},
+        {"contour": "ellipse", "adaptive": True, "interpolate": True},
+    ],
+    ids=["ellipse", "adaptive", "interpolated"],
+)
+def test_ellipse_routes_match_the_analytic_pole(options):
+    """Each route finds the TE n=0 anchor within the extraction budget.
+
+    *(measured |Δλ|: 4.6e-14, 1.2e-13 and 8.2e-14 nm, against 1.1e-11 for the
+    default rectangle)*. The budget is the module's: a route that integrated
+    the wrong curve or dropped the pole misses by nanometres.
+    """
+    res = qnm_solver(pol=2).modes(*BOX_TE_SIMPLE, **options)
+
+    assert res.n_modes == 1
+    assert res.contour == "ellipse"
+    assert abs(res.wavelengths[0].real - ANCHOR_TE_SIMPLE.real) < ATOL_RE_NM
+    assert abs(res.wavelengths[0].imag - ANCHOR_TE_SIMPLE.imag) < ATOL_IM_NM
+
+
+def test_ellipse_edge_margin_is_a_lower_bound_and_survives_refine(te_simple):
+    """The ellipse margin sits below the rectangle's for the same mode.
+
+    It must: the ellipse is inside the rectangle, so a mode is never farther
+    from it *(measured 0.420 against 0.433)*. ``refine`` recomputes the margin
+    and must do it against the curve the modes came from.
+    """
+    res = qnm_solver(pol=2).modes(*BOX_TE_SIMPLE, contour="ellipse")
+
+    assert 0.0 < res.edge_margin[0] <= te_simple.edge_margin[0]
+    refined = res.refine()
+    assert refined.contour == "ellipse"
+    assert np.allclose(refined.edge_margin, res.edge_margin, atol=1.0e-9)
+
+
+def test_contour_options_are_validated():
+    """Every combination that would silently do something else is refused."""
+    solver = qnm_solver(pol=2)
+    with pytest.raises(ValueError, match="contour must be"):
+        solver.modes(*BOX_TE_SIMPLE, contour="circle")
+    with pytest.raises(ValueError, match="contour='ellipse'"):
+        solver.modes(*BOX_TE_SIMPLE, adaptive=True)
+    with pytest.raises(ValueError, match="adaptive=True"):
+        solver.modes(*BOX_TE_SIMPLE, contour="ellipse", interpolate=True)
+
+
+def test_adaptive_route_warns_when_it_runs_out_of_nodes():
+    """An unmeetable tolerance returns the finest contour with a warning.
+
+    The façade has no ``converged`` field for the contour, so the warning is
+    the only place the caller learns that ``tol`` was not met.
+    """
+    with pytest.warns(RuntimeWarning, match="without the modes settling"):
+        res = qnm_solver(pol=2).modes(
+            *BOX_TE_SIMPLE,
+            contour="ellipse",
+            adaptive=True,
+            contour_tol=1.0e-30,
+            n_max=32,
+        )
+    assert res.n_modes == 1

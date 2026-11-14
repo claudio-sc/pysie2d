@@ -28,7 +28,7 @@ import numpy as np
 
 from . import layered
 from .background import HalfSpace, Stack
-from .beyn import beyn_modes, newton_refine
+from .beyn import beyn_modes, beyn_modes_adaptive, newton_refine
 from .geometry import Geometry, _check_frozen_nodes
 from .material import Material
 from .solver import BIESolver, size_parameter
@@ -96,6 +96,10 @@ class QNMResult:
         edge_margin: float (K,) distance from each mode to the nearest contour
             edge, as a fraction of the shorter side. A value near zero means
             the box is clipping the pole and the result is not trustworthy.
+            On the ellipse, ``(1 − r)/2`` with ``r`` the mode's radius in
+            units of the semi-axes: a lower bound on the distance to the
+            ellipse over the shorter side, equal to the rectangle's value at
+            the centre (0.5) and on the minor axis.
         converged: bool (K,) whether bordered Newton converged on each mode.
             Straight out of :meth:`QNMSolver.modes` this is **all False, which
             means no refinement was attempted** — not that anything failed. A
@@ -120,6 +124,9 @@ class QNMResult:
         material: The scatterer optical properties.
         background: The substrate the particle sits on, or ``None``. With one,
             :meth:`sensitivity` raises ``NotImplementedError``.
+        contour: ``"rectangle"``, or ``"ellipse"`` when the modes came from
+            the ellipse inscribed in ``z_lo``, ``z_hi``. It decides what
+            ``edge_margin`` measures.
     """
 
     wavelengths: np.ndarray
@@ -138,6 +145,7 @@ class QNMResult:
     geometry: Geometry
     material: Material
     background: HalfSpace | None = None
+    contour: str = "rectangle"
 
     @property
     def quality_factors(self) -> np.ndarray:
@@ -275,7 +283,7 @@ class QNMResult:
             vectors=vectors,
             multiplicity=_multiplicity(lams),
             sigma_ratio=np.array([_sigma_ratio(bie, lam) for lam in lams]),
-            edge_margin=_edge_margin(lams, self.z_lo, self.z_hi),
+            edge_margin=_edge_margin(lams, self.z_lo, self.z_hi, self.contour),
             converged=converged,
             cond_jacobian=cond_jacobian,
         )
@@ -460,11 +468,29 @@ class QNMSolver:
         n_probe: int = 12,
         rank_tol: float = 1.0e-8,
         rng_seed: int = 0,
+        contour: str = "rectangle",
+        adaptive: bool = False,
+        interpolate: bool = False,
+        contour_tol: float = 1.0e-9,
+        n_max: int = 256,
     ) -> QNMResult:
         """Find every quasi-normal mode inside a rectangle of the λ-plane.
 
         Cost is ``4·n_quad_per_side`` complex assemblies and LU factorisations,
         independent of how many modes are inside.
+
+        **Contour choices.** ``contour="ellipse"`` integrates on the ellipse
+        inscribed in the rectangle with the trapezoid rule, on the same
+        ``4·n_quad_per_side`` nodes. It is about as accurate as the rectangle with
+        twice the nodes, and it leaves the corners out: a mode in a corner
+        is not found *(measured, docs/design/studies/beyn S2)*.
+        ``adaptive=True`` doubles the ellipse's nodes, reusing every assembly,
+        until no mode moves by more than ``contour_tol``
+        (:func:`pysie2d.beyn.beyn_modes_adaptive`). ``interpolate=True`` adds
+        the interpolation route on top: a polynomial in λ through the
+        assembled matrices, and the contour run on the polynomial. That pays
+        on a wide box with many modes, not on a narrow box around one
+        *(S6: 64 assemblies where the direct adaptive ellipse needs 512)*.
 
         Args:
             z_lo: Bottom-left corner of the search rectangle, **vacuum** nm.
@@ -480,6 +506,15 @@ class QNMSolver:
                 counting rank leaked from poles just outside.
             rank_tol: Relative singular-value floor for rank detection.
             rng_seed: Probe-matrix seed. Results must not depend on it.
+            contour: ``"rectangle"`` or ``"ellipse"``.
+            adaptive: Refine the ellipse until the modes stop moving;
+                ``n_quad_per_side`` is then ignored. Needs ``contour="ellipse"``.
+            interpolate: Integrate a polynomial through the assembled
+                matrices. Needs ``adaptive=True``.
+            contour_tol: With ``adaptive``, the largest movement of any mode
+                over the last doubling at which to stop, vacuum nm.
+            n_max: With ``adaptive``, the largest node count (assemblies)
+                allowed.
 
         Returns:
             The modes inside the rectangle, with their diagnostics.
@@ -490,20 +525,63 @@ class QNMSolver:
                 outnumber ``n_probe``; with a background, if a singularity of
                 the reflected Green function comes within reach of the
                 Sommerfeld path anywhere on the shadow box, or ``Im λ/Re λ``
-                exceeds 1 (Q < 0.5).
+                exceeds 1 (Q < 0.5). Also for an unknown ``contour``,
+                ``adaptive`` without the ellipse, or ``interpolate`` without
+                ``adaptive``.
+
+        Warns:
+            RuntimeWarning: With ``adaptive``, when ``n_max`` was reached
+                before the modes moved by less than ``contour_tol``.
         """
+        if contour not in ("rectangle", "ellipse"):
+            raise ValueError(
+                f"contour must be 'rectangle' or 'ellipse'; got {contour!r}"
+            )
+        if adaptive and contour != "ellipse":
+            raise ValueError(
+                "adaptive=True refines the ellipse: pass contour='ellipse'"
+            )
+        if interpolate and not adaptive:
+            raise ValueError(
+                "interpolate=True is driven by the adaptive stop: pass adaptive=True"
+            )
         self._validate_region(z_lo, z_hi)
         bie = _box_solver(self.geometry, self.material, self.background, z_lo, z_hi)
 
-        found = beyn_modes(
-            bie.assemble,
-            z_lo,
-            z_hi,
-            n_quad_per_side=n_quad_per_side,
-            n_probe=n_probe,
-            rank_tol=rank_tol,
-            rng_seed=rng_seed,
-        )
+        if adaptive:
+            refined = beyn_modes_adaptive(
+                bie.assemble,
+                z_lo,
+                z_hi,
+                tol=contour_tol,
+                n_max=n_max,
+                n_probe=n_probe,
+                rank_tol=rank_tol,
+                rng_seed=rng_seed,
+                interpolate=interpolate,
+                n_fine=max(512, n_max),
+            )
+            if not refined.converged:
+                warnings.warn(
+                    f"adaptive contour reached {refined.n_nodes} nodes without "
+                    f"the modes settling to contour_tol = {contour_tol:.1e} nm; "
+                    "the result is the finest contour tried. Raise n_max or "
+                    "shrink the box.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            found = refined.modes
+        else:
+            found = beyn_modes(
+                bie.assemble,
+                z_lo,
+                z_hi,
+                n_quad_per_side=n_quad_per_side,
+                n_probe=n_probe,
+                rank_tol=rank_tol,
+                rng_seed=rng_seed,
+                contour=contour,
+            )
         lams = found.eigenvalues
 
         return QNMResult(
@@ -515,7 +593,7 @@ class QNMSolver:
             max_gap=found.max_gap,
             rank=found.rank,
             cancellation=found.cancellation,
-            edge_margin=_edge_margin(lams, z_lo, z_hi),
+            edge_margin=_edge_margin(lams, z_lo, z_hi, contour),
             # No refinement has been attempted: all-False plus all-NaN is the
             # unambiguous reading of "not tried", and neither is a verdict on
             # the modes. QNMResult.refine fills both in.
@@ -526,6 +604,7 @@ class QNMSolver:
             geometry=self.geometry,
             material=self.material,
             background=self.background,
+            contour=contour,
         )
 
     def _sigma_ratio(self, wavelength: complex) -> float:
@@ -672,10 +751,24 @@ def _multiplicity(lams: np.ndarray) -> np.ndarray:
     return close.sum(axis=1).astype(int)
 
 
-def _edge_margin(lams: np.ndarray, z_lo: complex, z_hi: complex) -> np.ndarray:
-    """Distance to the nearest contour edge, as a fraction of the shorter side."""
+def _edge_margin(
+    lams: np.ndarray, z_lo: complex, z_hi: complex, contour: str = "rectangle"
+) -> np.ndarray:
+    """Distance to the nearest contour edge, as a fraction of the shorter side.
+
+    On the ellipse the exact distance needs a quartic; ``(1 − r)·b_min`` is the
+    distance between the ellipse and its copy scaled by ``r`` through the mode,
+    which bounds it from below and is exact on the minor axis.
+    """
     if lams.size == 0:
         return np.zeros(0, dtype=float)
+    if contour == "ellipse":
+        centre = 0.5 * (z_lo + z_hi)
+        radius = np.hypot(
+            (lams.real - centre.real) / (0.5 * (z_hi.real - z_lo.real)),
+            (lams.imag - centre.imag) / (0.5 * (z_hi.imag - z_lo.imag)),
+        )
+        return 0.5 * (1.0 - radius)
     side = min(z_hi.real - z_lo.real, z_hi.imag - z_lo.imag)
     dist = np.minimum.reduce(
         [

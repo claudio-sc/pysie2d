@@ -18,7 +18,7 @@ class ClusterCancellationWarning
 ClusterCancellationWarning.__init__(self, /, *args, **kwargs)
 class ClusterEigenEps
 ClusterEigenEps.__init__(self, solver: pysie2d.cluster.ClusterBIESolver, wavelength: float | complex) -> None
-ClusterEigenEps.eigenpermittivities(self, eps_lo: complex, eps_hi: complex, *, n_quad_per_side: int = 32, n_probe: int = 16, rank_tol: float = 1e-08, tol: float = 1e-12, max_iter: int = 30) -> pysie2d.cluster.EigenpermittivityResult
+ClusterEigenEps.eigenpermittivities(self, eps_lo: complex, eps_hi: complex, *, n_quad_per_side: int = 32, n_probe: int = 16, rank_tol: float = 1e-08, tol: float = 1e-12, max_iter: int = 30, contour: str = 'rectangle', adaptive: bool = False, interpolate: bool = False, contour_tol: float = 1e-09, n_max: int = 256) -> pysie2d.cluster.EigenpermittivityResult
 ClusterEigenEps.scatter(self, materials: collections.abc.Sequence[pysie2d.material.Material], angle: float = 0.0) -> pysie2d.cluster.ClusterScatterResult
 ClusterEigenEps.scatter_dipole(self, materials: collections.abc.Sequence[pysie2d.material.Material], x_s: float, z_s: float, *, moment: tuple[complex, complex] | None = None) -> pysie2d.cluster.ClusterScatterResult
 ClusterEigenEps.scatter_mode(self, materials: collections.abc.Sequence[pysie2d.material.Material], mode: pysie2d.layered.GuidedMode | int, direction: int, *, x_ref: float) -> pysie2d.cluster.ClusterScatterResult
@@ -87,7 +87,7 @@ Parametrisation.gielis(*, rad: float, a: float, b: float, m: int, n1: float, n2:
 Parametrisation.nodes(self, nn: int) -> pysie2d.parametrisation.Nodes
 Parametrisation.uniform_theta() -> 'Parametrisation'
 class QNMResult
-QNMResult.__init__(self, wavelengths: numpy.ndarray, vectors: numpy.ndarray, multiplicity: numpy.ndarray, sigma_ratio: numpy.ndarray, sv_ratio: numpy.ndarray, max_gap: float, rank: int, cancellation: float, edge_margin: numpy.ndarray, converged: numpy.ndarray, cond_jacobian: numpy.ndarray, z_lo: complex, z_hi: complex, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, background: pysie2d.background.HalfSpace | None = None) -> None
+QNMResult.__init__(self, wavelengths: numpy.ndarray, vectors: numpy.ndarray, multiplicity: numpy.ndarray, sigma_ratio: numpy.ndarray, sv_ratio: numpy.ndarray, max_gap: float, rank: int, cancellation: float, edge_margin: numpy.ndarray, converged: numpy.ndarray, cond_jacobian: numpy.ndarray, z_lo: complex, z_hi: complex, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, background: pysie2d.background.HalfSpace | None = None, contour: str = 'rectangle') -> None
 QNMResult.n_modes -> property
 QNMResult.quality_factors -> property
 QNMResult.refine(self, *, tol: float = 1e-09, max_iter: int = 30) -> 'QNMResult'
@@ -95,7 +95,7 @@ QNMResult.sensitivity(self, at: collections.abc.Callable[[float], tuple[pysie2d.
 QNMResult.size_parameters -> property
 class QNMSolver
 QNMSolver.__init__(self, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, background: pysie2d.background.HalfSpace | None = None) -> None
-QNMSolver.modes(self, z_lo: complex, z_hi: complex, *, n_quad_per_side: int = 12, n_probe: int = 12, rank_tol: float = 1e-08, rng_seed: int = 0) -> pysie2d.qnm.QNMResult
+QNMSolver.modes(self, z_lo: complex, z_hi: complex, *, n_quad_per_side: int = 12, n_probe: int = 12, rank_tol: float = 1e-08, rng_seed: int = 0, contour: str = 'rectangle', adaptive: bool = False, interpolate: bool = False, contour_tol: float = 1e-09, n_max: int = 256) -> pysie2d.qnm.QNMResult
 SHAPE_STEP: float = 1e-05
 class ScatterResult
 ScatterResult.__init__(self, ei: numpy.ndarray, geometry: pysie2d.geometry.Geometry, material: pysie2d.material.Material, wavelength: float, angle: float = 0.0, background: pysie2d.background.HalfSpace | pysie2d.background.Stack | None = None, *, excitation: str = 'plane_wave', source: tuple[float, float] | None = None, mode: pysie2d.layered.GuidedMode | None = None, direction: int | None = None, x_ref: float | None = None, moment: tuple[complex, complex] | None = None) -> None

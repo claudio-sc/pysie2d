@@ -488,15 +488,8 @@ def _distance(a: np.ndarray, b: np.ndarray) -> float:
     return max(float(np.min(np.abs(b - x))) for x in a)
 
 
-@pytest.mark.parametrize("pol", [1, 2])
-def test_one_circle_reproduces_the_analytic_mie_modes_and_their_count(pol):
-    """The closed form, with the number of modes settled by the argument principle.
-
-    Winding the denominators counts zeros independently of any contour eigensolver, so a
-    missed or spurious mode fails the count even if the found ones are perfect. |n| ≥ 1
-    orders are doubly degenerate. Measured 8.7e-16 (TM) and 7.8e-15 (TE), round-off;
-    5e-14 is ~6× headroom.
-    """
+def _mie_expected(pol: int) -> np.ndarray:
+    """Mie roots inside ``BOX[pol]``, counted by winding, repeated by multiplicity."""
     lo, hi = BOX[pol]
     expected = []
     for n in range(13):
@@ -526,7 +519,20 @@ def test_one_circle_reproduces_the_analytic_mie_modes_and_their_count(pol):
                     break
             assert len(roots) == count
             expected += [r for r in roots for _ in range(2 if n else 1)]
-    expected = np.array(expected)
+    return np.array(expected)
+
+
+@pytest.mark.parametrize("pol", [1, 2])
+def test_one_circle_reproduces_the_analytic_mie_modes_and_their_count(pol):
+    """The closed form, with the number of modes settled by the argument principle.
+
+    Winding the denominators counts zeros independently of any contour eigensolver, so a
+    missed or spurious mode fails the count even if the found ones are perfect. |n| ≥ 1
+    orders are doubly degenerate. Measured 8.7e-16 (TM) and 7.8e-15 (TE), round-off;
+    5e-14 is ~6× headroom.
+    """
+    lo, hi = BOX[pol]
+    expected = _mie_expected(pol)
 
     res = _prepared(_circles(nn=64), pol).eigenpermittivities(
         lo, hi, n_quad_per_side=48
@@ -778,3 +784,181 @@ def test_a_box_too_close_to_a_mode_raises_rather_than_answering():
         prepared.eigenpermittivities(
             -2.0 - 1.5j, -0.2 - 0.15j, n_quad_per_side=48, n_probe=24
         )
+
+
+# ── Ellipse, adaptive stop and interpolation ────────────────────────────────
+
+
+def _in_ellipse(z: np.ndarray, lo: complex, hi: complex) -> np.ndarray:
+    """Mask of the points strictly inside the ellipse inscribed in the rectangle."""
+    c = 0.5 * (lo + hi)
+    a, b = 0.5 * (hi.real - lo.real), 0.5 * (hi.imag - lo.imag)
+    return ((z.real - c.real) / a) ** 2 + ((z.imag - c.imag) / b) ** 2 < 1.0
+
+
+# The TE box only. On the TM box the ellipse passes within 0.8 % of a degenerate
+# pair, so whether it counts as inside is decided by round-off, not physics. The
+# TE box's modes sit 71 % of the way from the ellipse to its centre.
+_ROUTES = {
+    "ellipse": {"contour": "ellipse", "n_quad_per_side": 48},
+    "adaptive": {"contour": "ellipse", "adaptive": True},
+    "interpolated": {"contour": "ellipse", "adaptive": True, "interpolate": True},
+}
+
+
+@pytest.mark.parametrize("route", list(_ROUTES))
+def test_ellipse_routes_reproduce_the_mie_modes_of_one_circle(route):
+    """The closed form of the rectangle test, restricted to the ellipse.
+
+    Measured 1.9e-15, 1.8e-15 and 1.8e-15 for the three routes; the bound is the
+    rectangle test's 5e-14. A route that integrated the rectangle instead would
+    find the same modes here, so the count is checked against the ellipse mask
+    of the winding-counted roots, not against the rectangle's result.
+    """
+    lo, hi = BOX[2]
+    expected = _mie_expected(2)
+    expected = expected[_in_ellipse(expected, lo, hi)]
+
+    res = _prepared(_circles(nn=64), 2).eigenpermittivities(lo, hi, **_ROUTES[route])
+
+    assert res.eps.size == expected.size > 0
+    assert _distance(res.eps, expected) < 5e-14
+    assert _distance(expected, res.eps) < 5e-14
+
+
+@pytest.mark.parametrize("route", ["ellipse", "adaptive"])
+def test_ellipse_routes_match_the_graf_addition_theorem(route):
+    """Coupled modes, d = 400 nm, against Mie coefficients and Graf.
+
+    Measured 2.0e-14 (ellipse) and 2.5e-14 (adaptive), the Graf floor of the
+    rectangle test; its bound of 2e-13 is kept. Interpolation is refused for
+    two particles, so it is not a route here.
+    """
+    lo, hi = BOX[2]
+    graf = beyn_modes(
+        lambda e: _graf(e, 2, 400.0),
+        lo,
+        hi,
+        n_quad_per_side=48,
+        n_probe=24,
+        max_workers=1,
+    )
+    reference = _polish(lambda e: _graf(e, 2, 400.0), graf.eigenvalues, lo, hi)
+    reference = reference[_in_ellipse(reference, lo, hi)]
+
+    res = _prepared(_circles(400.0), 2).eigenpermittivities(lo, hi, **_ROUTES[route])
+
+    assert res.eps.size == reference.size > 0
+    assert _distance(res.eps, reference) < 2e-13
+    assert _distance(reference, res.eps) < 2e-13
+
+
+def test_contour_options_are_validated():
+    """Every combination that would silently do something else is refused.
+
+    The last one carries the physics. With two particles the contour operator
+    is the reduced matrix G, and G has the isolated-particle poles inside the
+    box. A polynomial through G does not converge *(measured: fit error 1.5 to
+    1.6 from 16 to 128 nodes, two circles 300 nm apart, and four spurious modes)*.
+    """
+    lo, hi = BOX[2]
+    pair = _prepared(_circles(400.0, nn=32), 2)
+    with pytest.raises(ValueError, match="contour must be"):
+        pair.eigenpermittivities(lo, hi, contour="circle")
+    with pytest.raises(ValueError, match="contour='ellipse'"):
+        pair.eigenpermittivities(lo, hi, adaptive=True)
+    with pytest.raises(ValueError, match="adaptive=True"):
+        pair.eigenpermittivities(lo, hi, contour="ellipse", interpolate=True)
+    with pytest.raises(ValueError, match="single particle"):
+        pair.eigenpermittivities(
+            lo, hi, contour="ellipse", adaptive=True, interpolate=True
+        )
+
+
+def test_adaptive_route_warns_when_it_runs_out_of_nodes():
+    """An unmeetable contour tolerance returns the finest contour with a warning."""
+    lo, hi = BOX[2]
+    with pytest.warns(RuntimeWarning, match="without the eigenvalues settling"):
+        res = _prepared(_circles(nn=64), 2).eigenpermittivities(
+            lo, hi, contour="ellipse", adaptive=True, contour_tol=1e-30, n_max=32
+        )
+    assert res.eps.size > 0
+
+
+# ── Interior rows shared across translated copies ───────────────────────────
+
+
+def _star(x0: float, n_pts: int = 100) -> Geometry:
+    return Geometry.gielis(rad=100.0, n_pts=n_pts, m=4, n1=8, n2=8, n3=8, x0=x0)
+
+
+def test_translated_copies_are_grouped_and_nothing_else_is():
+    """Copies share a class; another shape, node count or radius does not.
+
+    The radius case is the one that could pass by accident: a circle of 100.5 nm
+    has the same node count and the same kind of derivative arrays, and differs
+    from a 100 nm circle by 0.5 %, nine decades above the matching tolerance.
+    """
+    from pysie2d.cluster import _translation_classes
+
+    circle = lambda x0, rad=100.0, n=100: Geometry.gielis(  # noqa: E731
+        rad=rad, n_pts=n, m=0, x0=x0
+    )
+    gs = [
+        circle(0.0),
+        circle(400.0),
+        _star(800.0),
+        circle(1200.0, n=96),
+        circle(1600.0, rad=100.5),
+        _star(2000.0),
+        circle(2400.0),
+    ]
+    assert _translation_classes(gs) == [0, 0, 2, 3, 4, 2, 0]
+
+
+@pytest.mark.parametrize("pol", [1, 2])
+def test_shared_interior_rows_change_the_operator_by_round_off_only(pol):
+    """The reduced operator with sharing against the one assembled per particle.
+
+    Measured 5.2e-14 relative (8 identical circles) and 1.9e-14 (4 circles and
+    4 stars), TE. 1e-12 is ~20x: a row given to the wrong particle, or the
+    sharing applied across materials, moves G at O(1).
+
+    The derivative is a central difference with step 1e-6, so row round-off
+    reaches it divided by the step: its own floor is ε_mach/h ≈ 2e-10 relative
+    whether rows are shared or not *(measured 8.2e-11)*. It is held to 1e-9,
+    which a misplaced row still misses by eight decades. It only steers Newton;
+    the converged eigenvalues moved by 3.8e-15 *(measured)*.
+    """
+    gs = [Geometry.gielis(rad=100.0, n_pts=64, m=0, x0=400.0 * i) for i in range(3)]
+    gs += [_star(1200.0 + 400.0 * i, n_pts=64) for i in range(2)]
+    prepared = _prepared(gs, pol)
+    assert prepared._shape_of == [0, 0, 0, 3, 3]
+    eps = (12.4 - 0.6j) if pol == 2 else (-1.5 - 0.6j)
+
+    shared = prepared._reduced_at(eps)
+    d_shared = prepared._reduced_derivative(eps)
+    prepared._shape_of = list(range(len(gs)))
+    alone = prepared._reduced_at(eps)
+    d_alone = prepared._reduced_derivative(eps)
+
+    assert np.linalg.norm(shared - alone) < 1e-12 * np.linalg.norm(alone)
+    assert np.linalg.norm(d_shared - d_alone) < 1e-9 * np.linalg.norm(d_alone)
+
+
+def test_sharing_respects_different_materials_on_identical_shapes():
+    """Rows are shared per ``(shape, material)``, not per shape.
+
+    Two identical circles with different permittivities must keep their own
+    rows. The fast solve is compared with the dense one, which never shares.
+    """
+    gs = _circles(400.0, nn=64)
+    mats = [
+        Material(n_core=1.5, n_clad=1.0, pol=2),
+        Material(n_core=2.0, n_clad=1.0, pol=2),
+    ]
+    solver = ClusterBIESolver(Cluster(gs), mats, 2)
+    fast = solver.at_wavelength(LAM_M).scatter(mats).ei
+    dense = solver.scatter(LAM_M).ei
+    # The dense-against-fast agreement of the existing tests, ~1e-13 relative.
+    assert np.linalg.norm(fast - dense) < 1e-11 * np.linalg.norm(dense)
