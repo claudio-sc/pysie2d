@@ -471,7 +471,7 @@ class QNMSolver:
         contour: str = "rectangle",
         adaptive: bool = False,
         interpolate: bool = False,
-        tol: float = 1.0e-9,
+        contour_tol: float = 1.0e-9,
         n_max: int = 256,
     ) -> QNMResult:
         """Find every quasi-normal mode inside a rectangle of the λ-plane.
@@ -485,7 +485,7 @@ class QNMSolver:
         twice the nodes, and it leaves the corners out: a mode in a corner
         is not found *(measured, docs/design/studies/beyn S2)*.
         ``adaptive=True`` doubles the ellipse's nodes, reusing every assembly,
-        until no mode moves by more than ``tol``
+        until no mode moves by more than ``contour_tol``
         (:func:`pysie2d.beyn.beyn_modes_adaptive`). ``interpolate=True`` adds
         the interpolation route on top: a polynomial in λ through the
         assembled matrices, and the contour run on the polynomial. That pays
@@ -511,8 +511,8 @@ class QNMSolver:
                 ``n_quad_per_side`` is then ignored. Needs ``contour="ellipse"``.
             interpolate: Integrate a polynomial through the assembled
                 matrices. Needs ``adaptive=True``.
-            tol: With ``adaptive``, the largest movement of any mode over the
-                last doubling at which to stop, vacuum nm.
+            contour_tol: With ``adaptive``, the largest movement of any mode
+                over the last doubling at which to stop, vacuum nm.
             n_max: With ``adaptive``, the largest node count (assemblies)
                 allowed.
 
@@ -531,7 +531,7 @@ class QNMSolver:
 
         Warns:
             RuntimeWarning: With ``adaptive``, when ``n_max`` was reached
-                before the modes moved by less than ``tol``.
+                before the modes moved by less than ``contour_tol``.
         """
         if contour not in ("rectangle", "ellipse"):
             raise ValueError(
@@ -553,7 +553,7 @@ class QNMSolver:
                 bie.assemble,
                 z_lo,
                 z_hi,
-                tol=tol,
+                tol=contour_tol,
                 n_max=n_max,
                 n_probe=n_probe,
                 rank_tol=rank_tol,
@@ -564,8 +564,9 @@ class QNMSolver:
             if not refined.converged:
                 warnings.warn(
                     f"adaptive contour reached {refined.n_nodes} nodes without "
-                    f"the modes settling to tol = {tol:.1e} nm; the result is the "
-                    "finest contour tried. Raise n_max or shrink the box.",
+                    f"the modes settling to contour_tol = {contour_tol:.1e} nm; "
+                    "the result is the finest contour tried. Raise n_max or "
+                    "shrink the box.",
                     RuntimeWarning,
                     stacklevel=2,
                 )

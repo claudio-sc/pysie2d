@@ -592,6 +592,10 @@ def test_adaptive_route_warns_when_it_runs_out_of_nodes():
     """
     with pytest.warns(RuntimeWarning, match="without the modes settling"):
         res = qnm_solver(pol=2).modes(
-            *BOX_TE_SIMPLE, contour="ellipse", adaptive=True, tol=1.0e-30, n_max=32
+            *BOX_TE_SIMPLE,
+            contour="ellipse",
+            adaptive=True,
+            contour_tol=1.0e-30,
+            n_max=32,
         )
     assert res.n_modes == 1

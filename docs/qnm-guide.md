@@ -249,7 +249,8 @@ res = qnm.modes(z_lo, z_hi, contour="ellipse", adaptive=True, interpolate=True)
   want sits in a corner. `edge_margin` then measures the distance to the
   ellipse.
 - **`adaptive=True`** doubles the ellipse's nodes, reusing every assembly,
-  until no mode moves by more than `tol` (nm) between two levels. If `n_max`
+  until no mode moves by more than `contour_tol` (nm) between two
+  levels. If `n_max`
   is reached first it warns and returns the finest contour.
 - **`interpolate=True`** fits a polynomial in λ through the assembled matrices
   and runs the contour on that. It pays on a wide box with many modes (64

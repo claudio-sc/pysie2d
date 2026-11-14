@@ -28,7 +28,7 @@ from scipy.linalg import lu_factor, lu_solve
 
 from . import layered
 from .background import HalfSpace, Stack, _effective, _top
-from .beyn import beyn_modes, newton_refine
+from .beyn import beyn_modes, beyn_modes_adaptive, newton_refine
 from .fields import (
     _background_field,
     _check_far_field_below,
@@ -1824,6 +1824,11 @@ class ClusterEigenEps:
         rank_tol: float = 1.0e-8,
         tol: float = 1.0e-12,
         max_iter: int = 30,
+        contour: str = "rectangle",
+        adaptive: bool = False,
+        interpolate: bool = False,
+        contour_tol: float = 1.0e-9,
+        n_max: int = 256,
     ) -> EigenpermittivityResult:
         """Find the permittivities at which the cluster supports a source-free field.
 
@@ -1841,6 +1846,18 @@ class ClusterEigenEps:
         to its edge: move the edge. TM plasmonic modes accumulate at ``ε = −n_clad²``
         on the real axis, so keep the top edge away from it.
 
+        **Contour choices**, as in :meth:`pysie2d.qnm.QNMSolver.modes`:
+        ``contour="ellipse"`` integrates on the ellipse inscribed in the rectangle
+        (``4·n_quad_per_side`` nodes; the corners are left out), and
+        ``adaptive=True`` doubles its nodes until no eigenvalue moves by more than
+        ``contour_tol``. ``interpolate=True`` is accepted **for one particle
+        only**. With two or more, the contour runs on the reduced matrix ``G``,
+        whose isolated-particle poles lie inside a typical box. A polynomial
+        cannot follow them *(measured, two circles 300 nm apart, TE box: fit error
+        1.5 to 1.6 from 16 to 128 nodes, and four spurious modes)*. With one
+        particle the operator is the particle's own matrix and the fit is at
+        round-off from 16 nodes.
+
         Args:
             eps_lo: Bottom-left corner, as an **absolute** permittivity.
             eps_hi: Top-right corner, as an **absolute** permittivity.
@@ -1850,6 +1867,15 @@ class ClusterEigenEps:
             rank_tol: Rank threshold of the contour moment.
             tol: Newton convergence on background-relative ε.
             max_iter: Newton iteration cap.
+            contour: ``"rectangle"`` or ``"ellipse"``.
+            adaptive: Refine the ellipse until the eigenvalues stop moving;
+                ``n_quad_per_side`` is then ignored. Needs ``contour="ellipse"``.
+            interpolate: Integrate a polynomial through the sampled operator.
+                Needs ``adaptive=True`` and a single particle.
+            contour_tol: With ``adaptive``, the largest movement of any
+                eigenvalue over the last doubling at which to stop, in
+                background-relative ε (the unit of ``tol``).
+            n_max: With ``adaptive``, the largest node count allowed.
 
         Returns:
             The modes inside the rectangle; ``eps`` is absolute, ready for
@@ -1857,8 +1883,32 @@ class ClusterEigenEps:
 
         Raises:
             ValueError: If the wavelength is complex, or the rectangle meets the real
-                ray ``ε ≥ 0``: the branch cut of ``√ε``, with ``ε = 0`` on it.
+                ray ``ε ≥ 0``: the branch cut of ``√ε``, with ``ε = 0`` on it. Also
+                for an unknown ``contour``, ``adaptive`` without the ellipse, or
+                ``interpolate`` without ``adaptive`` or with more than one particle.
+
+        Warns:
+            RuntimeWarning: With ``adaptive``, when ``n_max`` was reached before the
+                eigenvalues moved by less than ``contour_tol``.
         """
+        if contour not in ("rectangle", "ellipse"):
+            raise ValueError(
+                f"contour must be 'rectangle' or 'ellipse'; got {contour!r}"
+            )
+        if adaptive and contour != "ellipse":
+            raise ValueError(
+                "adaptive=True refines the ellipse: pass contour='ellipse'"
+            )
+        if interpolate and not adaptive:
+            raise ValueError(
+                "interpolate=True is driven by the adaptive stop: pass adaptive=True"
+            )
+        if interpolate and self._offsets[-1] != 0:
+            raise ValueError(
+                "interpolate=True needs a single particle: with more, the contour "
+                "operator has the isolated-particle poles inside the box and a "
+                "polynomial cannot follow them"
+            )
         if np.imag(self.wavelength) != 0.0:
             raise ValueError(
                 "eigenpermittivities needs a real wavelength: a modal permittivity "
@@ -1873,14 +1923,38 @@ class ClusterEigenEps:
                 f"the positive real axis, or strictly left of 0."
             )
         size = self._reduced_at(lo).shape[0]
-        found = beyn_modes(
-            self._reduced_at,
-            lo,
-            hi,
-            n_quad_per_side=n_quad_per_side,
-            n_probe=min(n_probe, size),
-            rank_tol=rank_tol,
-        )
+        if adaptive:
+            refined = beyn_modes_adaptive(
+                self._reduced_at,
+                lo,
+                hi,
+                tol=contour_tol,
+                n_max=n_max,
+                n_probe=min(n_probe, size),
+                rank_tol=rank_tol,
+                interpolate=interpolate,
+                n_fine=max(512, n_max),
+            )
+            if not refined.converged:
+                warnings.warn(
+                    f"adaptive contour reached {refined.n_nodes} nodes without the "
+                    f"eigenvalues settling to contour_tol = {contour_tol:.1e}; the "
+                    "result is the finest contour tried. Raise n_max or shrink "
+                    "the box.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            found = refined.modes
+        else:
+            found = beyn_modes(
+                self._reduced_at,
+                lo,
+                hi,
+                n_quad_per_side=n_quad_per_side,
+                n_probe=min(n_probe, size),
+                rank_tol=rank_tol,
+                contour=contour,
+            )
         polished = [
             newton_refine(
                 self._reduced_at,
