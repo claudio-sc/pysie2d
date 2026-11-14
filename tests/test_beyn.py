@@ -22,7 +22,6 @@ from pysie2d.beyn import (
     EMPTY_CANCELLATION,
     INTERP_PEAK_OVER_SAMPLES,
     RANK_GAP_FLOOR,
-    _EllipseInterpolant,
     beyn_modes,
     beyn_modes_adaptive,
     beyn_poles,
@@ -768,24 +767,16 @@ def test_interpolated_route_rejects_a_noise_eigenvalue_by_the_stopping_test():
     """A pole 0.05 outside the ellipse, and a contour on the polynomial too fine.
 
     At 1024 nodes the pole's weight on the contour is ``1.05^−1024 ≈ 2e-22``,
-    below round-off, but a direction at 5e-13 stays in A₀. On M it lies
-    within PLATEAU_GAP of the plateau and is dropped. On the 32-node
-    polynomial the plateau is lower (2e-14), the direction clears the gap, and
-    the level reports a third eigenvalue at 2.9995+0.0072j *(measured)*. The
-    first half shows that trap is real; the second shows the adaptive driver
-    does not fall into it, because the noise eigenvalue moves between levels
-    (2.9795, 2.9995, 2.9973 at 768, 1024, 2048 fine nodes) and two levels must
-    agree.
+    below round-off, but a direction at 5e-13 can stay in A₀. On the 32-node
+    polynomial the plateau is lower (2e-14), so it may clear PLATEAU_GAP, and a
+    single level then reports a third eigenvalue near 2.9995+0.0072j. Whether
+    it does is round-off: seen on one BLAS (macOS Accelerate), not on another
+    (CI, Linux). So only the driver's outcome is asserted. The noise eigenvalue,
+    when it appears, moves between levels (2.9795, 2.9995, 2.9973 at 768, 1024,
+    2048 fine nodes *(measured on macOS)*), and two levels must agree.
     """
     want = np.array([1.5 - 0.3j, 2.5 + 0.4j])
     m_builder, _ = make_pencil([*want, 3.05 + 0.0j], nonlinear=True)
-
-    pts, _ = ellipse_contour_quad(Z_LO, Z_HI, 32)
-    poly = _EllipseInterpolant(pts, np.array([m_builder(z) for z in pts]), Z_LO, Z_HI)
-    fine, fine_w = ellipse_contour_quad(Z_LO, Z_HI, 1024)
-    a0, a1, canc = contour_moments(poly, fine, fine_w, probe_matrix(N_DIM, 12, 0))
-    one_level = beyn_poles(a0, a1, canc, Z_LO, Z_HI, contour="ellipse")
-    assert one_level.n_modes == 3
 
     res = beyn_modes_adaptive(
         m_builder, Z_LO, Z_HI, tol=1.0e-9, interpolate=True, n_max=512, n_fine=1024
