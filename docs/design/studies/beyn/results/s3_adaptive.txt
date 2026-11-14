@@ -1,0 +1,15 @@
+problem                          tol | nodes  conv  estimate  true err  est/err -miss +spur | rectangle nodes
+synthetic, linear              1e-06 |    32  True   2.5e-10   3.2e-14  7.8e+03       -0 +0 |    16
+synthetic, linear              1e-09 |    32  True   2.5e-10   3.2e-14  7.8e+03       -0 +0 |    24
+synthetic, nonlinear           1e-06 |    64  True   6.5e-09   1.4e-12  4.6e+03       -0 +0 |    64
+synthetic, nonlinear           1e-09 |   128  True   1.5e-12   8.4e-13  1.8e+00       -0 +0 |    64
+unitary factors, nonlinear     1e-06 |    32  True   3.2e-12   2.5e-14  1.3e+02       -0 +0 |    16
+unitary factors, nonlinear     1e-09 |    32  True   3.2e-12   2.5e-14  1.3e+02       -0 +0 |    24
+circle TE, one mode            1e-06 |    32  True   9.3e-13   6.1e-13  1.5e+00       -0 +0 |    16
+circle TE, one mode            1e-09 |    32  True   9.3e-13   6.1e-13  1.5e+00       -0 +0 |    16
+circle TE, wide box            1e-06 |   512  True   5.3e-12   4.8e-12  1.1e+00       -0 +0 |  >256
+circle TE, wide box            1e-09 |   512  True   5.3e-12   4.8e-12  1.1e+00       -0 +0 |  >256
+circle TM, wide box            1e-06 |   128  True   2.4e-10   2.4e-10  9.9e-01       -0 +0 |    64
+circle TM, wide box            1e-09 |   128  True   2.4e-10   2.4e-10  9.9e-01       -0 +0 |    96
+circle TE, lossy core          1e-06 |   256  True   4.2e-09   6.1e-12  6.9e+02       -0 +0 |   256
+circle TE, lossy core          1e-09 |   512  True   6.0e-10   6.0e-10  1.0e+00       -0 +0 |  >256

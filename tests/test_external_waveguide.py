@@ -119,6 +119,7 @@ def test_guided_mode_s_parameters_match_meep(computed):
     assert checked >= 4
 
 
+@pytest.mark.slow
 @pytest.mark.xfail(strict=True, reason="TM complex t at 1.3× its MEEP tolerance")
 def test_tm_transmission_phase_known_gap(computed):
     # strict: a re-freeze that closes the gap turns this into a failure, which

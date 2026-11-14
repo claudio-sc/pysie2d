@@ -1,0 +1,9 @@
+problem                      |                 direct                 |                   interpolated                  
+                             |  asm  conv    worst   median   -m +s |  asm  conv    worst   median   -m +s      fit
+synthetic, linear            |   32  True  3.2e-14  2.0e-14   -0 +0 |   32  True  8.3e-14  4.9e-14   -0 +0  4.5e-16
+synthetic, nonlinear         |  128  True  8.4e-13  6.8e-13   -0 +0 |   32  True  3.9e-12  1.4e-12   -0 +0  3.0e-15
+unitary factors, nonlinear   |   32  True  2.5e-14  1.9e-14   -0 +0 |   32  True  5.6e-13  4.5e-13   -0 +0  2.4e-13
+circle TE, one mode          |   32  True  6.1e-13  6.1e-13   -0 +0 |   32  True  1.1e-13  1.1e-13   -0 +0  2.1e-15
+circle TE, wide box          |  512  True  4.8e-12  1.6e-12   -0 +0 |   64  True  2.0e-11  2.4e-12   -0 +0  6.5e-13
+circle TM, wide box          |  128  True  2.4e-10  7.1e-13   -0 +0 |   64  True  1.9e-12  9.5e-13   -0 +0  5.9e-13
+circle TE, lossy core        |  512  True  6.0e-10  6.3e-13   -0 +0 |   64  True  6.0e-10  1.3e-12   -0 +0  5.0e-13

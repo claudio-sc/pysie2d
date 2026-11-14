@@ -110,6 +110,10 @@ modes = fast.eigenpermittivities(12.0 - 1.4j, 15.0 - 0.1j)  # box corners in ε
 print(modes.eps, modes.converged)  # also .vectors, .rank, .sv_ratio
 ```
 
+It takes the same `contour=`, `adaptive=` and `interpolate=` options as
+`QNMSolver.modes` ([qnm-guide.md](qnm-guide.md)); `interpolate=True` works for one
+particle only, since with more the isolated-particle poles sit inside the box.
+
 Keep the rectangle off the real ray `ε ≥ 0`, which raises. A box that ends with
 no rank gap also raises, usually because a mode sits near its edge. See
 [conventions](conventions.md) §18.
