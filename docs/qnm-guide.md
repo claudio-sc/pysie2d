@@ -254,12 +254,14 @@ and treat a kink or jump in its trajectory as a defect signal
 ### Letting the contour choose its node count
 
 Three opt-in keywords of `QNMSolver.modes` replace the guess of
-`n_quad_per_side`:
+`n_quad_per_side`. From
+[`examples/qnm_contours.py`](../examples/qnm_contours.py), which checks that all
+three return the rectangle's pair on the running example:
 
 ```python
-res = qnm.modes(z_lo, z_hi, contour="ellipse")                  # same nodes, ellipse
-res = qnm.modes(z_lo, z_hi, contour="ellipse", adaptive=True)   # doubles to tol
-res = qnm.modes(z_lo, z_hi, contour="ellipse", adaptive=True, interpolate=True)
+res = qnm.modes(z_lo, z_hi, contour="ellipse")  # same nodes, ellipse
+ada = qnm.modes(z_lo, z_hi, contour="ellipse", adaptive=True)  # doubles to tol
+fit = qnm.modes(z_lo, z_hi, contour="ellipse", adaptive=True, interpolate=True)
 ```
 
 - **`contour="ellipse"`** integrates on the ellipse inscribed in the box. At

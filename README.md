@@ -51,6 +51,7 @@ every one of them, with the numbers they state asserted.
 | Relative LDOS and Purcell maps | `relative_ldos`, `relative_ldos_map` | [scattering](https://github.com/claudio-sc/pysie2d/blob/main/docs/scattering.md) |
 | Multipole decomposition | `ScatterResult.multipoles` | [scattering](https://github.com/claudio-sc/pysie2d/blob/main/docs/scattering.md#multipole-decomposition) |
 | Quasi-normal modes by Beyn's contour method | `QNMSolver`, `QNMResult` | [QNM guide](https://github.com/claudio-sc/pysie2d/blob/main/docs/qnm-guide.md) |
+| Elliptic, adaptive and interpolated contours | `QNMSolver.modes(contour=, adaptive=, interpolate=)` | [QNM guide](https://github.com/claudio-sc/pysie2d/blob/main/docs/qnm-guide.md#letting-the-contour-choose-its-node-count) |
 | Adjoint mode sensitivity `dλ/dp` | `QNMResult.sensitivity` | [mode sensitivity](https://github.com/claudio-sc/pysie2d/blob/main/docs/mode-sensitivity.md) |
 | Finite clusters of particles | `Cluster`, `ClusterBIESolver` | [clusters](https://github.com/claudio-sc/pysie2d/blob/main/docs/clusters.md) |
 | Many materials at one wavelength, eigenpermittivities | `ClusterBIESolver.at_wavelength`, `ClusterEigenEps` | [clusters](https://github.com/claudio-sc/pysie2d/blob/main/docs/clusters.md#many-materials-at-one-wavelength) |
