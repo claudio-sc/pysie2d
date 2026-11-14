@@ -121,7 +121,7 @@ representation formula uses that derivative, `k_core`, and the opposite sign to
 the exterior one, because the boundary normal points *out* of the interior
 region.
 
-Excitation right-hand sides follow the same layout. The plane-wave and (later)
+Excitation right-hand sides follow the same layout. The plane-wave and
 line-dipole sources populate only the `φ` half; the `χ` half stays zero.
 
 ## 5. Geometry arrays
@@ -146,8 +146,7 @@ comparable across two maps; φ is.
 ## 6. Complex wavenumbers are supported deliberately
 
 Every matrix-assembly and field-evaluation path accepts a complex wavenumber.
-This is intentional: it is what makes quasi-normal-mode extraction (a planned
-extension) possible. Do not "simplify" any code path to real-only arithmetic,
+This is intentional: it is what makes quasi-normal-mode extraction possible. Do not "simplify" any code path to real-only arithmetic,
 even where it looks like you could.
 
 Real-argument *fast paths* are permitted, provided the complex fallback stays

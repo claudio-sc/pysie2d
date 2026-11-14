@@ -89,10 +89,18 @@ after a release rather than editing that version line by hand.
 - Commits use conventional-commit form; semantic-release parses them to compute
   the version and build `CHANGELOG.md`.
 
-## Figures
+## Figures and examples
 
-The `examples/` scripts generate the README figures. Their conventions
-live in [examples/CLAUDE.md](examples/CLAUDE.md).
+The README stays short: what the package does, install, one snippet, and links.
+Feature documentation lives flat in `docs/` (`scattering.md`, `qnm-guide.md`,
+`mode-sensitivity.md`, `clusters.md`, `layered-backgrounds.md`). Every snippet
+in the README and those guides is an excerpt of a script in `examples/` that
+asserts the numbers the guide quotes; CI runs them in every tier, so keep them
+to a few seconds and never mark them `# ci: merge-only`. Change a snippet and its
+script together. The README uses absolute links, since PyPI renders it.
+
+The `examples/` scripts also generate the figures. Their conventions live in
+[examples/CLAUDE.md](examples/CLAUDE.md).
 
 ## Git workflow
 
