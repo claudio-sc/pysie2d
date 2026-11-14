@@ -49,6 +49,7 @@ def _pysie2d_poles(case: str, background) -> np.ndarray:
     return res.wavelengths
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("case", ["te", "tm"])
 def test_substrate_shift_of_split_wgm_pair_matches_meep(case):
     iso = _pysie2d_poles(case, HalfSpace(1.0, 0.0))

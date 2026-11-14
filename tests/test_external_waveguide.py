@@ -104,6 +104,7 @@ def _assert_matches(case, ours, k):
     )
 
 
+@pytest.mark.slow
 def test_guided_mode_s_parameters_match_meep(computed):
     case, ours = computed
     frozen = DATA["cases"][case]

@@ -112,6 +112,22 @@ only one that can destroy work that is not yours.
 (draft is fine) as soon as the branch holds a commit worth checking, not at the
 end. Short body, no signature.
 
+**CI has three tiers**, picked per run (`ci.yml`, "Pick the tier"):
+
+- **docs**: every changed file is under `docs/` or `figures/`, a `*.md`,
+  `CITATION.cff` or `LICENSE`. Ruff and the snippet examples only.
+- **fast**: a draft PR that changes anything else. Ruff, `pytest -m "not slow"`
+  and the snippet examples.
+- **full**: a PR marked ready for review, and every push to `main`. The whole
+  suite and every example.
+
+So keep a PR in draft while iterating and mark it ready when it is a merge
+candidate: that run is the one that must be green before merging, because
+`version-release.yml` publishes without waiting for CI. A new push to a PR
+cancels its run in flight. Mark a new test `@pytest.mark.slow` when it costs 2 s
+or more across its parameters, and give an example a `# ci: merge-only` first
+line when it draws a figure or takes more than a few seconds.
+
 **Merge to `main` — ask, every time.** Any `feat:` or `fix:` on the branch bumps
 the version and ships it to PyPI. Consequences that follow from that:
 

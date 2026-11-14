@@ -186,6 +186,7 @@ def test_dipole_and_guided_mode_excitations_equal_the_dense_solve():
     assert fast.mode.beta == dense.mode.beta
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("pitch", "nn", "name", "cond"),
     [
@@ -488,6 +489,7 @@ def _distance(a: np.ndarray, b: np.ndarray) -> float:
     return max(float(np.min(np.abs(b - x))) for x in a)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("pol", [1, 2])
 def test_one_circle_reproduces_the_analytic_mie_modes_and_their_count(pol):
     """The closed form, with the number of modes settled by the argument principle.
@@ -537,6 +539,7 @@ def test_one_circle_reproduces_the_analytic_mie_modes_and_their_count(pol):
     assert _distance(expected, res.eps) < 5e-14
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("pol", "d", "bound"),
     [(2, 1000.0, 1e-13), (1, 1000.0, 1e-13), (2, 400.0, 2e-13), (1, 400.0, 2e-13)],
@@ -566,6 +569,7 @@ def test_two_circles_match_the_graf_addition_theorem(pol, d, bound):
     assert _distance(reference, res.eps) < bound
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(("pol", "h"), [(2, 200.0), (2, 500.0), (1, 200.0), (1, 500.0)])
 def test_modes_over_pec_are_modes_of_the_mirrored_pair(pol, h):
     """A perfect mirror is its own image: an anchor on the reflected blocks in ε.
@@ -666,6 +670,7 @@ def test_mode_over_a_dielectric_half_space_is_a_pole_of_the_driven_response():
     assert abs(pole - target) < 5e-6
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("pol", [1, 2])
 def test_reduced_contour_agrees_with_the_dense_operator(pol):
     """G against M on one box: same count, same polished values.
@@ -700,6 +705,7 @@ def test_converged_mode_is_a_null_vector_of_the_dense_matrix():
         assert np.linalg.norm(m @ res.vectors[:, k]) / np.linalg.norm(m) < 1e-15
 
 
+@pytest.mark.slow
 def test_high_q_mode_is_not_hidden_by_the_reduction():
     """The worst case for G: a resonance so narrow that pole and zero nearly cancel.
 

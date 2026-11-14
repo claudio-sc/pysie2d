@@ -28,3 +28,6 @@ Conventions specific to these figures:
 - Axes carry units (nm). Both polarisations should be distinguishable without
   relying on colour alone.
 - `MPLBACKEND=Agg` in CI; figures must render headless.
+- Every figure script starts with a `# ci: merge-only` line, so CI runs it only
+  in the full tier (PRs ready for review, pushes to main). A script without the
+  line runs on every push, so keep those to a few seconds.
