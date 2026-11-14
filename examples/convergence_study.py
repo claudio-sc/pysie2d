@@ -1,3 +1,4 @@
+# ci: merge-only (a figure or a long run; see examples/CLAUDE.md)
 """Convergence of the scattering efficiency toward analytic Mie theory.
 
 Produces a semi-log plot of the relative error in ``qsca`` versus the number of

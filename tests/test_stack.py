@@ -189,6 +189,7 @@ def test_recursion_is_finite_where_the_naive_transfer_matrix_overflows(pol):
 PTS = [(0.0, 20.0), (300.0, 20.0), (1500.0, 100.0), (40.0, 400.0)]  # (x_sep, z_sum) nm
 
 
+@pytest.mark.slow
 @pytest.mark.filterwarnings("ignore::scipy.integrate.IntegrationWarning")
 @pytest.mark.parametrize("pol", [2, 1])
 @pytest.mark.parametrize("case", STACKS, ids=str)
@@ -219,6 +220,7 @@ def _near_cutoff(n_clad, n_core, n_bot, m, pol, t):
     return k, (complex(ef),), (float(d),), complex(es), beta
 
 
+@pytest.mark.slow
 @pytest.mark.filterwarnings("ignore::scipy.integrate.IntegrationWarning")
 @pytest.mark.parametrize("pol", [2, 1])
 @pytest.mark.parametrize(
@@ -608,6 +610,7 @@ GW10_CASES = [("SOI", 2), ("air|Si|SiO2", 2), ("air|Si|SiO2", 1)]
 GW10_CASES += [("n=2@800", 2), ("n=2@800", 1), ("double", 2), ("double", 1)]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("case, pol", GW10_CASES, ids=str)
 def test_far_field_along_the_stack_is_the_guided_sum(case, pol):
     # The total line-source field at ±x on the path must tend to
@@ -778,6 +781,7 @@ def test_in_plane_dipole_power_balance_over_a_bare_stack(case):
         assert a.p_minus[0] / a.p_plus[0] < 1e-28  # one-way: c⁻ = 0 exactly
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("case", IN_PLANE_STACKS, ids=str)
 def test_in_plane_far_field_along_the_stack_is_the_guided_sum(case):
     # GW10 for −(b·∇′)G: the amplitudes (i/2βN)u(z_s)(±iβb_x + γ₁b_z) must be

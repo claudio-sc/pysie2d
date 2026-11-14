@@ -1,3 +1,4 @@
+# ci: merge-only (a figure or a long run; see examples/CLAUDE.md)
 """Shape a Gielis antenna to launch a slab mode one way (slab-spec R12, T4).
 
 A Si particle sits in the cover of an SOI slab (220 nm Si in SiO₂, 1550 nm) next

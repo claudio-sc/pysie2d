@@ -162,6 +162,7 @@ def test_transmitted_green_continues_the_cover_field_across_the_interface(name, 
 RTOL_GEMM = 3e-15
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("pol", [2, 1])
 @pytest.mark.parametrize("name", ["glass", "silver", "low-n"])
 def test_banded_transmitted_blocks_equal_the_pointwise_green_sum(name, pol):
@@ -216,6 +217,7 @@ def _g14(pol, background):
 RTOL_EVAL_CONTINUITY = 8e-4
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("pol", [2, 1])
 @pytest.mark.parametrize("lam", [LAM, LAM + 31.6j], ids=["real", "complex"])
 @pytest.mark.parametrize("name", ["glass", "silver"])
@@ -344,6 +346,7 @@ def test_downward_amplitude_without_an_interface_is_the_free_space_far_field(pol
 RTOL_NEAR_TO_FAR = 3.5e-5
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("pol", [2, 1])
 def test_deep_near_field_below_converges_to_the_downward_far_field(pol):
     from pysie2d.fields import _downward_amplitude

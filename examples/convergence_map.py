@@ -1,3 +1,4 @@
+# ci: merge-only (a figure or a long run; see examples/CLAUDE.md)
 """Convergence map: Q_sca error against analytic Mie over nn and size parameter.
 
 A heatmap of the relative error in ``qsca`` for a circular cylinder

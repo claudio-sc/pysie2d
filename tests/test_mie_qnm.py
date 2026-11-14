@@ -102,6 +102,7 @@ def test_tm0_and_te1_denominators_are_identical():
     assert rel.max() < 1.0e-13
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("pol", [2, 1])
 def test_root_count_matches_winding_number(pol):
     """The seeder finds every root the argument principle says is there.

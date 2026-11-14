@@ -1,3 +1,4 @@
+# ci: merge-only (a figure or a long run; see examples/CLAUDE.md)
 """Eleven quasi-normal modes from a single wide contour.
 
 The companion example, ``qnm_spectrum.py``, places one small box per mode — the
