@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.5.0 (2026-11-15)
+
+### Features
+
+- Citation metadata for GitHub and Zenodo
+  ([`30ec5af`](https://github.com/claudio-sc/pysie2d/commit/30ec5af42a25f7e944661b2a14c067eb72389104))
+
+
 ## v1.4.0 (2026-11-14)
 
 ### Documentation
