@@ -89,6 +89,12 @@ gives the whole account in one page, including what is **not** validated.
 - [Migrating from v0.5 to v0.6](https://github.com/claudio-sc/pysie2d/blob/main/docs/migrating-to-v0.6.md)
 - Release history: [CHANGELOG.md](https://github.com/claudio-sc/pysie2d/blob/main/CHANGELOG.md)
 
+## Citing
+
+Citation metadata live in [CITATION.cff](https://github.com/claudio-sc/pysie2d/blob/main/CITATION.cff); GitHub's *Cite this
+repository* button turns them into BibTeX or APA. Releases are archived on
+Zenodo, which gives each version its own DOI.
+
 ## License
 
 MIT; see [LICENSE](https://github.com/claudio-sc/pysie2d/blob/main/LICENSE).
