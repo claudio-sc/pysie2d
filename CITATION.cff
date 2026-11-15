@@ -1,0 +1,33 @@
+# Citation metadata. GitHub reads this file for the "Cite this repository"
+# button and Zenodo reads it when archiving a release.
+#
+# `version` and `date-released` are left out on purpose: semantic-release bumps
+# pyproject.toml only, so a hand-written version here would go stale after the
+# next release. Zenodo takes the version from the release tag.
+#
+# Once Zenodo has minted the concept DOI, add:
+#   doi: 10.5281/zenodo.<concept-id>
+cff-version: 1.2.0
+message: "If you use pysie2d in your work, please cite it using these metadata."
+type: software
+title: "pysie2d: a 2-D surface-integral-equation solver for electromagnetic scattering"
+abstract: >-
+  A 2-D surface-integral-equation solver for time-harmonic electromagnetic
+  scattering from smooth cylinders (circular or Gielis-superformula
+  cross-section) in a homogeneous, half-space or layered background, with
+  quasi-normal-mode extraction and finite clusters. Validated against
+  analytic Mie theory, a two-cylinder addition-theorem solution, MEEP and
+  dolfinx.
+authors:
+  - given-names: Claudio
+    family-names: Silvestre Castro
+    email: claudio.silvestre.castro@gmail.com
+license: MIT
+repository-code: "https://github.com/claudio-sc/pysie2d"
+url: "https://pypi.org/project/pysie2d/"
+keywords:
+  - boundary integral equations
+  - computational electromagnetics
+  - Mie scattering
+  - quasi-normal modes
+  - nanophotonics
