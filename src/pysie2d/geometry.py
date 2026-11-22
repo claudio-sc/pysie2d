@@ -518,7 +518,9 @@ class Geometry:
                 fixed across a shape derivative (conventions §10).
                 ``Parametrisation.gielis(...)`` gives uniform arc length, which
                 is not more accurate on any shape measured, spiky stars at low
-                resolution included (conventions §13).
+                resolution included (conventions §13). A **thin** shape needs
+                ``Parametrisation.elliptic(a=a, b=b)``: uniform θ leaves its
+                tips almost without nodes (conventions §13.4).
 
         Raises:
             TypeError: If ``parametrisation`` is not a Parametrisation — in

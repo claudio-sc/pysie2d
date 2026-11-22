@@ -550,7 +550,7 @@ against 300/—/— for arc length; arm ratio 8 and 16, no map at 1e-3 by 300;
 uniform θ 6.4e-5 at `nn = 480` on arm ratio 8)*. `Parametrisation.gielis` is
 also not robust there: Newton fails at some `nn` from arm ratio 8, and the map
 cannot be built at arm ratio 16. Pass a non-default map only to freeze one
-across a shape derivative (§10) or for a study.
+across a shape derivative (§10), for a study, or on a thin shape (§13.4).
 
 **Scale covariance (§9) is preserved.** `R`, `W` and `h` depend only on `nn`;
 nothing in the map construction carries an absolute length.
@@ -561,6 +561,63 @@ one shape class where it pays — flat-sided, near-corner shapes with
 `κ_max·rad ≳ 20` — but it cannot be built on them (`ln|κ|` is infinite at flat
 points), and very spiky stars can fail its Newton inversion. Both limits are
 stated in its docstring; nothing in this section depends on it.
+
+**13.4 Thin shapes take the eccentric-angle map.** On an ellipse with aspect
+ratio `AR = L/S`, the tips have curvature radius `L/AR²` and span only ~1/AR
+of θ. Uniform θ therefore puts its **coarsest** spacing exactly where the
+curvature and the field concentrate. It loses digits from AR ≈ 5 and is
+wrong by O(1) from AR ≈ 10, raising nothing *(measured, `qext`, TM, ε =
+−53.3 + 3.8i, n_clad = 1.45, λ = 1100 nm, long semi-axis 10–250 nm,
+max over sizes: AR 5 6.8e-5 and AR 10 0.47 between `nn` = 128 and 512; AR 30
+0.95 between 384 and 768 at a 100 nm semi-axis; the AR 20 resonance appeared
+at 800 nm length instead of 140)*. `Parametrisation.elliptic(a=, b=)` is the map
+`tan θ = (b/a) tan t`. On the Gielis ellipse with the same `a`, `b` the
+composite is `x = b·rad·sin t`, `z = a·rad·cos t`, entire in `t`, with spacing
+`a·rad·Δt` at the tips and `b·rad·Δt` mid-flank. AR 30 then moves 2.2e-9
+between 384 and 768, max over sizes, and AR 3–10 is within 4e-10 of
+`nn = 512` by `nn = 128`. A ratio other than the shape's own is worse by two
+to five orders at the same `nn` *(AR 30, `nn` 384 against 768: 2.2e-9 at
+ratio 30, 1.3e-5 at 15, 2.7e-4 at 60)*. It also resolves the exponent-4 superellipse at AR 20 in
+either orientation *(2.1e-7 at `nn` 256 against 1024, where uniform θ is
+off by 5–37)*.
+
+The cost floor is the flanks, not the map. Two flanks a distance `2S` apart
+need node spacing below ~`S`, so `nn ∝ AR` whatever the map: AR 30 needs
+`nn ≈ 384`, where AR 15 settles by 256.
+
+*Anchor:* the TM long-axis dipole eigenpermittivity tends to the quasi-static
+`ε/ε_bg = −L/S` as the size goes to zero, with a gap of 9.2e-6 at `L` =
+0.25 nm, AR 20, which shrinks 3.65× per halving, the `R² ln R` of
+retardation. On uniform θ at the same `nn` the search box holds no mode.
+`tests/test_thin_shapes.py`.
+
+`T' = ab/(b² cos²θ + a² sin²θ)` is a Poisson kernel, so the map is stored as its
+exact series `1 + 2 Σ (−q)^k cos 2kθ`, `q = (b − a)/(b + a)`, and goes through
+the same Newton as every `Parametrisation`. Only `b/a` enters, so §9 holds and
+§13.2–13.3 are untouched. It needs `K ≈ 36·AR` harmonics, every other one
+zero, and that exposed two defects of the shared inversion, both fixed with
+it:
+
+- **Newton's step is measured in `t`, against a floor scaled by the series'
+  l¹ weight `1 + Σ|c_k|/a₀`.** A θ-step test cannot settle where `w' ≫ 1`:
+  the converged θ still jitters by the T round-off times `w'`. The phase of
+  each harmonic carries the ulp of θ, so that round-off grows with `Σ|c_k|`
+  *(measured, AR 15, `nn` 1024: residual 1.8e-15 from iteration 2, θ-step
+  2.0e-14 against the old floor 1.1e-14, until the cap)*. It also made
+  `Parametrisation.gielis` fail on the AR 20 ellipse at `nn = 256`. It does
+  **not** cure the arm-ratio-8 star failures above, which are unchanged.
+- **The series is evaluated in row blocks of 2²⁰ entries.** The arc-length
+  map of an AR 30 ellipse needs `N_f = 65536` and `K ≈ 31000`, and the phase
+  matrix in one piece (~30 GB) was the out-of-memory kill. Blocked, it builds
+  in 18 s at 0.12 GB.
+
+**Out of reach for any map: the interior splitting of a lossy core.** Kress
+splits off `J₀(k_in r)·ln`, and `J₀` grows like `e^{Im k_in r}`. Across a body
+of size `D` it reaches `e^{Im k_in D}` and cancels against `K₂` to that factor
+times eps. With the ε above, a **circle** of diameter `D` is off analytic Mie
+by 1e-10 at `D` = 500 nm, 1.5e-5 at 800 nm and 9 % at 1200 nm (`nn` = 512),
+and the error grows with `nn`. This is a separate defect, not fixed here. It
+is why the AR 15–30 measurements above stop at a 250 nm semi-axis.
 
 ## 14. The cluster degree-of-freedom layout (v0.8)
 

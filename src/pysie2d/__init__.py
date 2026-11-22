@@ -5,7 +5,8 @@ Public API:
         ``Geometry.gielis`` raises ``pysie2d.geometry.NonClosingBoundaryError``
         (a ``ValueError``) when the superformula does not close.
     Parametrisation: the frozen node map θ = w(t); ``uniform_theta()`` is the
-        default, ``gielis(...)`` places nodes near-uniformly in arc length.
+        default, ``gielis(...)`` places nodes near-uniformly in arc length,
+        ``elliptic(a=, b=)`` resolves the tips of thin shapes.
     Material: optical properties of the scatterer. ``Material.from_eps`` takes
         an absolute complex permittivity, so Re ε < 0 (a metal) is expressible.
     HalfSpace: a substrate below ``z = z_int`` (absolute complex ε, a callable
