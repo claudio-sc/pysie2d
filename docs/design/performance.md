@@ -620,3 +620,34 @@ slab cost (347 ms against 118 ms at `P = 32`), which is why setup keeps it.
 
 **The gain grows with particle size** at fixed sampling (12 points per interior
 wavelength, `P = 4`): 2.7× at `x = 2.6`, 27× at `x = 42`.
+
+## 9. The windowed Kress split skips the far `J`s
+
+The Kress correction is windowed in node offset and set to exactly zero beyond
+48 nodes (conventions §13.5). `J₀`/`J₁` enter only through that correction, so
+on the complex branch `jv` is evaluated only on pairs within 48 nodes, a share
+of about `96/nn` of all pairs. `hankel1` still runs on every pair. The real
+branch gets `J` free from Cephes, so it does not change, and below `nn = 97`
+the window is off and nothing changes.
+
+*Measured: one `assemble_matrix`, single process, best of several, circle,
+before and after the skip. Truncating the window moves `M` by 6e-19
+relative.*
+
+| `nn` | complex `k_bg`, n = 3 | real `k_bg`, gold core | complex `k_bg`, gold core |
+|---|---|---|---|
+| 128 | 34.0 → 30.7 ms (1.11×) | 11.1 → 9.0 ms (1.22×) | 24.2 → 21.1 ms (1.15×) |
+| 200 | 83.5 → 65.8 ms (1.27×) | 26.9 → 16.9 ms (1.59×) | 58.8 → 43.5 ms (1.35×) |
+| 300 | 186 → 139 ms (1.34×) | 60.3 → 32.0 ms (1.88×) | 133 → 90 ms (1.47×) |
+| 512 | 544 → 389 ms (1.40×) | 177 → 82 ms (2.17×) | 387 → 249 ms (1.55×) |
+| 800 | 1326 → 930 ms (1.43×) | 432 → 183 ms (2.36×) | 942 → 592 ms (1.59×) |
+
+`QNMSolver.modes` on the TE anchor box at `nn = 300` (48 threaded assemblies)
+takes 1.47 s instead of 1.95 s (1.32×). A driven solve on an absorbing particle
+gains the most, because there the complex `jv` on the core is the larger half
+of the cost. Real wavenumber with a real core: 0.94–1.03×, which is noise.
+
+Skipping the far pairs also keeps `J`'s `e^{Im z}` growth out of them. On a
+20 µm gold core `Im z` reaches 835 and `jv` returns inf. With the skip the
+solve converges (`qext` against Mie: 2.0e-3 TM and 1.3e-4 TE at `nn = 2400`,
+still under-resolved there).

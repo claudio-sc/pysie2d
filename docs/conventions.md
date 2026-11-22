@@ -659,6 +659,12 @@ already small there. Three choices, each measured:
 - **Flat to 6σ.** The split needs `win = 1` at `d = 0` to round-off;
   `½·erfc(6) = 1e-17`. At 5σ it is 8e-13, and that is the floor measured.
 
+Beyond 48 nodes (12σ) the window is set to exactly 0. It is 1e-17 there,
+and the truncation moves `M` by 6e-19. `J₀`/`J₁` are therefore evaluated only on
+pairs inside the window and are **0 in the arrays elsewhere**. Anything that
+reads those arrays for another purpose must take that into account. That is
+1.1–2.4× per complex assembly (`docs/design/performance.md` §9).
+
 The window is applied only for `nn > 96`, where it falls to 1e-17 well inside
 the period; below that every matrix is the global Kress one, bit for bit, so
 the circle anchors at `nn ≈ 30–40` cannot move. The price is that a lossy core

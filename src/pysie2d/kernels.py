@@ -149,8 +149,10 @@ def _kress_log_weights(nn: int) -> np.ndarray:
 # the aliasing error of the window itself, ~exp(−π²·SIGMA²/4) = 7e-18 at 4
 # nodes (3 nodes leaves 3e-12 on a dielectric circle). FLAT = 6·SIGMA makes
 # 1 − win_0 = ½·erfc(6) = 1e-17; at 5·SIGMA it is 8e-13, and that is the floor
-# measured. The window is applied only when it fits inside the period, so
-# below nn = 2·CUT every matrix is the global Kress one, bit for bit.
+# measured. Beyond CUT = 12·SIGMA it is set to exactly 0 (it is ½·erfc(6) =
+# 1e-17 there), so those pairs need no J₀/J₁ at all (_j0_h0). The window is
+# applied only when it fits inside the period, so below nn = 2·CUT every
+# matrix is the global Kress one, bit for bit.
 _WINDOW_SIGMA = 4.0
 _WINDOW_FLAT = 6.0 * _WINDOW_SIGMA
 _WINDOW_CUT = 12.0 * _WINDOW_SIGMA
@@ -191,11 +193,12 @@ def _kress_weights(nn: int) -> np.ndarray:
     if nn > 2 * _WINDOW_CUT:
         offset = np.minimum(np.arange(nn), nn - np.arange(nn))
         w *= 0.5 * erfc((offset - _WINDOW_FLAT) / _WINDOW_SIGMA)
+        w[offset > _WINDOW_CUT] = 0.0
     w.flags.writeable = False
     return w
 
 
-def _j0_h0(z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _j0_h0(z: np.ndarray, near: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """``J₀(z)`` and ``H₀^{(1)}(z)`` from one pass, real or complex ``z``.
 
     Real arguments reuse the Cephes ``J₀`` inside ``H₀ = J₀ + i·Y₀``, so the
@@ -203,19 +206,33 @@ def _j0_h0(z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     every QNM assembly — need a separate ``jv`` call; that is the real cost of
     the scheme *(measured 1.45× one shipped assembly at nn = 200, complex λ)*.
     The complex branch must stay: it is what makes ``M(λ)`` holomorphic.
+
+    ``J`` enters only through the Kress correction ``W·J``, so on the complex
+    branch it is evaluated only where ``near`` (the windowed ``W`` is nonzero,
+    conventions §13.5) and left 0 elsewhere. That also keeps ``J``'s
+    ``e^{Im z}`` growth out of the far pairs, where it could overflow.
     """
     if np.iscomplexobj(z):
-        return jv(0, z), hankel1(0, z)
+        return _jv_near(0, z, near), hankel1(0, z)
     j = j0(z)
     return j, j + 1j * y0(z)
 
 
-def _j1_h1(z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _j1_h1(z: np.ndarray, near: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """``J₁(z)`` and ``H₁^{(1)}(z)``; see :func:`_j0_h0`."""
     if np.iscomplexobj(z):
-        return jv(1, z), hankel1(1, z)
+        return _jv_near(1, z, near), hankel1(1, z)
     j = j1(z)
     return j, j + 1j * y1(z)
+
+
+def _jv_near(order: int, z: np.ndarray, near: np.ndarray) -> np.ndarray:
+    """``J_order(z)`` where ``near``, exactly 0 elsewhere."""
+    if near.all():
+        return jv(order, z)
+    j = np.zeros_like(z)
+    j[near] = jv(order, z[near])
+    return j
 
 
 def assemble_matrix_reference(
@@ -275,7 +292,10 @@ def assemble_matrix_reference(
             w_d = r_log[d] - h * np.log(4.0 * np.sin(PI * d / nn) ** 2)
             if nn > 2 * _WINDOW_CUT:
                 offset = min(d, nn - d)
-                w_d *= 0.5 * math.erfc((offset - _WINDOW_FLAT) / _WINDOW_SIGMA)
+                if offset > _WINDOW_CUT:
+                    w_d = 0.0
+                else:
+                    w_d *= 0.5 * math.erfc((offset - _WINDOW_FLAT) / _WINDOW_SIGMA)
             dx = f[i] - f[j]
             dz = g[i] - g[j]
             r = np.sqrt(dx**2 + dz**2)
@@ -382,10 +402,11 @@ def assemble_matrix(
     r_tri = np.sqrt(fi_fj**2 + gi_gj**2)
     z_bg = wnum_bg * r_tri
     z_core = wnum_core * r_tri
-    j0_bg, h0_bg = _j0_h0(z_bg)
-    j1_bg, h1_bg = _j1_h1(z_bg)
-    j0_core, h0_core = _j0_h0(z_core)
-    j1_core, h1_core = _j1_h1(z_core)
+    near = w_tri != 0.0
+    j0_bg, h0_bg = _j0_h0(z_bg, near)
+    j1_bg, h1_bg = _j1_h1(z_bg, near)
+    j0_core, h0_core = _j0_h0(z_core, near)
+    j1_core, h1_core = _j1_h1(z_core, near)
 
     # ── Kress kernels: trapezoid term h·K plus correction K₁·W ───────────────
     single_bg = 0.25j * h * h0_bg - w_tri * j0_bg / (4.0 * PI)
@@ -497,8 +518,9 @@ def _interior_rows(
 
     r_tri = np.sqrt(fi_fj**2 + gi_gj**2)
     z_core = wnum_core * r_tri
-    j0_core, h0_core = _j0_h0(z_core)
-    j1_core, h1_core = _j1_h1(z_core)
+    near = w_tri != 0.0
+    j0_core, h0_core = _j0_h0(z_core, near)
+    j1_core, h1_core = _j1_h1(z_core, near)
 
     single_core = 0.25j * h * h0_core - w_tri * j0_core / (4.0 * PI)
     ratio_core = 0.25j * h * (h1_core / z_core) - w_tri * (j1_core / z_core) / (
@@ -628,10 +650,11 @@ def assemble_matrix_dwn(
     r_tri = np.sqrt(fi_fj**2 + gi_gj**2)
     z_bg = wnum_bg * r_tri
     z_core = wnum_core * r_tri
-    j0_bg, h0_bg = _j0_h0(z_bg)
-    j1_bg, h1_bg = _j1_h1(z_bg)
-    j0_core, h0_core = _j0_h0(z_core)
-    j1_core, h1_core = _j1_h1(z_core)
+    near = w_tri != 0.0
+    j0_bg, h0_bg = _j0_h0(z_bg, near)
+    j1_bg, h1_bg = _j1_h1(z_bg, near)
+    j0_core, h0_core = _j0_h0(z_core, near)
+    j1_core, h1_core = _j1_h1(z_core, near)
 
     # ── Kress kernels: trapezoid term h·K plus correction K₁·W ───────────────
     single_bg = 0.25j * h * h0_bg - w_tri * j0_bg / (4.0 * PI)
