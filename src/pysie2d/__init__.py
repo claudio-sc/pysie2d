@@ -3,9 +3,11 @@
 Public API:
     Geometry: Gielis-superformula boundary, sampled on a Parametrisation.
         ``Geometry.gielis`` raises ``pysie2d.geometry.NonClosingBoundaryError``
-        (a ``ValueError``) when the superformula does not close.
+        (a ``ValueError``) when the superformula does not close, and warns
+        ``BoundaryResolutionWarning`` when a sharp tip has too few nodes.
     Parametrisation: the frozen node map θ = w(t); ``uniform_theta()`` is the
-        default, ``gielis(...)`` places nodes near-uniformly in arc length.
+        default, ``gielis(...)`` places nodes near-uniformly in arc length,
+        ``elliptic(a=, b=)`` resolves the tips of thin shapes.
     Material: optical properties of the scatterer. ``Material.from_eps`` takes
         an absolute complex permittivity, so Re ε < 0 (a metal) is expressible.
     HalfSpace: a substrate below ``z = z_int`` (absolute complex ε, a callable
@@ -99,7 +101,7 @@ from .cluster import (
     EigenpermittivityResult,
 )
 from .fields import eval_field, far_field
-from .geometry import Geometry
+from .geometry import BoundaryResolutionWarning, Geometry
 from .green import relative_ldos, relative_ldos_map, self_green
 from .kernels import (
     assemble_cross_block,
@@ -138,6 +140,7 @@ __version__ = "1.5.0"
 
 __all__ = [
     "BIESolver",
+    "BoundaryResolutionWarning",
     "Cluster",
     "ClusterBIESolver",
     "ClusterCancellationWarning",

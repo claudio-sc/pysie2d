@@ -20,6 +20,13 @@ and [layered-backgrounds.md](layered-backgrounds.md).
   `Parametrisation` map, so convergence in `nn` is **spectral**
   ([conventions](conventions.md) §13). Complex wavenumbers are supported
   throughout.
+- **Thin shapes need a different map.** The default spaces nodes uniformly in
+  the polar angle, which leaves the tips of a thin shape almost without nodes.
+  It loses digits from aspect ratio ~5, and by 10 a result can move by tens of
+  percent between `nn = 128` and `512`. `Geometry.gielis` warns
+  (`BoundaryResolutionWarning`) only in the worst cases, so do not rely on it.
+  Pass `parametrisation=Parametrisation.elliptic(a=a, b=b)`, with the shape's
+  own `a` and `b` ([conventions](conventions.md) §13.4).
 - Lengths are in nm, the time convention is `exp(-iωt)`, and outgoing waves are
   `H_n^{(1)}`.
 - **Wavelengths are vacuum wavelengths.** `Material.n_core`, `Material.n_clad`

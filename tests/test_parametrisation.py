@@ -347,3 +347,95 @@ def test_uniform_theta_is_the_identity_map_bit_for_bit():
         assert np.array_equal(nodes.theta, nodes.t)
         assert np.all(nodes.dw == 1.0)
         assert np.all(nodes.ddw == 0.0)
+
+
+# ---------------------------------------------------------------------------
+# The eccentric-angle map (conventions §13.4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("a", "b"), [(1.0 / 30.0, 1.0), (1.0, 1.0 / 30.0)])
+def test_elliptic_map_is_the_eccentric_angle(a, b):
+    """§13.4: the Poisson series inverts to tan θ = (b/a) tan t, both orientations.
+
+    Independent check: the map is stored as the Fourier series of T' and
+    inverted by Newton; the reference is the closed-form eccentric angle and its
+    two t-derivatives. A wrong sign of q would put the fine nodes on the flanks
+    and miss here by O(1).
+
+    Also the regression for the Newton stop: at aspect 30 and nn = 1024, w'
+    reaches 30, and the old θ-step test looped to the iteration cap (it already
+    failed at aspect 15). The stop now measures the step in t.
+
+    Bounds: θ to the T round-off nodes() stops at, 16·eps·2π times the series'
+    l¹ weight (measured 4.1e-14 against 3.5e-13). w' and w'' are K-term sums
+    divided by T' ≥ a/b, so their round-off is K·eps·(b/a), times K once more
+    for the derivative (measured 8.0e-13 and 7.0e-11 against 7.2e-12 and 7.8e-9).
+    """
+    par = Parametrisation.elliptic(a=a, b=b)
+    nodes = par.nodes(1024)
+    t = nodes.t
+    den = a**2 * np.cos(t) ** 2 + b**2 * np.sin(t) ** 2
+    theta = np.mod(np.arctan2(b * np.sin(t), a * np.cos(t)), TWOPI)
+    dw = a * b / den
+    ddw = -a * b * (b**2 - a**2) * np.sin(2.0 * t) / den**2
+
+    weight = 1.0 + np.abs(par.coef).sum() / par.a0
+    aspect = max(a, b) / min(a, b)
+    assert np.abs(nodes.theta - theta).max() <= 16.0 * THETA_FLOOR * weight
+    assert np.abs(nodes.dw / dw - 1.0).max() <= par.n_terms * EPS * aspect
+    assert (
+        np.abs(nodes.ddw - ddw).max() / np.abs(ddw).max()
+        <= par.n_terms**2 * EPS * aspect
+    )
+
+
+@pytest.mark.parametrize(("a", "b"), [(1.0 / 20.0, 1.0), (1.0, 1.0 / 20.0)])
+def test_gielis_ellipse_on_the_elliptic_map_traces_the_eccentric_angle(a, b):
+    """§13.4: x = b·rad·sin t, z = a·rad·cos t at every node, derivatives in t.
+
+    The end-to-end statement: Geometry.gielis composes the superformula with
+    the map through the chain rule, and the composite must be the entire
+    eccentric parametrisation. Its speed is then rad·a at the long-axis tips
+    and rad·b mid-flank, the finest nodes where the curvature is. Uniform θ is
+    the reverse: its coarsest spacing falls on the tips.
+
+    Bounds relative to the long semi-axis, inherited from the map test above:
+    K·eps·aspect for positions and first derivatives (measured 1.8e-13 against
+    2.4e-12), K²·eps·aspect for second derivatives, which carry w'' (measured
+    2.1e-10 against 1.3e-9).
+    """
+    from pysie2d import Geometry
+
+    rad = 50.0
+    par = Parametrisation.elliptic(a=a, b=b)
+    geom = Geometry.gielis(rad, 256, a=a, b=b, parametrisation=par)
+    sin_t, cos_t = np.sin(geom.nodes.t), np.cos(geom.nodes.t)
+    long_axis = rad * max(a, b)
+    aspect = max(a, b) / min(a, b)
+    first = {
+        "f": b * rad * sin_t,
+        "g": a * rad * cos_t,
+        "df": b * rad * cos_t,
+        "dg": -a * rad * sin_t,
+    }
+    second = {"ddf": -b * rad * sin_t, "ddg": -a * rad * cos_t}
+    for name, ref in first.items():
+        err = np.abs(getattr(geom, name) - ref).max() / long_axis
+        assert err <= par.n_terms * EPS * aspect, name
+    for name, ref in second.items():
+        err = np.abs(getattr(geom, name) - ref).max() / long_axis
+        assert err <= par.n_terms**2 * EPS * aspect, name
+
+
+def test_elliptic_map_of_a_circle_is_the_identity_bit_for_bit():
+    """a = b gives q = 0 and an empty series: no circle branch, same path.
+
+    Exact for the reason stated in the uniform-θ test: T(θ) = θ and one Newton
+    step lands on t_j.
+    """
+    par = Parametrisation.elliptic(a=0.7, b=0.7)
+    assert par.n_terms == 0
+    nodes = par.nodes(37)
+    assert np.array_equal(nodes.theta, nodes.t)
+    assert np.all(nodes.dw == 1.0)

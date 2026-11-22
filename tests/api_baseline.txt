@@ -5,6 +5,8 @@ BIESolver.assemble_derivative(self, wavelength: float | complex) -> numpy.ndarra
 BIESolver.scatter(self, wavelength: float, angle: float = 0.0, incident_rhs: collections.abc.Callable[[int, complex, numpy.ndarray, numpy.ndarray], numpy.ndarray] | None = None) -> pysie2d.solver.ScatterResult
 BIESolver.scatter_dipole(self, wavelength: float, x_s: float, z_s: float, *, moment: tuple[complex, complex] | None = None) -> pysie2d.solver.ScatterResult
 BIESolver.scatter_mode(self, wavelength: float, mode: pysie2d.layered.GuidedMode | int, direction: int, *, x_ref: float) -> pysie2d.solver.ScatterResult
+class BoundaryResolutionWarning
+BoundaryResolutionWarning.__init__(self, /, *args, **kwargs)
 class Cluster
 Cluster.__init__(self, geometries: collections.abc.Sequence[pysie2d.geometry.Geometry]) -> None
 Cluster.slice(self, p: int) -> slice
@@ -83,6 +85,7 @@ class NoFarFieldError
 NoFarFieldError.__init__(self, /, *args, **kwargs)
 class Parametrisation
 Parametrisation.__init__(self, a0: float, coef: numpy.ndarray, theta_fine: numpy.ndarray, t_fine: numpy.ndarray, nn_from_band: int | None, contrast_realised: float, alpha_eff: float, n_fine: int, n_terms: int) -> None
+Parametrisation.elliptic(*, a: float, b: float) -> 'Parametrisation'
 Parametrisation.gielis(*, rad: float, a: float, b: float, m: int, n1: float, n2: float, n3: float, r_band: tuple[float, float] = (15.0, 15.0), n_core: float, wavelength_ref: float = 1550.0, alpha: float = 0.5) -> 'Parametrisation'
 Parametrisation.nodes(self, nn: int) -> pysie2d.parametrisation.Nodes
 Parametrisation.uniform_theta() -> 'Parametrisation'

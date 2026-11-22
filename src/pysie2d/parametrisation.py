@@ -27,11 +27,18 @@ EPS = float(np.finfo(float).eps)
 N_FINE_START = 1024
 N_FINE_CAP = 1 << 20
 
-# §4.3: Newton is declared converged when the largest step is at the round-off
-# floor of θ ~ 2π; the factor 8 keeps the trigger above the level at which the
-# step itself is pure noise, so the two extra steps land on a settled iterate.
+# §4.3: Newton is declared converged when the largest step, measured in t, is
+# at the round-off floor of t ~ 2π; the factor 8 keeps the trigger above the
+# level at which the step itself is pure noise, so the two extra steps land on a
+# settled iterate.
 NEWTON_FLOOR = TWOPI * 8.0 * EPS
 NEWTON_MAX_ITER = 50
+
+# Entries of the (angles × harmonics) phase matrix built at once by
+# `_series`. A thin shape needs ~10⁴ harmonics on a ~10⁵-point fine grid, and
+# the matrix in one piece was the exit-137 kill of the AR-30 ellipse build
+# (~30 GB); 2²⁰ entries is 16 MB per block.
+SERIES_BLOCK = 1 << 20
 
 
 # ---------------------------------------------------------------------------
@@ -294,8 +301,9 @@ class Parametrisation:
     found, or node and Jacobian disagree at the truncation level (spec §4.1).
 
     ``w`` depends on the shape, ``r_band``, ``n_core``, ``wavelength_ref`` and
-    ``alpha`` — and on nothing else. Not on ``nn`` (invariant 13.3), not on the
-    solve wavelength (13.2), not on ``rad`` (conventions §9).
+    ``alpha`` (:meth:`gielis`), or on ``b/a`` alone (:meth:`elliptic`), and on
+    nothing else. Not on ``nn`` (invariant 13.3), not on the solve wavelength
+    (13.2), not on ``rad`` (conventions §9).
 
     Attributes:
         a0: Mean of ``σγ``; ``Z = 2π a_0``.
@@ -303,8 +311,9 @@ class Parametrisation:
         theta_fine: The uniform θ grid the series was sampled on.
         t_fine: ``T`` on that grid, used to seed Newton.
         nn_from_band: ``nn`` derived from the ``R`` band (spec §5.4), or ``None``
-            for :meth:`uniform_theta`, which has no band.
-        contrast_realised: ``exp(α_eff Δ) ≤ C`` — the bound, not the promise.
+            for :meth:`uniform_theta` and :meth:`elliptic`, which have no band.
+        contrast_realised: ``exp(α_eff Δ) ≤ C`` — the bound, not the promise;
+            1 on the maps with no band.
         alpha_eff: The curvature exponent actually used.
         n_fine: ``N_f``, shape-intrinsic (spec §4.2).
         n_terms: ``K``, the number of retained harmonics.
@@ -336,8 +345,12 @@ class Parametrisation:
         """
         modes = np.arange(1, self.coef.size + 1)
         fac = (1j * modes) ** order if order >= 0 else 1.0 / (1j * modes)
-        phase = np.exp(1j * np.outer(theta, modes))
-        val = 2.0 * np.real(phase @ (self.coef * fac))
+        weights = self.coef * fac
+        val = np.empty(theta.size)
+        rows = max(1, SERIES_BLOCK // max(modes.size, 1))
+        for i in range(0, theta.size, rows):
+            phase = np.exp(1j * np.outer(theta[i : i + rows], modes))
+            val[i : i + rows] = 2.0 * np.real(phase @ weights)
         return val + (self.a0 if order == 0 else 0.0)
 
     def _t_of(self, theta: np.ndarray) -> np.ndarray:
@@ -391,10 +404,15 @@ class Parametrisation:
         idx = np.clip(np.searchsorted(self.t_fine, t) - 1, 0, self.n_fine - 1)
         lo, hi = theta_ext[idx], theta_ext[idx + 1]
 
+        # T's own round-off: each term c_k e^{ikθ}/(ik) carries the ulp of θ
+        # times |c_k|, so the floor grows with the series' l¹ weight. On the
+        # identity map the sum is empty and the floor is NEWTON_FLOOR itself.
+        floor = NEWTON_FLOOR * (1.0 + float(np.abs(self.coef).sum()) / self.a0)
         extra = -1
         for _ in range(NEWTON_MAX_ITER):
             resid = self._t_of(theta) - t
-            trial = theta - resid * self.a0 / self._series(theta)  # T' = σγ/a_0
+            slope = self._series(theta) / self.a0  # T' = σγ/a_0
+            trial = theta - resid / slope
             # The bracket is the *static* fine-grid interval holding the root
             # (spec §4.3). Shrinking it onto the iterate the way a textbook
             # rtsafe does is what breaks here: once an endpoint sits within
@@ -404,13 +422,18 @@ class Parametrisation:
             # so a root landing exactly on a grid point is not read as an escape.
             outside = (trial < lo) | (trial > hi)
             trial = np.where(outside, 0.5 * (lo + hi), trial)
-            step = np.max(np.abs(trial - theta))
+            # The step is measured in t, where the floor lives: T is evaluated
+            # to ~eps·2π, so a settled θ still jitters by that over T' = 1/w'.
+            # A θ-step test is unreachable wherever w' ≫ 1 and loops to the
+            # iteration cap (measured: eccentric map at aspect 15, nn = 1024,
+            # residual 1.8e-15 from iteration 2, θ-step 2e-14 > floor 1.1e-14).
+            step = np.max(np.abs(trial - theta) * slope)
             theta = trial
             if extra >= 0:
                 extra += 1
                 if extra == 2:
                     break
-            elif step <= NEWTON_FLOOR:
+            elif step <= floor:
                 extra = 0
         else:
             raise ValueError(
@@ -435,7 +458,11 @@ class Parametrisation:
         and no ``n_core``, and it accepts shapes :meth:`gielis` cannot resolve
         (non-analytic exponents). Under Kress it is also the most accurate map
         on every star measured, both once resolved and at low resolution, where
-        no map is reliably better (conventions §13).
+        no map is reliably better (conventions §13). **Not on thin shapes**:
+        its coarsest spacing falls on the tips, so it loses digits from aspect
+        ~5 and moves by tens of percent between ``nn = 128`` and ``512`` at
+        aspect 10. ``BoundaryResolutionWarning`` flags only the worst of it.
+        Use :meth:`elliptic` there (conventions §13.4).
 
         It goes through the same :meth:`nodes` code as every other map: an
         empty series makes ``T(θ) = θ`` exactly, and one Newton step lands on
@@ -456,6 +483,64 @@ class Parametrisation:
             n_fine=N_FINE_START,
             n_terms=0,
         )
+
+    @classmethod
+    def elliptic(cls, *, a: float, b: float) -> "Parametrisation":
+        """The eccentric-angle map of an ellipse: the node map for thin shapes.
+
+        ``tan θ = (b/a)·tan t``, so :meth:`pysie2d.geometry.Geometry.gielis` at
+        ``m = 4``, ``n1 = n2 = n3 = 2`` with the same ``a``, ``b`` traces
+        ``x = b·rad·sin t``, ``z = a·rad·cos t``: the ellipse in its eccentric
+        angle, an entire function of ``t``. Node spacing is ``a·rad·Δt`` at the
+        ends of the ``x`` axis and ``b·rad·Δt`` mid-flank, so on a thin shape
+        the tips are the *finest* part. Uniform θ puts its coarsest spacing
+        there, because a tip of curvature radius ``L/AR²`` (``L`` the long
+        semi-axis) spans only ~1/AR of θ (conventions §13.4).
+
+        Pass the shape's own ``a`` and ``b``. Only ``b/a`` enters, so the map
+        carries no length (conventions §9). It also resolves thin
+        superellipses (``n1 = n2 = n3 = 4``, either orientation), and a ratio
+        other than the shape's is worse by orders of magnitude on the ellipse
+        (conventions §13.4).
+
+        ``T' = ab/(b² cos²θ + a² sin²θ)`` is a Poisson kernel, so its series
+        ``1 + 2 Σ (−q)^k cos 2kθ`` with ``q = (b − a)/(b + a)`` is exact rather
+        than sampled, and the map goes through the same :meth:`nodes` Newton
+        as every other. ``K`` is the last ``k`` with ``|q|^k > eps``, the same
+        relative-to-``a_0`` rule as :meth:`gielis`: about 540 harmonics at
+        aspect 15, 1080 at 30. ``a = b`` leaves an empty series, the identity
+        map.
+
+        Args:
+            a: Scale factor of the cosine term, the ``z`` semi-axis in units of
+                ``rad``.
+            b: Scale factor of the sine term, the ``x`` semi-axis in units of
+                ``rad``.
+
+        Returns:
+            The frozen :class:`Parametrisation`.
+        """
+        q = (b - a) / (b + a)
+        k_max = int(np.log(EPS) / np.log(abs(q))) if q != 0.0 else 0
+        # T' has only even harmonics: c_{2k} = (−q)^k, the odd entries are zero.
+        coef = np.zeros(2 * k_max, dtype=complex)
+        coef[1::2] = (-q) ** np.arange(1, k_max + 1)
+        theta_f = np.linspace(0.0, TWOPI, N_FINE_START, endpoint=False)
+        obj = cls(
+            a0=1.0,
+            coef=coef,
+            theta_fine=theta_f,
+            t_fine=np.empty(0),
+            nn_from_band=None,
+            contrast_realised=1.0,
+            alpha_eff=0.0,
+            n_fine=N_FINE_START,
+            n_terms=coef.size,
+        )
+        # As in gielis: T on the fine grid needs the series, then the closure.
+        t_fine = np.concatenate([obj._t_of(theta_f), [TWOPI]])
+        object.__setattr__(obj, "t_fine", t_fine)
+        return obj
 
     @classmethod
     def gielis(
