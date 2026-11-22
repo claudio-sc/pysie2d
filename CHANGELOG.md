@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.6.0 (2026-11-22)
+
+### Features
+
+- Eccentric-angle node map for thin shapes
+  ([`1cc59ce`](https://github.com/claudio-sc/pysie2d/commit/1cc59cee8e74105f2dc7645435b937c1131d2266))
+
+- Warn when a sharp tip has too few nodes
+  ([`170e8d6`](https://github.com/claudio-sc/pysie2d/commit/170e8d6ec5f709c6d39c72efeb53dafb471e85b3))
+
+
 ## v1.5.0 (2026-11-15)
 
 ### Features
