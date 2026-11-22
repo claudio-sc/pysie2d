@@ -73,10 +73,15 @@ def test_kress_weights_are_shared_and_read_only():
 # graded map at odd nn breaks every one of those symmetries at once.
 _SKEW = {"a": 1.3, "b": 0.8, "m": 4, "n1": 6.0, "n2": 12.0, "n3": 4.0}
 _SKEW_MAP = Parametrisation.gielis(rad=200.0, **_SKEW, n_core=1.5)
+# The Kress window (conventions §13.5) switches on above nn = 96, so the first
+# two shapes check the global weights and the third the windowed ones.
 GEOMETRIES = {
     "circle-64": lambda: Geometry.gielis(rad=200.0, n_pts=64, m=0),
     "skew-graded-33": lambda: Geometry.gielis(
         rad=200.0, n_pts=33, **_SKEW, parametrisation=_SKEW_MAP
+    ),
+    "skew-graded-129": lambda: Geometry.gielis(
+        rad=200.0, n_pts=129, **_SKEW, parametrisation=_SKEW_MAP
     ),
 }
 

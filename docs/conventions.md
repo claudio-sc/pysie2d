@@ -627,13 +627,57 @@ it:
   matrix in one piece (~30 GB) was the out-of-memory kill. Blocked, it builds
   in 18 s at 0.12 GB.
 
-**Out of reach for any map: the interior splitting of a lossy core.** Kress
-splits off `J₀(k_in r)·ln`, and `J₀` grows like `e^{Im k_in r}`. Across a body
-of size `D` it reaches `e^{Im k_in D}` and cancels against `K₂` to that factor
-times eps. With the ε above, a **circle** of diameter `D` is off analytic Mie
-by 1e-10 at `D` = 500 nm, 1.5e-5 at 800 nm and 9 % at 1200 nm (`nn` = 512),
-and the error grows with `nn`. This is a separate defect, not fixed here. It
-is why the AR 15–30 measurements above stop at a 250 nm semi-axis.
+**13.5 The Kress split is local: the correction is windowed in node offset.**
+Kress splits off `K₁·ln(4 sin²((t − τ)/2))` with `K₁ ∝ J₀(k r)`, and the
+global scheme applies the correction `K₁·W_d` to every node pair. Inside a
+lossy core `J₀(k_in r)` grows like `e^{Im k_in r}` while the true kernel
+decays like `e^{−Im k_in r}`, so `M` carries entries of order
+`e^{Im k_in D}·W` that must cancel against `K₂` to that factor times eps.
+The answer was then wrong, worse as `nn` grew, and nothing warned *(measured,
+gold-like ε = −53.3 + 3.8i, n_clad = 1.45, λ = 1100 nm, `qext` against Mie at
+`nn` = 512: circle `D` = 500 nm 1e-10, 800 nm 1.5e-5, 1200 nm 6.9e-2 TE and
+8.9e-2 TM; cond(M) 4e9–7e10 on an 800 nm gold ellipse and 1e17–1e18 at
+1200 nm)*. The exterior is untouched: `k_bg` is real on driven solves.
+
+The split is made with `K₁·win` instead, which multiplies `W_d` by
+`win_d = ½·erfc((|d| − 24)/4)`, `|d|` the periodic node offset
+(`kernels._kress_weights`). Any `K₁` that matches `J₀` to all orders on the
+diagonal leaves `K₂` smooth, because the log is singular only there; distant
+pairs keep the plain trapezoid `h·K`, which is accurate because `H₀` is
+already small there. Three choices, each measured:
+
+- **Width in nodes, not in `t` or in length.** The window then depends on
+  `nn` and `d` alone, so §13.2 holomorphy, §13.3 and §9 scale covariance are
+  untouched, and it holds for an eigenpermittivity search too (§18). It
+  shrinks in physical size as `nn` grows, so the residual growth
+  `e^{Im k·r}` inside it falls with `nn` instead of rising.
+- **An erfc transition, not a compactly supported bump.** Measured in nodes,
+  the window's own error is its spectrum at the aliasing frequency, π per
+  node, and a Gaussian transition makes that `exp(−π²σ²/4)`: 7e-18 at
+  σ = 4 nodes. σ = 3 leaves 3e-12 on a dielectric circle, and a compact erf-log
+  bump over 28 nodes leaves 1e-9, flat in `nn`.
+- **Flat to 6σ.** The split needs `win = 1` at `d = 0` to round-off;
+  `½·erfc(6) = 1e-17`. At 5σ it is 8e-13, and that is the floor measured.
+
+Beyond 48 nodes (12σ) the window is set to exactly 0. It is 1e-17 there,
+and the truncation moves `M` by 6e-19. `J₀`/`J₁` are therefore evaluated only on
+pairs inside the window and are **0 in the arrays elsewhere**. Anything that
+reads those arrays for another purpose must take that into account. That is
+1.1–2.4× per complex assembly (`docs/design/performance.md` §9).
+
+The window is applied only for `nn > 96`, where it falls to 1e-17 well inside
+the period; below that every matrix is the global Kress one, bit for bit, so
+the circle anchors at `nn ≈ 30–40` cannot move. The price is that a lossy core
+gets no help below `nn = 97`. That is also where it is unresolved: gold at
+`D` = 1200 nm and `nn` = 64 has a skin depth under half the node spacing.
+
+*Anchor:* the gold circle above, `D` = 1200 nm, both polarisations, at
+round-off against Mie on every rung from `nn` = 384 (≤ 8e-15, then ≤ 4.4e-16
+at 512 and 768), with cond(M) on the ellipses back to ~1e2, the 300 nm value.
+The `−40 + 1.5i` metal at `D` = 400 nm, λ = 600 nm had a flat 7.4e-7 floor
+on `Q_abs` that was this defect; it is now 1.2e-14. Dielectric circles stay at
+round-off, and QNM poles at windowed `nn` match the global ones to 12 digits
+with `sigma_ratio` ≤ 4e-15. `tests/test_efficiencies.py`.
 
 ## 14. The cluster degree-of-freedom layout (v0.8)
 

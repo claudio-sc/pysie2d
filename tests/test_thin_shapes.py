@@ -81,9 +81,6 @@ def test_thin_metal_ellipse_converges_spectrally_on_the_elliptic_map():
     boundary allows. 1e-8 sits a decade above the measured 384 value and 2.7
     decades below the 256 one, so it separates a converged rung from an
     unconverged one rather than tracking noise.
-
-    The long semi-axis is 70 nm, inside the regime where the interior Kress
-    splitting is still at round-off for this permittivity.
     """
     material = Material.from_eps(complex(-53.3, 3.8), N_CLAD, pol=1)
     qext = {
