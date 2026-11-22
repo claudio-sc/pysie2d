@@ -22,9 +22,10 @@ Public API:
 """
 
 import functools
+import math
 
 import numpy as np
-from scipy.special import hankel1, j0, j1, jv, y0, y1
+from scipy.special import erfc, hankel1, j0, j1, jv, y0, y1
 
 PI = np.pi
 
@@ -105,6 +106,8 @@ def cbesh(z: complex | np.ndarray, order: int) -> complex | np.ndarray:
 # nodes (Kress, Linear Integral Equations, ch. 12); everything left over is
 # smooth and periodic, so the trapezoid rule is spectral on it. See
 # docs/design/kress-spec.md §3 for the derivation of every expression below.
+# The split is localised to a window of node offsets, because J₀(kr) grows
+# exponentially inside a lossy core (conventions §13.5, _kress_weights).
 # ---------------------------------------------------------------------------
 
 
@@ -141,15 +144,36 @@ def _kress_log_weights(nn: int) -> np.ndarray:
     return weights
 
 
+# The split is localised by an erfc window in the node offset (conventions
+# §13.5): win_d = ½·erfc((|d| − FLAT)/SIGMA), |d| the periodic offset. SIGMA sets
+# the aliasing error of the window itself, ~exp(−π²·SIGMA²/4) = 7e-18 at 4
+# nodes (3 nodes leaves 3e-12 on a dielectric circle). FLAT = 6·SIGMA makes
+# 1 − win_0 = ½·erfc(6) = 1e-17; at 5·SIGMA it is 8e-13, and that is the floor
+# measured. The window is applied only when it fits inside the period, so
+# below nn = 2·CUT every matrix is the global Kress one, bit for bit.
+_WINDOW_SIGMA = 4.0
+_WINDOW_FLAT = 6.0 * _WINDOW_SIGMA
+_WINDOW_CUT = 12.0 * _WINDOW_SIGMA
+
+
 @functools.lru_cache(maxsize=64)
 def _kress_weights(nn: int) -> np.ndarray:
-    """Circulant correction ``W_d = R_d − h·ln(4 sin²(πd/nn))``, ``W_0 = R_0``.
+    """Windowed circulant correction ``win_d·W_d``, ``W_d = R_d − h·ln(4 sin²(πd/nn))``.
 
     Kress writes each off-diagonal entry as ``K₁·R + (K − K₁·L)·h`` with
     ``L = ln(4 sin²(πd/nn))``. Collecting the ``K₁`` terms gives
     ``h·K + K₁·W``: the plain trapezoid entry plus a correction proportional
     to ``W``. That is the form assembled here, so ``L`` never needs its own
     O(nn²) array. On the diagonal ``L`` is undefined and only ``R_0`` enters.
+
+    The split is made with ``K₁·win`` instead of ``K₁``, which multiplies ``W``
+    by ``win_d``. ``K₁ ∝ J₀(k r)`` grows like ``e^{Im k·r}``: inside a lossy
+    core, applied to every node pair, it puts entries of order
+    ``e^{Im k·D}·W`` into ``M`` that must cancel against ``K₂`` *(measured,
+    gold circle ε = −53.3 + 3.8i, D = 1200 nm: cond(M) 1e17, ``qext`` off
+    Mie by 9 % and growing with ``nn``)*. ``win`` is 1 to round-off near the
+    diagonal, so ``K₂`` stays smooth, and depends on nothing but ``nn`` and
+    ``d``, so holomorphy (§13.2) and scale covariance (§9) are untouched.
 
     The array is shared between every assembly at this ``nn`` and between
     threads (``beyn.contour_moments``), so it is returned read-only: an
@@ -159,11 +183,14 @@ def _kress_weights(nn: int) -> np.ndarray:
         nn: Number of boundary nodes.
 
     Returns:
-        Read-only (nn,) array ``W_d``, ``d = 0 … nn−1``.
+        Read-only (nn,) array ``win_d·W_d``, ``d = 0 … nn−1``.
     """
     w = np.array(_kress_log_weights(nn))
     d = np.arange(1, nn)
     w[1:] -= (2.0 * PI / nn) * np.log(4.0 * np.sin(PI * d / nn) ** 2)
+    if nn > 2 * _WINDOW_CUT:
+        offset = np.minimum(np.arange(nn), nn - np.arange(nn))
+        w *= 0.5 * erfc((offset - _WINDOW_FLAT) / _WINDOW_SIGMA)
     w.flags.writeable = False
     return w
 
@@ -209,10 +236,10 @@ def assemble_matrix_reference(
     Kept **only** as the truth anchor for the parity test against
     :func:`assemble_matrix`. It is independent of the fast path in the three
     places a vectorisation bug hides: it indexes node pairs in an explicit
-    double loop rather than through ``triu_indices``, it builds ``W`` from
-    ``R`` and the logarithm inline rather than from the cached
-    :func:`_kress_weights`, and it always evaluates Bessel functions at a
-    **complex** argument, so the real Cephes branch is checked too.
+    double loop rather than through ``triu_indices``, it builds ``W`` and its
+    window from ``R``, the logarithm and ``math.erfc`` inline rather than from
+    the cached :func:`_kress_weights`, and it always evaluates Bessel functions
+    at a **complex** argument, so the real Cephes branch is checked too.
 
     Args:
         pol: Polarisation: 1 = p (TM), 2 = s (TE).
@@ -246,6 +273,9 @@ def assemble_matrix_reference(
         for j in range(i + 1, nn):
             d = j - i
             w_d = r_log[d] - h * np.log(4.0 * np.sin(PI * d / nn) ** 2)
+            if nn > 2 * _WINDOW_CUT:
+                offset = min(d, nn - d)
+                w_d *= 0.5 * math.erfc((offset - _WINDOW_FLAT) / _WINDOW_SIGMA)
             dx = f[i] - f[j]
             dz = g[i] - g[j]
             r = np.sqrt(dx**2 + dz**2)

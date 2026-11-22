@@ -118,7 +118,7 @@ geometry.
 | file | shape | pol | material | `rtol` C_ext | `rtol` C_sca | `rtol` C_abs | `atol` C_abs (nm) | null bound (nm) |
 |---|---|---|---|---|---|---|---|---|
 | `dolfinx-circle-lossless-te` | circle | TE | lossless | 5e-08 | 2e-06 | — | 1e-09 | 3e-12 |
-| `dolfinx-circle-lossless-tm` | circle | TM | lossless | 1e-07 | 3e-06 | — | 1e-09 | 5e-12 |
+| `dolfinx-circle-lossless-tm` | circle | TM | lossless | 1e-07 | 3e-06 | — | 1e-09 | 2e-11 |
 | `dolfinx-circle-lossy-te` | circle | TE | lossy | 3e-08 | 1e-05 | 3e-08 | 2e-05 | — |
 | `dolfinx-circle-lossy-tm` | circle | TM | lossy | 3e-08 | 1e-05 | 3e-08 | 2e-05 | — |
 | `dolfinx-star-lossless-te` | star | TE | lossless | 1e-06 | 2e-06 | — | 5e-05 | 5e-05 |
@@ -126,7 +126,7 @@ geometry.
 | `dolfinx-star-lossy-te` | star | TE | lossy | 2e-07 | 1e-05 | 2e-07 | 5e-04 | — |
 | `dolfinx-star-lossy-tm` | star | TM | lossy | 3e-07 | 1e-05 | 3e-07 | 5e-04 | — |
 | `meep-circle-lossless-te` | circle | TE | lossless | 5e-04 | 5e-04 | — | 5e-01 | 3e-12 |
-| `meep-circle-lossless-tm` | circle | TM | lossless | 5e-04 | 2e-04 | — | 5e-01 | 5e-12 |
+| `meep-circle-lossless-tm` | circle | TM | lossless | 5e-04 | 2e-04 | — | 5e-01 | 2e-11 |
 | `meep-star-lossless-te` | star | TE | lossless | 5e-02 | 5e-02 | — | 5e-01 | 5e-05 |
 | `meep-star-lossless-tm` | star | TM | lossless | 2e-02 | 2e-02 | — | 1e+00 | 2e-05 |
 | `mie-circle-*` (4 files) | circle | both | both | 1e-12 | 1e-12 | 1e-12 | 1e-10 | 1e-10 |

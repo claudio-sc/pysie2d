@@ -207,19 +207,17 @@ def test_gain_particle_is_not_mirrored_into_loss(circle, pol):
 # Metals, Re ε < 0 (docs/design/absorption-scope.md §7). Measured at nn = 300,
 # λ = 600 nm, |Q_abs/Q_abs^Mie − 1|, as the worst of both polarisations:
 #   2.25 + 0.5i  ≤ 8.9e-16  — round-off, as for the n_core fixture above.
-#   −16 + 0.5i   ≤ 5.5e-11  — Q_abs ≈ 0.02 is Q_ext − Q_sca with Q_ext ≈ 2, so
-#                  Q_ext's ~1e-12 round-off reaches Q_abs amplified ~100×.
-#   −40 + 1.5i   ≤ 7.4e-07  — a floor, not convergence: flat at 2e-7–1e-6 from
-#                  nn = 60 to 300, and 1e-8 of Q_ext before the same ~100×
-#                  amplification. Flat in nn, so not the quadrature; the
-#                  likely cause, unmeasured, is the interior field decaying as
-#                  exp(−|m|·k·r) with |m|·x = 13, in the solve or in the
-#                  reference's Bessel functions.
-# Bounds leave ~10× over the measured value.
+#   −16 + 0.5i   ≤ 1.7e-14
+#   −40 + 1.5i   ≤ 1.2e-14
+# Q_abs ≈ 0.02 is Q_ext − Q_sca with Q_ext ≈ 2, so Q_ext's round-off reaches
+# Q_abs amplified ~100×; 1e-12 leaves that and ~10× more. The metals used to
+# sit at 5.5e-11 and 7.4e-7, flat from nn = 60 to 300: that was the global
+# Kress split inside a lossy core (conventions §13.5), and either value fails
+# this bound.
 METALS = [
     (2.25 + 0.5j, 1e-12),
-    (-16.0 + 0.5j, 1e-9),
-    (-40.0 + 1.5j, 1e-5),
+    (-16.0 + 0.5j, 1e-12),
+    (-40.0 + 1.5j, 1e-12),
 ]
 
 
@@ -239,4 +237,25 @@ def test_metal_absorption_matches_mie(circle, eps, rtol, pol):
     tag = POL_TAG[pol]
 
     assert eff["qabs"] > 0.0
-    assert eff["qabs"] == pytest.approx(ref[f"Q_abs_{tag}"], rel=rtol)
+    # abs=0: approx's default abs=1e-12 is 5e-11 of Q_abs ≈ 0.02 and would
+    # admit the global-split metal16 error the bound is there to reject.
+    assert eff["qabs"] == pytest.approx(ref[f"Q_abs_{tag}"], rel=rtol, abs=0.0)
+
+
+@pytest.mark.parametrize("nn", [384, 512, 768])
+@pytest.mark.parametrize("pol", [1, 2])
+def test_large_metal_core_matches_mie_and_stays_converged(nn, pol):
+    # The lossy-core anchor of conventions §13.5. Gold-like ε = −53.3 + 3.8i in
+    # n_clad = 1.45 at λ = 1100 nm, D = 1200 nm: Im k_core·D = 50, so J₀(k_core·r)
+    # spans e^50 across the body. The global Kress split put that into M and was
+    # off Mie by 6.9e-2 (TE) and 8.9e-2 (TM) at nn = 512, growing with nn; the
+    # windowed split is at round-off on every rung (measured ≤ 8.0e-15 at 384,
+    # ≤ 4.4e-16 at 512 and 768). Three rungs, because the defect grew with nn
+    # and one converged rung would not show that it has stopped.
+    eps = complex(-53.3, 3.8)
+    mat = Material.from_eps(eps, n_clad=1.45, pol=pol)
+    eff = BIESolver(Geometry.gielis(600.0, nn, m=0), mat).scatter(1100.0).efficiencies()
+
+    m = np.sqrt(eps) / 1.45
+    ref = mie.efficiencies(2.0 * np.pi * 1.45 * 600.0 / 1100.0, m)
+    assert eff["qext"] == pytest.approx(ref[f"Q_ext_{POL_TAG[pol]}"], rel=RTOL_QEXT)
