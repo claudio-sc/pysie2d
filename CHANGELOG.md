@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.6.1 (2026-11-22)
+
+### Bug Fixes
+
+- Window the Kress correction in lossy cores
+  ([`de6ae46`](https://github.com/claudio-sc/pysie2d/commit/de6ae4603d6c8f4dadff0d619d9d29047aca93f4))
+
+### Performance Improvements
+
+- Skip J evaluations outside the Kress window
+  ([`6adc786`](https://github.com/claudio-sc/pysie2d/commit/6adc78604b8f910fce01618f24eb165cf30b0976))
+
+
 ## v1.6.0 (2026-11-22)
 
 ### Features
