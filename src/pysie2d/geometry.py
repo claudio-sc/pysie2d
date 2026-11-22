@@ -10,6 +10,8 @@ Public API:
         :class:`~pysie2d.parametrisation.Parametrisation`.
 """
 
+import warnings
+
 import numpy as np
 
 from .parametrisation import Nodes, Parametrisation
@@ -184,6 +186,35 @@ def _rderiv2(
 # ---------------------------------------------------------------------------
 # Discretised boundary on a parametrisation
 # ---------------------------------------------------------------------------
+
+
+class BoundaryResolutionWarning(UserWarning):
+    """The boundary turns too sharply between neighbouring nodes to be resolved."""
+
+
+# Largest tangent turn between neighbouring nodes that Geometry.gielis accepts
+# silently (conventions §13.4). Every measured case above it was off by ≥ 3e-2,
+# and uniform θ on thin ellipses sits at 2–3.1 rad, wrong by O(1). Lower it and
+# the warning fires on spiky stars at the ~1e-3 resolutions they are run at.
+MAX_NODE_TURN = 2.0
+
+
+def _max_node_turn(df: np.ndarray, dg: np.ndarray) -> float:
+    """Largest angle (rad) between the tangents of neighbouring nodes.
+
+    Read from consecutive tangents, not from the curvature at the nodes: a map
+    that steps over a sharp tip puts no node on it, so the sampled curvature
+    looks small exactly where the boundary is under-resolved.
+
+    Args:
+        df: dx/dt at the nodes.
+        dg: dz/dt at the nodes.
+
+    Returns:
+        ``max_j |∠(ẋ_j, ẋ_{j+1})|``, cyclic.
+    """
+    df1, dg1 = np.roll(df, -1), np.roll(dg, -1)
+    return float(np.max(np.abs(np.arctan2(df * dg1 - dg * df1, df * df1 + dg * dg1))))
 
 
 class NonClosingBoundaryError(ValueError):
@@ -528,6 +559,12 @@ class Geometry:
             NonClosingBoundaryError: If the boundary does not close after one
                 turn: odd ``m`` unless ``a = b`` and ``n2 = n3``, or
                 non-integer ``m``.
+
+        Warns:
+            BoundaryResolutionWarning: If the tangent turns by more than
+                ``MAX_NODE_TURN`` = 2 rad between neighbouring nodes: a sharp
+                tip with too few nodes, wrong by O(1). Errors of a few percent
+                already occur below it (conventions §13.4).
         """
         _checked_parametrisation(parametrisation)
         if not _closes(m, a, b, n2, n3):
@@ -540,6 +577,18 @@ class Geometry:
         f, g, df, dg, ddf, ddg = _boundary_arrays(
             parametrisation.nodes(n_pts), rad, a, b, m, n1, n2, n3, x0, z0
         )
+        turn = _max_node_turn(df, dg)
+        if turn > MAX_NODE_TURN:
+            warnings.warn(
+                f"the boundary tangent turns by {turn:.2f} rad between "
+                f"neighbouring nodes (limit {MAX_NODE_TURN}): a sharp tip has "
+                f"too few nodes and results can be wrong by O(1) at "
+                f"n_pts={n_pts}. For a thin shape pass "
+                f"parametrisation=Parametrisation.elliptic(a=a, b=b); "
+                f"otherwise raise n_pts (docs/conventions.md §13.4)",
+                BoundaryResolutionWarning,
+                stacklevel=2,
+            )
         return cls(
             f,
             g,

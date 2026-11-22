@@ -461,8 +461,8 @@ class Parametrisation:
         no map is reliably better (conventions §13). **Not on thin shapes**:
         its coarsest spacing falls on the tips, so it loses digits from aspect
         ~5 and moves by tens of percent between ``nn = 128`` and ``512`` at
-        aspect 10, with no warning. Use :meth:`elliptic` there
-        (conventions §13.4).
+        aspect 10. ``BoundaryResolutionWarning`` flags only the worst of it.
+        Use :meth:`elliptic` there (conventions §13.4).
 
         It goes through the same :meth:`nodes` code as every other map: an
         empty series makes ``T(θ) = θ`` exactly, and one Newton step lands on

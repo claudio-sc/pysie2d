@@ -2,15 +2,19 @@
 
 A thin ellipse's tips have curvature radius rad/AR² and span ~1/AR of θ, so
 the default uniform-θ map leaves them almost without nodes and every result
-drifts by O(1) between nn and 2nn without raising. These tests pin that
-``Parametrisation.elliptic`` fixes it, against a closed form and by convergence.
+drifts by O(1) between nn and 2nn. These tests pin that
+``Parametrisation.elliptic`` fixes it, against a closed form and by convergence,
+and that the worst cases of the default now warn.
 """
+
+import warnings
 
 import numpy as np
 import pytest
 
 from pysie2d import (
     BIESolver,
+    BoundaryResolutionWarning,
     Cluster,
     ClusterBIESolver,
     Geometry,
@@ -89,3 +93,21 @@ def test_thin_metal_ellipse_converges_spectrally_on_the_elliptic_map():
         for nn in (384, 768)
     }
     assert qext[384] == pytest.approx(qext[768], rel=1e-8)
+
+
+def test_default_map_on_a_thin_ellipse_warns_and_the_elliptic_map_does_not():
+    """The silent failure is no longer silent; the fix does not trip the alarm.
+
+    Aspect 20 at nn = 256: on uniform θ the tangent turns by 2.74 rad between
+    two nodes straddling a tip, and qext there is off by O(1) (measured 0.99 to
+    14 between nn = 256 and 512 across gold and n = 2). On the eccentric map
+    the largest turn is 0.48 rad and qext is settled to 1.5e-8. The 2 rad limit
+    sits between the two with a margin of 1.4 and 4 respectively, so neither
+    assertion rests on the threshold's last digit.
+    """
+    with pytest.warns(BoundaryResolutionWarning, match="elliptic"):
+        Geometry.gielis(50.0, 256, a=1.0 / 20.0, b=1.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", BoundaryResolutionWarning)
+        _thin_ellipse(50.0, 256, 20.0)
+        Geometry.gielis(50.0, 256, m=0)  # a circle: 2π/256 per node

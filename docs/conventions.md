@@ -566,7 +566,7 @@ stated in its docstring; nothing in this section depends on it.
 ratio `AR = L/S`, the tips have curvature radius `L/AR²` and span only ~1/AR
 of θ. Uniform θ therefore puts its **coarsest** spacing exactly where the
 curvature and the field concentrate. It loses digits from AR ≈ 5 and is
-wrong by O(1) from AR ≈ 10, raising nothing *(measured, `qext`, TM, ε =
+wrong by O(1) from AR ≈ 10 *(measured, `qext`, TM, ε =
 −53.3 + 3.8i, n_clad = 1.45, λ = 1100 nm, long semi-axis 10–250 nm,
 max over sizes: AR 5 6.8e-5 and AR 10 0.47 between `nn` = 128 and 512; AR 30
 0.95 between 384 and 768 at a 100 nm semi-axis; the AR 20 resonance appeared
@@ -580,6 +580,22 @@ to five orders at the same `nn` *(AR 30, `nn` 384 against 768: 2.2e-9 at
 ratio 30, 1.3e-5 at 15, 2.7e-4 at 60)*. It also resolves the exponent-4 superellipse at AR 20 in
 either orientation *(2.1e-7 at `nn` 256 against 1024, where uniform θ is
 off by 5–37)*.
+
+**The worst cases warn.** `Geometry.gielis` raises
+`BoundaryResolutionWarning` when the tangent turns by more than
+`MAX_NODE_TURN = 2` rad between neighbouring nodes, whatever the map. The angle
+is read between consecutive tangents, not from the curvature at the nodes. A
+map that steps over a tip puts no node on it, so the sampled curvature looks
+small exactly where it matters *(measured: 0.045 rad sampled, against errors of
+order 1–100)*. Over gold and `n = 2` ellipses on both maps, AR 2–30, `nn`
+64–256, every case below 0.6 rad was within 4e-7, every case above 1.1 rad was
+off by ≥ 6.8e-5, and every case above 2 rad was off by ≥ 3e-2. Uniform θ on a
+thin shape sits at 2–3.1 rad. The limit is set high on purpose (owner,
+2026-11-22): spiky stars read 1.3–2.7 rad at the ~1e-3 resolutions they are run
+at (arm ratio 4: 1.71 rad at `nn = 200`), and nothing in the test suite reaches
+2 rad. The price is that percent-level errors pass silently below it (AR 8,
+`nn = 256`: 1.33 rad, 2e-2), so the warning is a backstop, not a convergence
+check.
 
 The cost floor is the flanks, not the map. Two flanks a distance `2S` apart
 need node spacing below ~`S`, so `nn ∝ AR` whatever the map: AR 30 needs
